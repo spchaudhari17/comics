@@ -1,9 +1,8 @@
 const express = require('express');
-const dotenv = require('dotenv');
+require('dotenv').config()
 const router = require('./routes/api.js');
 const cors = require('cors');
 bodyParser = require("body-parser")
-dotenv.config();
 const connectToDatabase = require('./config/database.js');
 const app = express();
 var corsOptions = {
