@@ -107,11 +107,11 @@ const signup = async (req, res) => {
 
 
         await mailer.sendMail({
-            from: '"Wakewall" <Wakewallapp@gmail.com>', // sender address
+            from: '"comics" <Comicsapp@gmail.com>', // sender address
             to: email, // list of receivers
-            subject: "Wakewall account verification link", // Subject line
+            subject: "comics account verification link", // Subject line
             text: "Verification link", // plain text body
-            html: "Hi! " + firstname + ",<br><br>Your Email verification OTP is:" + otp + "<br><br> Any issues please email Wakewallapp@gmail.com. <br><br> Reminder Team", // html body
+            html: "Hi! " + firstname + ",<br><br>Your Email verification OTP is:" + otp + "<br><br> Any issues please email Comicsapp@gmail.com. <br><br> Reminder Team", // html body
         });
 
 
@@ -264,11 +264,11 @@ const login = async (req, res) => {
 
 
             await mailer.sendMail({
-                from: '"Wakewall" <Wakewallapp@gmail.com>',
+                from: '"comics" <Comicsapp@gmail.com>',
                 to: email,
-                subject: "Wakewall account verification link",
+                subject: "comics account verification link",
                 text: "Verification link",
-                html: `Hi! ${isExist.firstname},<br><br>Your Email verification OTP is: ${newOtp}<br><br>Any issues please email Wakewallapp@gmail.com.<br><br>Reminder Team`
+                html: `Hi! ${isExist.firstname},<br><br>Your Email verification OTP is: ${newOtp}<br><br>Any issues please email Comicsapp@gmail.com.<br><br>Reminder Team`
             });
 
             return res.send({
@@ -371,11 +371,11 @@ const forgotPassword = async (req, res) => {
     let token = characters;
 
     await mailer.sendMail({
-        from: '"Wakewall" <Wakewallapp@gmail.com>', // sender address
+        from: '"comics" <Comicsapp@gmail.com>', // sender address
         to: email, // list of receivers
-        subject: "Wakewall Reset Password OTP", // Subject line
+        subject: "comics Reset Password OTP", // Subject line
         text: "Reset Password OTP", // plain text body
-        html: "<b>Hi </b> </br></br>" + data.firstname + " Please click on below link to reset your password <a target='_blank' style='color:blue' href='" + BASE_URL + "/web/forgotPage?token=" + token + "'>Click Here</a></br></br></br>  <span>Best Regard</span></br>  <span>WakeWall</span>", // html body
+        html: "<b>Hi </b> </br></br>" + data.firstname + " Please click on below link to reset your password <a target='_blank' style='color:blue' href='" + BASE_URL + "/web/forgotPage?token=" + token + "'>Click Here</a></br></br></br>  <span>Best Regard</span></br>  <span>comics</span>", // html body
 
     });
 
@@ -424,11 +424,11 @@ const resendOtp = async (req, res) => {
 
 
         await mailer.sendMail({
-            from: '"Wakewall" <Wakewallapp@gmail.com>', // sender address
+            from: '"comics" <Comicsapp@gmail.com>', // sender address
             to: email, // list of receivers
-            subject: "Wakewall Reset Password OTP", // Subject line
+            subject: "comics Reset Password OTP", // Subject line
             text: "Reset Password OTP", // plain text body
-            html: "Hello " + data.first_name + ",<br><br>To reset your password please enter the below verification code into Wakewall app when prompted:" + data.otp + "<br><br> If you have any trouble changing your password please feel free to email us at Wakewallapp@gmail.com. <br> <br><br> Best regards, <br><br> Wake wall app team", // html body
+            html: "Hello " + data.first_name + ",<br><br>To reset your password please enter the below verification code into comics app when prompted:" + data.otp + "<br><br> If you have any trouble changing your password please feel free to email us at Comicsapp@gmail.com. <br> <br><br> Best regards, <br><br> Wake wall app team", // html body
 
         });
 
