@@ -258,17 +258,20 @@ const listComics = async (req, res) => {
     try {
         const comics = await Comic.find().select("title author subject pdfUrl createdAt");
 
-        const formattedComics = comics.map(comic => ({
-            _id: comic._id,
-            title: comic.title,
-            author: comic.author,
-            subject: comic.subject,
-            createdAt: comic.createdAt,
-            pdfUrl: comic.pdfUrl,
-            thumbnail: comic.images?.length > 0 ? comic.images[0] : null
-        }));
+        const comicsWithThumbnail = await Promise.all(
+            comics.map(async (comic) => {
+                const firstPage = await ComicPage.findOne({ comicId: comic._id })
+                    .sort({ pageNumber: 1 }) // pehla page
+                    .select("imageUrl");
 
-        res.json({ comics:formattedComics });
+                return {
+                    ...comic.toObject(),
+                    thumbnail: firstPage ? firstPage.imageUrl : null,
+                };
+            })
+        );
+
+        res.json({ comics: comicsWithThumbnail });
     } catch (error) {
         console.error("Error listing comics:", error);
         res.status(500).json({ error: "Failed to list comics" });
