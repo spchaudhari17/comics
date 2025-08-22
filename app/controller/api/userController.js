@@ -72,11 +72,11 @@ const signup = async (req, res) => {
         // Check if username already exists
         const isUsernameExist = await Users.findOne({ username });
 
-        if (isUsernameExist) {
+        // if (isUsernameExist) {
 
-            return res.send({ "error": true, 'status': 201, "message": "Username already taken.", "message_desc": "Username already taken." });
+        //     return res.send({ "error": true, 'status': 201, "message": "Username already taken.", "message_desc": "Username already taken." });
 
-        }
+        // }
 
         var min = 1000;
         var max = 9999;
