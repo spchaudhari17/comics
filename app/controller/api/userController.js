@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL;
 const signup = async (req, res) => {
 
     let { firstname = '', lastname = '', password = '', username = '', email = '', countryCode = '+1',
-        mobileNumber = '' } = req.body
+        mobileNumber = '',  device_udid='',signup_type='' } = req.body
 
 
     if (firstname === '') {
@@ -95,7 +95,8 @@ const signup = async (req, res) => {
             otp: otp,
             otp_generated_at: Date.now(),
             countryCode: countryCode,
-            mobileNumber: mobileNumber
+            mobileNumber: mobileNumber,
+            signup_type: signup_type,
 
         });
 
