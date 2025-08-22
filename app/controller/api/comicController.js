@@ -1,140 +1,317 @@
 const OpenAI = require("openai");
+const axios = require("axios");
+const path = require("path");
+const fs = require("fs");
+const { upload_files } = require("../../../helper/helper");
+const Comic = require("../../models/Comic");
+const ComicPage = require("../../models/ComicPage");
+const PDFDocument = require("pdfkit");
+
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
+    apiKey: process.env.OPENAI_API_KEY,
 });
 
 
-// const refinePrompt = async (req, res) => {
-//     const { title, author, subject, story } = req.body;
-
-//     try {
-//         console.log("Using GPT-4o to refine comic prompt...");
-
-//         const promptText = `
-// You are an expert at writing AI image generation prompts for comics.
-
-// Transform the following comic details into a highly detailed, creative, and vivid prompt.
-// Make sure the prompt describes characters, setting, mood, and style clearly.
-// Keep it visually descriptive and suitable for a comic panel.
-
-// Comic Title: ${title}
-// Author: ${author}
-// Subject: ${subject}
-
-// Story:
-// ${story}
-
-// Output only the refined prompt, nothing else.
-//     `;
-
-//         const gptResponse = await openai.chat.completions.create({
-//             // model: "gpt-4o", // agar cost bachani ho to "gpt-3.5-turbo" use karo
-//             model: "gpt-3.5-turbo", // agar cost bachani ho to "gpt-3.5-turbo" use karo
-//             messages: [
-//                 { role: "system", content: "You are a skilled comic prompt engineer." },
-//                 { role: "user", content: promptText }
-//             ],
-//             temperature: 0.9,
-//             max_tokens: 500
-//         });
-
-//         const refinedPrompt = gptResponse.choices[0].message.content.trim();
-
-//         // 🟢 Step 2 - Generate comic image using DALL·E 3
-//         console.log("Generating image with DALL·E 3...");
-//         const imageResponse = await openai.images.generate({
-//             model: "dall-e-3",
-//             prompt: refinedPrompt,
-//             size: "1024x1024"
-//         });
-
-//         const imageUrl = imageResponse.data[0].url; // URL return karega
-//         // Agar Base64 chahiye:
-//         // const imageBase64 = imageResponse.data[0].b64_json;
-
-//         res.json({
-//             refinedPrompt,
-//             imageUrl
-//             // imageBase64: imageBase64 // Agar tum base64 chaho to uncomment karo
-//         });
-
-//     } catch (error) {
-//         console.error("OpenAI API Error:", error);
-//         res.status(500).json({ error: "Something went wrong", details: error.message });
-//     }
-// };
-
-
+// STEP 1: Refine Prompt + Save Comic entry
 const refinePrompt = async (req, res) => {
     const { title, author, subject, story } = req.body;
 
+    const wrappedStory = `
+Analyse the prompt given below and check whether the concept is small enough 
+to have it explained properly and in detail in an 8-10 page comic, 
+if not, then divide the following concept into smaller chunks which can be converted into comics. 
+Give the answer in part wise format and mention the key terms to be introduced, 
+define the start and the end point of the concept: ${story}
+`;
+
     try {
         const promptText = `
-You are an expert at writing AI image generation prompts for comics.
+You are an expert comic prompt engineer.
+Task: Break the following story into multiple pages and panels for a comic.
+Each page must have several vertical panels (top to bottom), clear borders, and speech bubbles with the exact given dialogue.
 
-Turn the following comic idea into a vivid, detailed prompt for an illustrated comic page.  
-It must have multiple panels, clear panel borders, speech bubbles with exact given dialogue, and captions.  
-Style: classic hand-drawn vintage comic art with ink outlines and soft watercolor shading.
+Style: realistic hand-drawn comic illustration with thin ink outlines and soft watercolor tones.
+Use clean, simple handwritten comic lettering — legible, black on white, inside clear speech bubbles or captions.
 
 Comic Title: ${title}
 Author: ${author}
 Subject: ${subject}
 
 Story:
-${story}
+${wrappedStory}
 
-Format the comic like this:
-Panel 1:
-- Describe the first scene visually in detail.
-- Include any speech bubble text from the story inside quotation marks.
-Panel 2:
-- Describe the second scene visually in detail.
-- Include caption text from the story if relevant.
-Panel 3:
-- Describe the third scene visually in detail.
-- Include any price labels, arrows, or props mentioned.
-Style Notes:
-- Warm earthy tones, expressive characters, readable comic lettering, softly detailed backgrounds.
-- Keep all speech bubbles exactly as given in the story text.
+⚠️ Output rules (MUST follow):
+- Return ONLY valid JSON.
+- Do NOT include markdown fences (no \`\`\`).
+- Do NOT include comments or extra text.
+- Every key must be in double quotes.
+- Every string must be in double quotes.
+- No trailing commas.
+
+Format:
+[
+  {
+    "page": 1,
+    "panels": [
+      {
+        "scene": "Describe the visual scene",
+        "caption": "Narrator text (or empty string if none)",
+        "dialogue": [
+          { "character": "Name", "text": "Exact speech bubble text" }
+        ]
+      }
+    ]
+  }
+]
 `;
 
-        const gptResponse = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
             messages: [
-                { role: "system", content: "You are a skilled comic prompt engineer." },
-                { role: "user", content: promptText }
+                {
+                    role: "system",
+                    content:
+                        "You are a strict JSON generator. Always return ONLY valid JSON that can be parsed with JSON.parse.",
+                },
+                { role: "user", content: promptText },
             ],
-            temperature: 0.9,
-            max_tokens: 500
+            temperature: 0.5,
+            max_tokens: 2000,
         });
 
-        res.json({ refinedPrompt: gptResponse.choices[0].message.content.trim() });
+        let raw = response.choices[0].message.content.trim();
+
+        if (raw.startsWith("```")) {
+            raw = raw.replace(/```json|```/g, "").trim();
+        }
+
+        let pages;
+        try {
+            pages = JSON.parse(raw);
+        } catch (err) {
+            console.error("JSON parse failed:", err.message);
+            return res
+                .status(500)
+                .json({ error: "Failed to parse JSON output", details: err.message });
+        }
+
+        // Save in DB
+        const comic = await Comic.create({
+            user_id: req.user.login_data._id,
+            title,
+            author,
+            subject,
+            story,
+            prompt: JSON.stringify(pages), // save refined prompt
+        });
+
+        res.json({ comicId: comic._id, pages });
     } catch (error) {
-        console.error("OpenAI API Error:", error);
-        res.status(500).json({ error: "Prompt refinement failed", details: error.message });
+        console.error("Error generating prompts:", error);
+        res.status(500).json({ error: "Prompt generation failed" });
     }
 };
 
 
-
+// STEP 2: Generate Comic Images + Upload to S3 + Save Pages
 const generateComicImage = async (req, res) => {
-    const { prompt } = req.body;
+    const { comicId, pages } = req.body;
 
     try {
-        const imageResponse = await openai.images.generate({
-            model: "dall-e-3",
-            prompt: prompt,
-            size: "1024x1024"
+        const imageUrls = await Promise.all(
+            pages.map(async (page) => {
+                const pagePrompt = page.panels
+                    .map((p, idx) => {
+                        let dialogueText = p.dialogue
+                            .map((d) => `${d.character}: "${d.text}"`)
+                            .join(" ");
+                        return `Panel ${idx + 1}: Scene: ${p.scene}. Caption: ${p.caption}. Dialogue: ${dialogueText}`;
+                    })
+                    .join("\n");
+
+                const fullPrompt = `
+A comic page with ${page.panels.length} vertical panels.
+Style: realistic hand-drawn comic illustration with thin ink outlines and soft watercolor tones.
+Panels:
+${pagePrompt}
+`;
+
+                // Generate Image
+                const imageResponse = await openai.images.generate({
+                    model: "dall-e-3",
+                    prompt: fullPrompt,
+                    size: "1024x1792",
+                    n: 1,
+                });
+
+                let imageUrl = null;
+                let s3Key = null;
+
+                if (imageResponse.data && imageResponse.data[0]) {
+                    const imgData = imageResponse.data[0];
+                    const fileName = `comic_page${page.page}_${Date.now()}.png`;
+
+                    let buffer = null;
+
+                    // Case 1: URL provided
+                    if (imgData.url) {
+                        const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
+                        buffer = Buffer.from(response.data);
+                    }
+                    // Case 2: Base64 provided
+                    else if (imgData.b64_json) {
+                        buffer = Buffer.from(imgData.b64_json, "base64");
+                    }
+
+                    if (buffer) {
+                        // Direct upload to S3
+                        const s3Upload = await upload_files("comics", {
+                            name: fileName,
+                            data: buffer,
+                            mimetype: "image/png",
+                        });
+
+                        imageUrl = s3Upload; // should return public S3 URL
+                        s3Key = `comics/${fileName}`;
+
+                        // Save ComicPage in DB
+                        await ComicPage.create({
+                            comicId,
+                            user_id: req.user.login_data._id,
+                            pageNumber: page.page,
+                            panels: page.panels,
+                            imageUrl,
+                            s3Key,
+                        });
+                    }
+                }
+
+                if (!imageUrl) {
+                    throw new Error(`Image generation failed for page ${page.page}`);
+                }
+
+                return { page: page.page, imageUrl };
+            })
+        );
+
+        res.json({ comicId, images: imageUrls });
+    } catch (error) {
+        console.error("Image API Error:", error);
+        res.status(500).json({ error: "Image generation failed" });
+    }
+};
+
+
+const generateComicPDF = async (req, res) => {
+    const { comicId } = req.body;
+
+    try {
+        // Get all pages of the comic
+        const pages = await ComicPage.find({ comicId }).sort({ pageNumber: 1 });
+        if (!pages || pages.length === 0) {
+            return res.status(404).json({ error: "No pages found for this comic" });
+        }
+
+        // Create a new PDF in memory
+        const doc = new PDFDocument({ autoFirstPage: false });
+        let buffers = [];
+        doc.on("data", buffers.push.bind(buffers));
+        doc.on("end", async () => {
+            const pdfBuffer = Buffer.concat(buffers);
+
+            const fileName = `comic_${comicId}_${Date.now()}.pdf`;
+
+            // Upload PDF to S3
+            const s3Upload = await upload_files("comics-pdf", {
+                name: fileName,
+                data: pdfBuffer,
+                mimetype: "application/pdf",
+            });
+
+            // Save PDF link in Comic DB
+            await Comic.findByIdAndUpdate(comicId, { pdfUrl: s3Upload });
+
+            res.json({ comicId, pdfUrl: s3Upload });
         });
 
-        const imageUrl = imageResponse.data[0].url;
-        res.json({ image: imageUrl });
+        // Add each image page to PDF
+        for (const page of pages) {
+            const response = await axios.get(page.imageUrl, { responseType: "arraybuffer" });
+            const imgBuffer = Buffer.from(response.data);
+
+            const img = doc.openImage(imgBuffer);
+            doc.addPage({ size: [img.width, img.height] });
+            doc.image(img, 0, 0);
+        }
+
+        doc.end();
     } catch (error) {
-        console.error("DALL·E API Error:", error);
-        res.status(500).json({ error: "Image generation failed", details: error.message });
+        console.error("PDF Generation Error:", error);
+        res.status(500).json({ error: "PDF generation failed" });
     }
 };
 
 
 
-module.exports = { refinePrompt, generateComicImage };
+// STEP 3: List All Comics (without user filter)
+const listComics = async (req, res) => {
+    try {
+        const comics = await Comic.find().select("title author subject pdfUrl createdAt");
+        res.json({ comics });
+    } catch (error) {
+        console.error("Error listing comics:", error);
+        res.status(500).json({ error: "Failed to list comics" });
+    }
+};
+
+
+// STEP 4: Get Single Comic with Pages
+const getComic = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const comic = await Comic.findById(id);
+        if (!comic) {
+            return res.status(404).json({ error: "Comic not found" });
+        }
+
+        const pages = await ComicPage.find({ comicId: id }).sort({ pageNumber: 1 });
+
+        res.json({ comic, pages });
+    } catch (error) {
+        console.error("Error fetching comic:", error);
+        res.status(500).json({ error: "Failed to get comic" });
+    }
+};
+
+
+// STEP 5: Delete Comic (and related pages)
+const deleteComic = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const comic = await Comic.findById(id);
+        if (!comic) {
+            return res.status(404).json({ error: "Comic not found" });
+        }
+
+        // Delete all pages
+        await ComicPage.deleteMany({ comicId: id });
+
+        // Delete main comic
+        await Comic.findByIdAndDelete(id);
+
+        res.json({ message: "Comic deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting comic:", error);
+        res.status(500).json({ error: "Failed to delete comic" });
+    }
+};
+
+
+
+module.exports = {
+    refinePrompt, generateComicImage, generateComicPDF, listComics,
+    getComic,
+    deleteComic,
+};

@@ -1,39 +1,16 @@
-const mongoose = require("../../config/database")
+const mongoose = require("mongoose");
+const { Schema } = require("mongoose");
+const { ObjectId } = Schema.Types
 
 const comicSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  author: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  subject: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  story: {
-    type: String,
-    required: true
-  },
-  prompt: {
-    type: String,
-    required: true
-  },
-  image: {
-    type: String, // Can be Base64 or Image URL
-    required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
+  user_id: { type: ObjectId, ref: "users" },
+  title: { type: String, required: true, trim: true },
+  author: { type: String, required: true, trim: true },
+  subject: { type: String, required: true, trim: true },
+  story: { type: String, required: true },  // user input/original
+  prompt: { type: String, required: true }, // refined JSON string
+  pdfUrl: { type: String },                 // final PDF S3 URL
+  createdAt: { type: Date, default: Date.now }
 });
 
-
-const Comic = mongoose.model('Comic', comicSchema);
-module.exports = Comic
+module.exports = mongoose.model("Comic", comicSchema);

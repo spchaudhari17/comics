@@ -9,18 +9,13 @@ var UserSchema = new mongoose.Schema({
     password: { type: String },
     email: { type: String, default: "", index: { unique: true } },
     userType: { type: String, default: "user" },
-    // profile_pic: { type: String, default: "" },
-
-
-    countryCode: {
-        type: String,
-        default: '+1'
-    },
-    mobileNumber: {
-        type: String,
-        default: ''
-    },
-
+    profile_pic: { type: String, default: "" },
+    device_type: { type: String, default: "" },
+    device_udid: { type: String, default: "" },
+    signup_type: { type: String, enum: ['Normal', 'Google', 'Apple'], default: 'Normal' },
+    social_id: { type: String, default: '' },
+    countryCode: { type: String, default: '+1' },
+    mobileNumber: { type: String, default: '' },
     email_verified_at: { type: Date, default: "" },
     is_verify: { type: String, default: '0' },
 

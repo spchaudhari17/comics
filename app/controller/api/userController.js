@@ -5,6 +5,7 @@ var bcrypt = require('bcryptjs');
 var crypto = require("crypto");
 let mailer = require("../../../config/mailer");
 const MOMENT = require('moment');
+const { upload_files } = require("../../../helper/helper");
 
 
 const BASE_URL = process.env.BASE_URL;
@@ -219,7 +220,7 @@ const verify_otp = async (req, res) => {
 
 const login = async (req, res) => {
     try {
-        let { email = '', password = '' } = req.body;
+        let { email = '', password = '', device_type = '' } = req.body;
 
         if (email.trim() === '' || !validator.validate(email)) {
             return res.send({
@@ -298,6 +299,12 @@ const login = async (req, res) => {
             });
         }
 
+        await Users.updateOne({ email }, {
+            $set: {
+                device_type,
+            }
+        });
+
         const login_data = await Users.findOne({ email }, {
             password: 0,
             otp: 0,
@@ -371,10 +378,10 @@ const forgotPassword = async (req, res) => {
     let token = characters;
 
     await mailer.sendMail({
-        from: '"comics" <Comicsapp@gmail.com>', // sender address
+        from: '"comics" <Comicsapp@gmail.com>', 
         to: email, // list of receivers
-        subject: "comics Reset Password OTP", // Subject line
-        text: "Reset Password OTP", // plain text body
+        subject: "comics Reset Password OTP", 
+        text: "Reset Password OTP", 
         html: "<b>Hi </b> </br></br>" + data.firstname + " Please click on below link to reset your password <a target='_blank' style='color:blue' href='" + BASE_URL + "/web/forgotPage?token=" + token + "'>Click Here</a></br></br></br>  <span>Best Regard</span></br>  <span>comics</span>", // html body
 
     });
@@ -547,5 +554,59 @@ const submitPassword = async (req, res) => {
 
 }
 
+const test = async (req, res) => {
+  try {
+    if (!req.files || !req.files.profile_image) {
+      return res.status(400).send({
+        error: true,
+        message: "No file uploaded"
+      });
+    }
 
-module.exports = { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword }
+    const image = req.files.profile_image;
+
+    // Validate type
+    const allowedMimes = [
+      "image/gif",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/svg+xml",
+      "image/webp"
+    ];
+    if (!allowedMimes.includes(image.mimetype)) {
+      return res.status(400).send({
+        error: true,
+        message: "Invalid image type"
+      });
+    }
+
+    // Validate size (2MB limit)
+    let imageSize = image.size / 1024; // kb
+    if (imageSize > 2048) {
+      return res.status(400).send({
+        error: true,
+        message: "Image size cannot be greater than 2 MB"
+      });
+    }
+
+    // ✅ Upload to S3
+    let imageUrl = await upload_files("profile-images", image);
+
+    return res.status(200).send({
+      error: false,
+      message: "Upload successful",
+      url: imageUrl
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return res.status(500).send({
+      error: true,
+      message: "Internal server error",
+      details: error.message
+    });
+  }
+};
+
+
+module.exports = { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test }

@@ -2,13 +2,18 @@ const express = require('express');
 require('dotenv').config()
 const router = require('./routes/api.js');
 const cors = require('cors');
-bodyParser = require("body-parser")
+bodyParser = require("body-parser");
+const fs = require("fs");
+const path = require("path");
+const fileUpload = require("express-fileupload");
 const connectToDatabase = require('./config/database.js');
 const app = express();
 var corsOptions = {
-  origin: '*'
+  origin: 'http://localhost:3000', 
+  optionsSuccessStatus: 200
 }
 
+app.use(cors({ origin: "http://localhost:3000" })); 
 
 app.get('/', (req, res) => {
   console.log("triggered====> :)")
@@ -16,9 +21,27 @@ app.get('/', (req, res) => {
 });
 
 
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+// app.use("/comics", cors(corsOptions), express.static(path.join(__dirname, "comics")));
+app.use(
+  "/comics",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  },
+  express.static(path.join(__dirname, "public", "comics"))
+);
+
+
+
 app.use(cors(corsOptions));
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
+app.use(fileUpload());
 
 app.use("/api", router)
 
