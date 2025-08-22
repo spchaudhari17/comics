@@ -14,29 +14,30 @@ const BASE_URL = process.env.BASE_URL;
 const signup = async (req, res) => {
 
     let { firstname = '', lastname = '', password = '', username = '', email = '', countryCode = '+1',
-        mobileNumber = '',  device_udid='',signup_type='' } = req.body
+        mobileNumber = '',  device_udid='',signup_type='', device_type='' } = req.body
 
 
-    if (firstname === '') {
+    // if (firstname === '') {
 
-        return res.send({ "error": true, 'status': 201, "message": "Firstname name is required.", "message_desc": "Full name is required." })
+    //     return res.send({ "error": true, 'status': 201, "message": "Firstname name is required.", "message_desc": "Full name is required." })
 
-    }
-    else if (lastname === '') {
+    // }
+    // else if (lastname === '') {
 
-        return res.send({ "error": true, 'status': 201, "message": "Lastname is required.", "message_desc": "Username is required" })
+    //     return res.send({ "error": true, 'status': 201, "message": "Lastname is required.", "message_desc": "Username is required" })
 
-    }
-    else if (username === '') {
+    // }
+    // else if (username === '') {
 
-        return res.send({ "error": true, 'status': 201, "message": "Username is required.", "message_desc": "Username is required" })
+    //     return res.send({ "error": true, 'status': 201, "message": "Username is required.", "message_desc": "Username is required" })
 
-    }
-    else if (email === '') {
+    // }
+    if (email === '') {
 
         return res.send({ "error": true, 'status': 201, "message": "Email is required.", "message_desc": "Email is required" })
 
-    } else if (password === '') {
+    } 
+    else if (password === '') {
 
         return res.send({ "error": true, 'status': 201, "message": "Password is required.", "message_desc": "Password is required" })
 
@@ -97,7 +98,8 @@ const signup = async (req, res) => {
             countryCode: countryCode,
             mobileNumber: mobileNumber,
             signup_type: signup_type,
-
+            device_type: device_type,
+            device_udid: device_udid,
         });
 
         var isSaved = await userSignup.save();
