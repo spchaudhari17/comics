@@ -257,7 +257,18 @@ const generateComicPDF = async (req, res) => {
 const listComics = async (req, res) => {
     try {
         const comics = await Comic.find().select("title author subject pdfUrl createdAt");
-        res.json({ comics });
+
+        const formattedComics = comics.map(comic => ({
+            _id: comic._id,
+            title: comic.title,
+            author: comic.author,
+            subject: comic.subject,
+            createdAt: comic.createdAt,
+            pdfUrl: comic.pdfUrl,
+            thumbnail: comic.images?.length > 0 ? comic.images[0] : null
+        }));
+
+        res.json({ comics:formattedComics });
     } catch (error) {
         console.error("Error listing comics:", error);
         res.status(500).json({ error: "Failed to list comics" });

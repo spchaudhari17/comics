@@ -12,7 +12,7 @@ var UserSchema = new mongoose.Schema({
     profile_pic: { type: String, default: "" },
     device_type: { type: String, default: "" },
     device_udid: { type: String, default: "" },
-    signup_type: { type: String, enum: ['Normal', 'Google', 'Apple'], default: 'Normal' },
+    // signup_type: { type: String, enum: ['Normal', 'Google', 'Apple'], default: 'Normal' },
     social_id: { type: String, default: '' },
     countryCode: { type: String, default: '+1' },
     mobileNumber: { type: String, default: '' },

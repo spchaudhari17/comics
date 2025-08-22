@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL;
 const signup = async (req, res) => {
 
     let { firstname = '', lastname = '', password = '', username = '', email = '', countryCode = '+1',
-        mobileNumber = '',  device_udid='',signup_type='', device_type='' } = req.body
+        mobileNumber = '',  device_udid='', device_type='' } = req.body
 
 
     // if (firstname === '') {
@@ -97,14 +97,11 @@ const signup = async (req, res) => {
             otp_generated_at: Date.now(),
             countryCode: countryCode,
             mobileNumber: mobileNumber,
-            signup_type: signup_type,
             device_type: device_type,
             device_udid: device_udid,
         });
 
         var isSaved = await userSignup.save();
-
-
 
         var userId = isSaved._id;
 
