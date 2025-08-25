@@ -6,6 +6,7 @@ const { upload_files } = require("../../../helper/helper");
 const Comic = require("../../models/Comic");
 const ComicPage = require("../../models/ComicPage");
 const PDFDocument = require("pdfkit");
+const sharp = require("sharp");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -103,6 +104,7 @@ Format:
             subject,
             story,
             prompt: JSON.stringify(pages), // save refined prompt
+            comicStatus: "draft",
         });
 
         res.json({ comicId: comic._id, pages });
@@ -139,6 +141,7 @@ ${pagePrompt}
                 // Generate Image
                 const imageResponse = await openai.images.generate({
                     model: "dall-e-3",
+                    // model: "gpt-image-1",
                     prompt: fullPrompt,
                     size: "1024x1792",
                     n: 1,
@@ -164,11 +167,19 @@ ${pagePrompt}
                     }
 
                     if (buffer) {
+
+                        buffer = await sharp(buffer)
+                            .resize({ width: 1024 })     // optional resize
+                            .jpeg({ quality: 75 })       // convert + compress
+                            .toBuffer();
+
+                        const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
+
                         // Direct upload to S3
                         const s3Upload = await upload_files("comics", {
                             name: fileName,
                             data: buffer,
-                            mimetype: "image/png",
+                            mimetype: "image/jpeg",
                         });
 
                         imageUrl = s3Upload; // should return public S3 URL
@@ -256,7 +267,7 @@ const generateComicPDF = async (req, res) => {
 // STEP 3: List All Comics (without user filter)
 const listComics = async (req, res) => {
     try {
-        const comics = await Comic.find().select("title author subject pdfUrl createdAt");
+        const comics = await Comic.find({ status: "approved" }).select("title author subject pdfUrl createdAt status");
 
         const comicsWithThumbnail = await Promise.all(
             comics.map(async (comic) => {
@@ -299,33 +310,40 @@ const getComic = async (req, res) => {
 };
 
 
-// STEP 5: Delete Comic (and related pages)
-const deleteComic = async (req, res) => {
+const updateComicStatus = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { comicId, comicStatus } = req.body;
 
-        const comic = await Comic.findById(id);
-        if (!comic) {
-            return res.status(404).json({ error: "Comic not found" });
+        // check valid status
+        if (!["draft", "published"].includes(comicStatus)) {
+            return res.status(400).json({ error: "Invalid comic status" });
         }
 
-        // Delete all pages
-        await ComicPage.deleteMany({ comicId: id });
+        // only owner update karega
+        const comic = await Comic.findOneAndUpdate(
+            { _id: comicId, },
+            { comicStatus },
+            { new: true }
+        );
 
-        // Delete main comic
-        await Comic.findByIdAndDelete(id);
+        if (!comic) {
+            return res.status(404).json({ error: "Comic not found or unauthorized" });
+        }
 
-        res.json({ message: "Comic deleted successfully" });
+        res.json({ message: "Comic status updated", comic });
     } catch (error) {
-        console.error("Error deleting comic:", error);
-        res.status(500).json({ error: "Failed to delete comic" });
+        console.error("Error updating comic status:", error);
+        res.status(500).json({ error: "Failed to update comic status" });
     }
 };
 
 
 
+
+
+
+
 module.exports = {
     refinePrompt, generateComicImage, generateComicPDF, listComics,
-    getComic,
-    deleteComic,
+    getComic, updateComicStatus
 };
