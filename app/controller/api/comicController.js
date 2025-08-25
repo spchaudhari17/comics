@@ -68,7 +68,7 @@ Format:
 
         const response = await openai.chat.completions.create({
             // model: "gpt-4o",
-            model: "GPT-3.5 Turbo",
+            model: "gpt-3.5-turbo",
             messages: [
                 {
                     role: "system",
