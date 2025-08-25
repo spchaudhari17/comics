@@ -14,8 +14,15 @@ var corsOptions = {
 }
 
 // app.use(cors({ origin: "http://localhost:3000" })); 
+const allowedOrigins = ['http://localhost:3000', 'http://13.60.35.222'];
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://13.60.35.222'],
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true);
+    if(allowedOrigins.indexOf(origin) === -1){
+      return callback(new Error("CORS not allowed"), false);
+    }
+    return callback(null, true);
+  },
   credentials: true
 }));
 
@@ -44,7 +51,7 @@ app.use(
 
 
 
-app.use(cors(corsOptions));
+// app.use(cors(corsOptions));
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(fileUpload());
