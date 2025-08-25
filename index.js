@@ -13,7 +13,13 @@ var corsOptions = {
   optionsSuccessStatus: 200
 }
 
-app.use(cors({ origin: "http://localhost:3000" })); 
+// app.use(cors({ origin: "http://localhost:3000" })); 
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://13.60.35.222'],
+  credentials: true
+}));
+
+
 
 app.get('/', (req, res) => {
   console.log("triggered====> :)")
