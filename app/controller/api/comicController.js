@@ -67,8 +67,8 @@ Format:
 `;
 
         const response = await openai.chat.completions.create({
-            // model: "gpt-4o",
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o",
+            // model: "gpt-3.5-turbo",
             messages: [
                 {
                     role: "system",
@@ -117,91 +117,205 @@ Format:
 
 
 // STEP 2: Generate Comic Images + Upload to S3 + Save Pages
+// const generateComicImage = async (req, res) => {
+//     const { comicId, pages } = req.body;
+
+//     try {
+//         const imageUrls = await Promise.all(
+//             pages.map(async (page) => {
+//                 const pagePrompt = page.panels
+//                     .map((p, idx) => {
+//                         let dialogueText = p.dialogue
+//                             .map((d) => `${d.character}: "${d.text}"`)
+//                             .join(" ");
+//                         return `Panel ${idx + 1}: Scene: ${p.scene}. Caption: ${p.caption}. Dialogue: ${dialogueText}`;
+//                     })
+//                     .join("\n");
+
+//                 const fullPrompt = `
+// A comic page with ${page.panels.length} vertical panels.
+// Style: realistic hand-drawn comic illustration with thin ink outlines and soft watercolor tones.
+// Panels:
+// ${pagePrompt}
+// `;
+
+//                 // Generate Image
+//                 const imageResponse = await openai.images.generate({
+//                     // model: "dall-e-3",
+//                     model: "gpt-image-1",
+//                     prompt: fullPrompt,
+//                     size: "1024x1536",
+//                     // size: "1024x1792", // dall-e-3
+//                     n: 1,
+//                 });
+
+//                 let imageUrl = null;
+//                 let s3Key = null;
+
+//                 if (imageResponse.data && imageResponse.data[0]) {
+//                     const imgData = imageResponse.data[0];
+//                     const fileName = `comic_page${page.page}_${Date.now()}.png`;
+
+//                     let buffer = null;
+
+//                     // Case 1: URL provided
+//                     if (imgData.url) {
+//                         const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
+//                         buffer = Buffer.from(response.data);
+//                     }
+//                     // Case 2: Base64 provided
+//                     else if (imgData.b64_json) {
+//                         buffer = Buffer.from(imgData.b64_json, "base64");
+//                     }
+
+//                     if (buffer) {
+
+//                         buffer = await sharp(buffer)
+//                             .resize({ width: 1024 })     // optional resize
+//                             .jpeg({ quality: 75 })       // convert + compress
+//                             .toBuffer();
+
+//                         const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
+
+//                         // Direct upload to S3
+//                         const s3Upload = await upload_files("comics", {
+//                             name: fileName,
+//                             data: buffer,
+//                             mimetype: "image/jpeg",
+//                         });
+
+//                         imageUrl = s3Upload; // should return public S3 URL
+//                         s3Key = `comics/${fileName}`;
+
+//                         // Save ComicPage in DB
+//                         await ComicPage.create({
+//                             comicId,
+//                             user_id: req.user.login_data._id,
+//                             pageNumber: page.page,
+//                             panels: page.panels,
+//                             imageUrl,
+//                             s3Key,
+//                         });
+//                     }
+//                 }
+
+//                 if (!imageUrl) {
+//                     throw new Error(`Image generation failed for page ${page.page}`);
+//                 }
+
+//                 return { page: page.page, imageUrl };
+//             })
+//         );
+
+//         res.json({ comicId, images: imageUrls });
+//     } catch (error) {
+//         console.error("Image API Error:", error);
+//         res.status(500).json({ error: "Image generation failed" });
+//     }
+// };
+
+
 const generateComicImage = async (req, res) => {
     const { comicId, pages } = req.body;
 
     try {
+        const characterReferences = {}; // store first appearance of each character
+
         const imageUrls = await Promise.all(
             pages.map(async (page) => {
+                // Build per-panel text for prompt
                 const pagePrompt = page.panels
                     .map((p, idx) => {
                         let dialogueText = p.dialogue
-                            .map((d) => `${d.character}: "${d.text}"`)
+                            .map((d) => {
+                                // If we already have a reference for this character, note it
+                                if (!characterReferences[d.character]) {
+                                    characterReferences[d.character] = null; // mark as to be saved
+                                }
+                                return `${d.character}: "${d.text}"`;
+                            })
                             .join(" ");
                         return `Panel ${idx + 1}: Scene: ${p.scene}. Caption: ${p.caption}. Dialogue: ${dialogueText}`;
                     })
                     .join("\n");
 
+                // Build prompt including references for already generated characters
+                let referencesText = "";
+                for (const [character, refUrl] of Object.entries(characterReferences)) {
+                    if (refUrl) {
+                        referencesText += `Use this reference image for ${character}: ${refUrl}\n`;
+                    } else {
+                        referencesText += `Generate ${character} consistently across all pages.\n`;
+                    }
+                }
+
                 const fullPrompt = `
 A comic page with ${page.panels.length} vertical panels.
 Style: realistic hand-drawn comic illustration with thin ink outlines and soft watercolor tones.
+${referencesText}
 Panels:
 ${pagePrompt}
 `;
 
                 // Generate Image
                 const imageResponse = await openai.images.generate({
-                    model: "dall-e-3",
-                    // model: "gpt-image-1",
+                    model: "gpt-image-1",
                     prompt: fullPrompt,
-                    // size: "1024x1536",
-                    size: "1024x1792", // dall-e-3
+                    size: "1024x1536",
                     n: 1,
                 });
 
-                let imageUrl = null;
-                let s3Key = null;
-
-                if (imageResponse.data && imageResponse.data[0]) {
-                    const imgData = imageResponse.data[0];
-                    const fileName = `comic_page${page.page}_${Date.now()}.png`;
-
-                    let buffer = null;
-
-                    // Case 1: URL provided
-                    if (imgData.url) {
-                        const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
-                        buffer = Buffer.from(response.data);
-                    }
-                    // Case 2: Base64 provided
-                    else if (imgData.b64_json) {
-                        buffer = Buffer.from(imgData.b64_json, "base64");
-                    }
-
-                    if (buffer) {
-
-                        buffer = await sharp(buffer)
-                            .resize({ width: 1024 })     // optional resize
-                            .jpeg({ quality: 75 })       // convert + compress
-                            .toBuffer();
-
-                        const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
-
-                        // Direct upload to S3
-                        const s3Upload = await upload_files("comics", {
-                            name: fileName,
-                            data: buffer,
-                            mimetype: "image/jpeg",
-                        });
-
-                        imageUrl = s3Upload; // should return public S3 URL
-                        s3Key = `comics/${fileName}`;
-
-                        // Save ComicPage in DB
-                        await ComicPage.create({
-                            comicId,
-                            user_id: req.user.login_data._id,
-                            pageNumber: page.page,
-                            panels: page.panels,
-                            imageUrl,
-                            s3Key,
-                        });
-                    }
-                }
-
-                if (!imageUrl) {
+                if (!imageResponse.data || !imageResponse.data[0]) {
                     throw new Error(`Image generation failed for page ${page.page}`);
                 }
+
+                const imgData = imageResponse.data[0];
+                let buffer;
+
+                // URL or base64
+                if (imgData.url) {
+                    const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
+                    buffer = Buffer.from(response.data);
+                } else if (imgData.b64_json) {
+                    buffer = Buffer.from(imgData.b64_json, "base64");
+                }
+
+                // Resize + convert
+                buffer = await sharp(buffer)
+                    .resize({ width: 1024 })
+                    .jpeg({ quality: 75 })
+                    .toBuffer();
+
+                const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
+
+                // Upload to S3
+                const s3Upload = await upload_files("comics", {
+                    name: fileName,
+                    data: buffer,
+                    mimetype: "image/jpeg",
+                });
+
+                const imageUrl = s3Upload;
+                const s3Key = `comics/${fileName}`;
+
+                // Save ComicPage in DB
+                await ComicPage.create({
+                    comicId,
+                    user_id: req.user.login_data._id,
+                    pageNumber: page.page,
+                    panels: page.panels,
+                    imageUrl,
+                    s3Key,
+                });
+
+                // Save first appearance reference for each character
+                page.panels.forEach((panel) => {
+                    panel.dialogue.forEach((d) => {
+                        if (!characterReferences[d.character]) {
+                            characterReferences[d.character] = imageUrl;
+                        }
+                    });
+                });
 
                 return { page: page.page, imageUrl };
             })
@@ -210,9 +324,10 @@ ${pagePrompt}
         res.json({ comicId, images: imageUrls });
     } catch (error) {
         console.error("Image API Error:", error);
-        res.status(500).json({ error: "Image generation failed" });
+        res.status(500).json({ error: "Image generation failed", details: error.message });
     }
 };
+
 
 
 const generateComicPDF = async (req, res) => {
