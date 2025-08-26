@@ -10,7 +10,7 @@ const sharp = require("sharp");
 
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 
@@ -18,7 +18,7 @@ const openai = new OpenAI({
 // GET /api/admin/comics
 const listAllComicsAdmin = async (req, res) => {
   try {
-    const comics = await Comic.find({ comicStatus: "published" },  "-prompt")
+    const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
       .populate("user_id", "name email userType firstname")
       .sort({ createdAt: -1 });
 
@@ -61,7 +61,7 @@ const approveComicStatusAdmin = async (req, res) => {
 
 
 
-module.exports = {approveComicStatusAdmin, listAllComicsAdmin}
+module.exports = { approveComicStatusAdmin, listAllComicsAdmin }
 
 
 

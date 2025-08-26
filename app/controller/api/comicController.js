@@ -2,7 +2,7 @@ const OpenAI = require("openai");
 const axios = require("axios");
 const path = require("path");
 const fs = require("fs");
-const { upload_files } = require("../../../helper/helper");
+const { upload_files, deleteFiles } = require("../../../helper/helper");
 const Comic = require("../../models/Comic");
 const ComicPage = require("../../models/ComicPage");
 const PDFDocument = require("pdfkit");
@@ -456,11 +456,57 @@ const updateComicStatus = async (req, res) => {
 
 
 
+const deleteComic = async (req, res) => {
+    try {
+        const { id } = req.body;
+
+        // Find the comic
+        const comic = await Comic.findById(id);
+        if (!comic) {
+            return res.status(404).json({ error: "Comic not found" });
+        }
+
+        // Find all pages for this comic
+        const pages = await ComicPage.find({ comicId: id });
+
+        // Delete images from S3
+        for (const page of pages) {
+            if (page.s3Key) {
+                try {
+                    await deleteFiles(page.s3Key); // You need a helper to delete S3 files
+                } catch (err) {
+                    console.warn(`Failed to delete S3 file ${page.s3Key}:`, err.message);
+                }
+            }
+        }
+
+        // Delete all ComicPage documents
+        await ComicPage.deleteMany({ comicId: id });
+
+        // Delete PDF if exists
+        if (comic.pdfUrl) {
+            try {
+                const pdfKey = comic.pdfUrl.split("/").pop(); // extract filename from URL
+                await deleteFiles(`comics-pdf/${pdfKey}`);
+            } catch (err) {
+                console.warn(`Failed to delete PDF from S3:`, err.message);
+            }
+        }
+
+        // Delete the comic document
+        await Comic.findByIdAndDelete(id);
+
+        res.json({ message: "Comic and all related pages deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting comic:", error);
+        res.status(500).json({ error: error });
+    }
+};
 
 
 
 
 module.exports = {
     refinePrompt, generateComicImage, generateComicPDF, listComics,
-    getComic, updateComicStatus
+    getComic, updateComicStatus, deleteComic
 };
