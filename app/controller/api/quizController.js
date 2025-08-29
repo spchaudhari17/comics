@@ -6,6 +6,7 @@ const sharp = require("sharp");
 const PDFDocument = require("pdfkit");
 const Quiz = require("../../models/Quiz");
 const QuizQuestion = require("../../models/QuizQuestion");
+const Comic = require("../../models/Comic");
 
 
 
@@ -60,6 +61,9 @@ const generateQuiz = async (req, res) => {
             user_id: req.user.login_data._id,
             status: "draft",
         });
+
+        // mark comic as having quiz
+        await Comic.findByIdAndUpdate(comicId, { hasQuiz: true });
 
         // Save Questions
         const savedQuestions = await Promise.all(

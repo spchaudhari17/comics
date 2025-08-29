@@ -22,7 +22,7 @@ const listAllComicsAdmin = async (req, res) => {
       .populate("user_id", "name email userType firstname")
       .sort({ createdAt: -1 });
 
-    res.json(comics);
+    res.json({comics});
   } catch (error) {
     console.error("Admin list comics error:", error);
     res.status(500).json({ error: "Failed to fetch comics" });

@@ -384,7 +384,7 @@ const generateComicPDF = async (req, res) => {
 // STEP 3: List All Comics (without user filter)
 const listComics = async (req, res) => {
     try {
-        const comics = await Comic.find({ status: "approved" }).select("title author subject pdfUrl createdAt status");
+        const comics = await Comic.find({ status: "approved" }).select("title author subject pdfUrl createdAt status hasQuiz");
 
         const comicsWithThumbnail = await Promise.all(
             comics.map(async (comic) => {
