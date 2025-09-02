@@ -208,7 +208,7 @@ const verify_otp = async (req, res) => {
         keys._doc.is_emailVerified = keys.is_verify ? 1 : 0;
         keys._doc.token = token
 
-        return res.send({ "error": false, 'status': 200, "message": "Otp verification successfull.", "message_desc": "OTP verification successfull.", "data": keys })
+        return res.send({ "error": false, 'status': 200, "message": "Otp verification successfull.", "message_desc": "OTP verification successfull.", "data": keys, reset_key: reset_keys })
 
     } catch (e) {
 
@@ -340,59 +340,91 @@ const login = async (req, res) => {
 };
 
 
+// const forgotPassword = async (req, res) => {
+
+//     var { email = '' } = req.body
+
+//     if (email == '' || !validator.validate(req.body.email)) {
+
+//         return res.send({ "error": true, 'status': 201, "message": "Email field is required and must be valid email.", "message_desc": "Email field is required and must be valid email." })
+
+//     }
+
+//     var email = email.toLowerCase()
+
+//     var min = 1000;
+//     var max = 9999;
+//     var otp = Math.floor(Math.random() * (max - min + 1)) + min;
+
+//     const data = await Users.findOne({ email })
+
+//     if (!data) {
+//         return res.send({ "error": true, 'status': 201, "message": "Email not registered with us.", "message_desc": "Email not registered with us." })
+//     }
+
+//     if (data && data.length < 1) {
+//         return res.send({ "error": true, 'status': 201, "message": "Email not registered with us.", "message_desc": "Email not registered with us." })
+//     }
+
+//     if (data && data.is_verify == 0) {
+
+//         return res.send({ "error": true, 'status': 201, "message": "Account must be verified.", "message_desc": "Account must be verified" })
+//     }
+
+//     const characters = crypto.randomBytes(25).toString('hex');
+
+
+
+//     let token = characters;
+
+//     await mailer.sendMail({
+//         from: '"comics" <Comicsapp@gmail.com>', 
+//         to: email, // list of receivers
+//         subject: "comics Reset Password OTP", 
+//         text: "Reset Password OTP", 
+//         html: "<b>Hi </b> </br></br>" + data.firstname + " Please click on below link to reset your password <a target='_blank' style='color:blue' href='" + BASE_URL + "/web/forgotPage?token=" + token + "'>Click Here</a></br></br></br>  <span>Best Regard</span></br>  <span>comics</span>", // html body
+
+//     });
+
+
+
+//     const isupdated = await Users.updateOne({ email }, { $set: { otp: otp, otp_generated_at: Date.now(), otp_resend: 1, reset_key: token } });
+
+//     return res.send({ "error": false, 'status': 200, "message": "A reset link has been sent on your email.", "message_desc": "A reset link has been sent on your email." })
+
+// }
+
 const forgotPassword = async (req, res) => {
-
-    var { email = '' } = req.body
-
-    if (email == '' || !validator.validate(req.body.email)) {
-
-        return res.send({ "error": true, 'status': 201, "message": "Email field is required and must be valid email.", "message_desc": "Email field is required and must be valid email." })
-
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: true, message: "Email is required" });
     }
 
-    var email = email.toLowerCase()
-
-    var min = 1000;
-    var max = 9999;
-    var otp = Math.floor(Math.random() * (max - min + 1)) + min;
-
-    const data = await Users.findOne({ email })
-
-    if (!data) {
-        return res.send({ "error": true, 'status': 201, "message": "Email not registered with us.", "message_desc": "Email not registered with us." })
+    const user = await Users.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: true, message: "Email not found" });
     }
 
-    if (data && data.length < 1) {
-        return res.send({ "error": true, 'status': 201, "message": "Email not registered with us.", "message_desc": "Email not registered with us." })
-    }
+    // generate 4 digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000);
 
-    if (data && data.is_verify == 0) {
-
-        return res.send({ "error": true, 'status': 201, "message": "Account must be verified.", "message_desc": "Account must be verified" })
-    }
-
-    const characters = crypto.randomBytes(25).toString('hex');
-
-
-
-    let token = characters;
+    user.otp = otp;
+    user.otp_expiry = Date.now() + 10 * 60 * 1000; // 10 min validity
+    await user.save();
 
     await mailer.sendMail({
-        from: '"comics" <Comicsapp@gmail.com>', 
-        to: email, // list of receivers
-        subject: "comics Reset Password OTP", 
-        text: "Reset Password OTP", 
-        html: "<b>Hi </b> </br></br>" + data.firstname + " Please click on below link to reset your password <a target='_blank' style='color:blue' href='" + BASE_URL + "/web/forgotPage?token=" + token + "'>Click Here</a></br></br></br>  <span>Best Regard</span></br>  <span>comics</span>", // html body
-
+      from: '"Comics App" <comicsapp@gmail.com>',
+      to: email,
+      subject: "Password Reset OTP",
+      html: `Hello ${user.first_name}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
     });
 
-
-
-    const isupdated = await Users.updateOne({ email }, { $set: { otp: otp, otp_generated_at: Date.now(), otp_resend: 1, reset_key: token } });
-
-    return res.send({ "error": false, 'status': 200, "message": "A reset link has been sent on your email.", "message_desc": "A reset link has been sent on your email." })
-
-}
+    return res.json({ error: false, message: "OTP sent to email" });
+  } catch (err) {
+    return res.status(500).json({ error: true, message: err.message });
+  }
+};
 
 
 const resendOtp = async (req, res) => {
@@ -459,52 +491,73 @@ const resendOtp = async (req, res) => {
 }
 
 
+// const resetPassword = async (req, res) => {
+
+//     const { rKey = '' } = req.body
+
+//     if (rKey == '') {
+
+//         return res.send({ "error": true, 'status': 201, "message": "Reset key is required.", "message_desc": "Reset key is required." })
+
+//     }
+
+
+//     if (typeof req.body.password == 'undefined' || req.body.password.length < 4) {
+
+//         return res.send({ "error": true, 'status': 201, "message": "Password is required and must be four character.", "message_desc": "Password is required and must be four character" })
+
+//     }
+
+//     const isKeyExist = await Users.findOne({ reset_key: rKey })
+
+//     if (isKeyExist) {
+
+//         return res.send({ "error": true, 'status': 201, "message": "Invalid reset key.", "message_desc": "Invalid reset key." })
+
+//     }
+
+//     var email = req.body.email.trim().toLowerCase();
+
+//     var password = req.body.password.trim();
+//     var key = req.body.rKey.trim();
+
+//     if (data.reset_key != key) {
+
+//         return res.send({ "error": true, 'status': 201, "message": "Invalid request key.", "message_desc": "Invalid request key." })
+//     }
+
+
+//     var passwordHash = await bcrypt.hashSync(password, 12)
+
+//     const isupdated = await Users.updateMany({ reset_key: rKey }, { $set: { password: passwordHash, reset_key: '' } });
+
+//     if (isupdated) {
+//         return res.send({ "error": false, 'status': 200, "message": "Password reset successfull.", "message_desc": "Password reset successfull.", "data": data })
+//     } else {
+//         return res.send({ "error": true, 'status': 201, "message": "An error has occured.", "message_desc": "An error has occured." })
+//     }
+// }
+
 const resetPassword = async (req, res) => {
-
-    const { rKey = '' } = req.body
-
-    if (rKey == '') {
-
-        return res.send({ "error": true, 'status': 201, "message": "Reset key is required.", "message_desc": "Reset key is required." })
-
+  try {
+    const { reset_key, password } = req.body;
+    if (!reset_key || !password) {
+      return res.status(400).json({ error: true, message: "Reset key & password required" });
     }
 
+    const user = await Users.findOne({ reset_key });
+    if (!user) return res.status(400).json({ error: true, message: "Invalid reset key" });
 
-    if (typeof req.body.password == 'undefined' || req.body.password.length < 4) {
+    const hashed = await bcrypt.hash(password, 12);
+    user.password = hashed;
+    user.reset_key = null;
+    await user.save();
 
-        return res.send({ "error": true, 'status': 201, "message": "Password is required and must be four character.", "message_desc": "Password is required and must be four character" })
-
-    }
-
-    const isKeyExist = await Users.findOne({ reset_key: rKey })
-
-    if (isKeyExist) {
-
-        return res.send({ "error": true, 'status': 201, "message": "Invalid reset key.", "message_desc": "Invalid reset key." })
-
-    }
-
-    var email = req.body.email.trim().toLowerCase();
-
-    var password = req.body.password.trim();
-    var key = req.body.rKey.trim();
-
-    if (data.reset_key != key) {
-
-        return res.send({ "error": true, 'status': 201, "message": "Invalid request key.", "message_desc": "Invalid request key." })
-    }
-
-
-    var passwordHash = await bcrypt.hashSync(password, 12)
-
-    const isupdated = await Users.updateMany({ reset_key: rKey }, { $set: { password: passwordHash, reset_key: '' } });
-
-    if (isupdated) {
-        return res.send({ "error": false, 'status': 200, "message": "Password reset successfull.", "message_desc": "Password reset successfull.", "data": data })
-    } else {
-        return res.send({ "error": true, 'status': 201, "message": "An error has occured.", "message_desc": "An error has occured." })
-    }
-}
+    return res.json({ error: false, message: "Password reset successful" });
+  } catch (err) {
+    return res.status(500).json({ error: true, message: err.message });
+  }
+};
 
 
 const submitPassword = async (req, res) => {

@@ -33,7 +33,7 @@ router.post("/user/deleteComic",authentication, deleteComic);
 router.get("/admin/comics", authentication, listAllComicsAdmin);
 router.post("/admin/comics/status", authentication, approveComicStatusAdmin);
 
-//******************************** admin routes routes started from here ***************************** */
+//******************************** quiz routes routes started from here ***************************** */
 
 router.post("/user/generate-quiz", authentication, generateQuiz);
 router.get("/user/comic/:id/quiz", getQuizByComic);

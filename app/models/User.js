@@ -24,6 +24,7 @@ var UserSchema = new mongoose.Schema({
     resend_blocked_at: { type: Date, default: 0 },
     otp_resend: { type: Number, default: 0 },
     otp_verify_at: { type: Date, default: "" },
+    reset_key: { type: String, required: false, default: "" },
 }, { timestamps: true })
 
 const User = mongoose.model('users', UserSchema);
