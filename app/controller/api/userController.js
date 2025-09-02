@@ -417,7 +417,7 @@ const forgotPassword = async (req, res) => {
       from: '"Comics App" <comicsapp@gmail.com>',
       to: email,
       subject: "Password Reset OTP",
-      html: `Hello ${user.first_name}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
+      html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
     });
 
     return res.json({ error: false, message: "OTP sent to email" });
