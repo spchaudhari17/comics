@@ -15,7 +15,6 @@ const openai = new OpenAI({
 
 
 
-// GET /api/admin/comics
 const listAllComicsAdmin = async (req, res) => {
   try {
     const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
@@ -30,7 +29,6 @@ const listAllComicsAdmin = async (req, res) => {
 };
 
 
-// PATCH /api/admin/comics/:id/status
 const approveComicStatusAdmin = async (req, res) => {
   try {
     const { id } = req.body;

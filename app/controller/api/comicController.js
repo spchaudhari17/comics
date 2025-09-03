@@ -13,7 +13,7 @@ const openai = new OpenAI({
 });
 
 
-// STEP 1: Refine Prompt + Save Comic entry
+
 const refinePrompt = async (req, res) => {
     const { title, author, subject, story } = req.body;
 
@@ -116,7 +116,6 @@ Format:
 };
 
 
-// STEP 2: Generate Comic Images + Upload to S3 + Save Pages
 // const generateComicImage = async (req, res) => {
 //     const { comicId, pages } = req.body;
 
@@ -219,7 +218,7 @@ const generateComicImage = async (req, res) => {
     const { comicId, pages } = req.body;
 
     try {
-        const characterReferences = {}; // store first appearance of each character
+        const characterReferences = {};
 
         const imageUrls = await Promise.all(
             pages.map(async (page) => {
@@ -274,7 +273,7 @@ ${pagePrompt}
                 const imgData = imageResponse.data[0];
                 let buffer;
 
-                // URL or base64
+                
                 if (imgData.url) {
                     const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
                     buffer = Buffer.from(response.data);
@@ -282,7 +281,7 @@ ${pagePrompt}
                     buffer = Buffer.from(imgData.b64_json, "base64");
                 }
 
-                // Resize + convert
+             
                 buffer = await sharp(buffer)
                     .resize({ width: 1024 })
                     .jpeg({ quality: 75 })
@@ -383,7 +382,7 @@ const generateComicPDF = async (req, res) => {
 
 
 
-// STEP 3: List All Comics (without user filter)
+
 const listComics = async (req, res) => {
     try {
         const comics = await Comic.find({ status: "approved" }).select("title author subject pdfUrl createdAt status hasQuiz");
@@ -507,7 +506,7 @@ const deleteComic = async (req, res) => {
 
 
 
-// List User's Own Comics
+
 const listUserComics = async (req, res) => {
   try {
     const userId = req.user.login_data._id;

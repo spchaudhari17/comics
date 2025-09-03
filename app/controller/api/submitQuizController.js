@@ -5,11 +5,11 @@ const QuizSubmission = require("../../models/QuizSubmission");
 const submitQuiz = async (req, res) => {
   try {
     const { quizId, answers } = req.body; 
-    // answers: [{ questionId, selectedAnswer }]
+ 
 
     const userId = req.user.login_data._id;
 
-    // 1. Get all questions for this quiz
+
     const quiz = await Quiz.findById(quizId).populate("questions");
     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
@@ -25,7 +25,7 @@ const submitQuiz = async (req, res) => {
       };
     });
 
-    // 2. Save submission
+   
     const submission = await QuizSubmission.create({
       quizId,
       userId,

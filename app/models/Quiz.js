@@ -5,7 +5,7 @@ const { ObjectId } = Schema.Types
 const QuizSchema = new mongoose.Schema({
     comicId: { type: ObjectId, ref: "Comic", required: true },
     user_id: { type: ObjectId, ref: "users", },
-    questions: [{ type: mongoose.Schema.Types.ObjectId, ref: "QuizQuestion" }],
+    questions: [{ type: ObjectId, ref: "QuizQuestion" }],
     status: { type: String, enum: ["draft", "published"], default: "draft" },
     createdAt: { type: Date, default: Date.now }
 });

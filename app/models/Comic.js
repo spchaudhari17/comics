@@ -7,9 +7,9 @@ const comicSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   author: { type: String, required: true, trim: true },
   subject: { type: String, required: true, trim: true },
-  story: { type: String, required: true },  // user input/original
-  prompt: { type: String, required: true }, // refined JSON string
-  pdfUrl: { type: String },                 // final PDF S3 URL
+  story: { type: String, required: true },  
+  prompt: { type: String, required: true },
+  pdfUrl: { type: String },               
   status: {
     type: String,
     enum: ["pending", "approved", "rejected"], // for admin

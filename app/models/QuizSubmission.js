@@ -12,7 +12,7 @@ const QuizSubmissionSchema = new Schema({
       isCorrect: { type: Boolean, required: true }
     }
   ],
-  score: { type: Number, default: 0 }, // total correct
+  score: { type: Number, default: 0 },
   submittedAt: { type: Date, default: Date.now }
 });
 
