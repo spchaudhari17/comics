@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics } = require('../app/controller/api/comicController');
 const { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
+const { submitQuiz } = require('../app/controller/api/submitQuizController');
 
 
 //******************************** Authentication started from here ***************************** */
@@ -22,10 +23,13 @@ router.post("/user/refine-prompt", authentication, refinePrompt)
 router.post("/user/generate-comic", authentication, generateComicImage)
 router.post("/user/generateComicPDF", generateComicPDF)
 router.post("/user/comics/set-status", authentication, updateComicStatus);
+router.get("/user/my-comics", authentication, listUserComics);
 
 router.get("/user/comics", listComics);
 router.get("/user/comics/:id", getComic);
 router.post("/user/deleteComic",authentication, deleteComic);
+router.post("/user/submit-quiz", authentication, submitQuiz);
+
 
 
 //******************************** admin routes routes started from here ***************************** */

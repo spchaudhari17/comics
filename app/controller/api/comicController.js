@@ -507,8 +507,37 @@ const deleteComic = async (req, res) => {
 
 
 
+// List User's Own Comics
+const listUserComics = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+
+    const comics = await Comic.find({ user_id: userId }, "-prompt")
+      .select("");
+
+    const comicsWithThumbnail = await Promise.all(
+      comics.map(async (comic) => {
+        const firstPage = await ComicPage.findOne({ comicId: comic._id })
+          .sort({ pageNumber: 1 })
+          .select("imageUrl");
+
+        return {
+          ...comic.toObject(),
+          thumbnail: firstPage ? firstPage.imageUrl : null,
+        };
+      })
+    );
+
+    res.json({ comics: comicsWithThumbnail });
+  } catch (error) {
+    console.error("Error listing user comics:", error);
+    res.status(500).json({ error: "Failed to list user's comics" });
+  }
+};
+
+
 
 module.exports = {
     refinePrompt, generateComicImage, generateComicPDF, listComics,
-    getComic, updateComicStatus, deleteComic
+    getComic, updateComicStatus, deleteComic, listUserComics
 };
