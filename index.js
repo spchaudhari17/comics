@@ -27,7 +27,8 @@ app.use(cors({
   credentials: true
 }));
 
-const templatePath = path.join(__dirname, "../backend/views");
+// const templatePath = path.join(__dirname, "../backend/views");
+const templatePath = path.join(__dirname, "views");
 
 app.set('view engine', 'hbs');
 
