@@ -7,9 +7,10 @@ const comicSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   author: { type: String, required: true, trim: true },
   subject: { type: String, required: true, trim: true },
-  story: { type: String, required: true },  
+  story: { type: String, required: true },
+  thumbnailUrl: { type: String },
   prompt: { type: String, required: true },
-  pdfUrl: { type: String },               
+  pdfUrl: { type: String },
   status: {
     type: String,
     enum: ["pending", "approved", "rejected"], // for admin
@@ -17,9 +18,11 @@ const comicSchema = new mongoose.Schema({
   },
   comicStatus: {
     type: String,
-    enum: ["draft", "published"],
+    enum: ["draft", "published"], // for user comic status
     default: "draft"
   },
+
+
 
   hasQuiz: { type: Boolean, default: false },
 

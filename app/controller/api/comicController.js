@@ -7,6 +7,8 @@ const Comic = require("../../models/Comic");
 const ComicPage = require("../../models/ComicPage");
 const PDFDocument = require("pdfkit");
 const sharp = require("sharp");
+const FAQ = require("../../models/FAQ");
+const DidYouKnow = require("../../models/DidYouKnow");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -273,7 +275,7 @@ ${pagePrompt}
                 const imgData = imageResponse.data[0];
                 let buffer;
 
-                
+
                 if (imgData.url) {
                     const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
                     buffer = Buffer.from(response.data);
@@ -281,7 +283,7 @@ ${pagePrompt}
                     buffer = Buffer.from(imgData.b64_json, "base64");
                 }
 
-             
+
                 buffer = await sharp(buffer)
                     .resize({ width: 1024 })
                     .jpeg({ quality: 75 })
@@ -383,29 +385,116 @@ const generateComicPDF = async (req, res) => {
 
 
 
+// const listComics = async (req, res) => {
+//     try {
+//         const comics = await Comic.find({ status: "approved" }).select("title author subject pdfUrl createdAt status hasQuiz");
+
+//         const comicsWithThumbnail = await Promise.all(
+//             comics.map(async (comic) => {
+//                 const firstPage = await ComicPage.findOne({ comicId: comic._id })
+//                     .sort({ pageNumber: 1 }) // pehla page
+//                     .select("imageUrl");
+
+//                 return {
+//                     ...comic.toObject(),
+//                     thumbnail: firstPage ? firstPage.imageUrl : null,
+//                 };
+//             })
+//         );
+
+//         res.json({ comics: comicsWithThumbnail });
+//     } catch (error) {
+//         console.error("Error listing comics:", error);
+//         res.status(500).json({ error: "Failed to list comics" });
+//     }
+// };
+
+
+
 const listComics = async (req, res) => {
     try {
-        const comics = await Comic.find({ status: "approved" }).select("title author subject pdfUrl createdAt status hasQuiz");
+        // query params se page aur limit lo (defaults diye hain)
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
 
-        const comicsWithThumbnail = await Promise.all(
-            comics.map(async (comic) => {
-                const firstPage = await ComicPage.findOne({ comicId: comic._id })
-                    .sort({ pageNumber: 1 }) // pehla page
-                    .select("imageUrl");
+        const comics = await Comic.aggregate([
+            { $match: { status: "approved" } },
 
-                return {
-                    ...comic.toObject(),
-                    thumbnail: firstPage ? firstPage.imageUrl : null,
-                };
-            })
-        );
+            // latest pehle
+            { $sort: { createdAt: -1 } },
 
-        res.json({ comics: comicsWithThumbnail });
+            // pagination apply
+            { $skip: skip },
+            { $limit: limit },
+
+            // FAQs join
+            {
+                $lookup: {
+                    from: "faqs",
+                    localField: "_id",
+                    foreignField: "comicId",
+                    as: "faqs",
+                },
+            },
+
+            // DidYouKnow join
+            {
+                $lookup: {
+                    from: "didyouknows",
+                    localField: "_id",
+                    foreignField: "comicId",
+                    as: "facts",
+                },
+            },
+
+            // Pages join (thumbnail ke liye)
+            {
+                $lookup: {
+                    from: "comicpages",
+                    localField: "_id",
+                    foreignField: "comicId",
+                    as: "pages",
+                },
+            },
+
+            // extra fields add
+            {
+                $addFields: {
+                    hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
+                    hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+                    thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
+                },
+            },
+
+            // unnecessary arrays remove
+            {
+                $project: {
+                    faqs: 0,
+                    facts: 0,
+                    pages: 0,
+                    prompt: 0
+                },
+            },
+        ]);
+
+        // total count for pagination info
+        const totalComics = await Comic.countDocuments({ status: "approved" });
+
+        res.json({
+            page,
+            limit,
+            totalPages: Math.ceil(totalComics / limit),
+            totalComics,
+            comics,
+        });
     } catch (error) {
         console.error("Error listing comics:", error);
         res.status(500).json({ error: "Failed to list comics" });
     }
 };
+
+
 
 
 // STEP 4: Get Single Comic with Pages
@@ -508,31 +597,82 @@ const deleteComic = async (req, res) => {
 
 
 const listUserComics = async (req, res) => {
-  try {
-    const userId = req.user.login_data._id;
+    try {
+        const userId = req.user.login_data._id;
 
-    const comics = await Comic.find({ user_id: userId }, "-prompt")
-      .select("");
+        const comics = await Comic.find({ user_id: userId }, "-prompt")
+            .select("");
 
-    const comicsWithThumbnail = await Promise.all(
-      comics.map(async (comic) => {
-        const firstPage = await ComicPage.findOne({ comicId: comic._id })
-          .sort({ pageNumber: 1 })
-          .select("imageUrl");
+        const comicsWithThumbnail = await Promise.all(
+            comics.map(async (comic) => {
+                const firstPage = await ComicPage.findOne({ comicId: comic._id })
+                    .sort({ pageNumber: 1 })
+                    .select("imageUrl");
 
-        return {
-          ...comic.toObject(),
-          thumbnail: firstPage ? firstPage.imageUrl : null,
-        };
-      })
-    );
+                return {
+                    ...comic.toObject(),
+                    thumbnail: firstPage ? firstPage.imageUrl : null,
+                };
+            })
+        );
 
-    res.json({ comics: comicsWithThumbnail });
-  } catch (error) {
-    console.error("Error listing user comics:", error);
-    res.status(500).json({ error: "Failed to list user's comics" });
-  }
+        res.json({ comics: comicsWithThumbnail });
+    } catch (error) {
+        console.error("Error listing user comics:", error);
+        res.status(500).json({ error: "Failed to list user's comics" });
+    }
 };
+
+
+
+// const generateComicThumbnail = async (req, res) => {
+
+//     const { comicId, title, subject, story } = req.body
+
+//     const prompt = `
+//   Design a comic book cover illustration.
+//   - Title: "${title}"
+//   - Subject: "${subject}"
+//   - Style: realistic hand-drawn comic cover with thin ink outlines and soft watercolor tones.
+//   - Focus: A visually appealing single cover image that captures the main idea of this story: ${story}
+//   - Include only one large illustration (no panels, no speech bubbles).
+//   - Add an artistic feel like a real comic cover.
+//   `;
+
+//     const imageResponse = await openai.images.generate({
+//         model: "dall-e-3",
+//         prompt,
+//         size: "1024x1792", // portrait cover
+//         n: 1,
+//     });
+
+//     let buffer;
+//     const imgData = imageResponse.data[0];
+//     if (imgData.url) {
+//         const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
+//         buffer = Buffer.from(response.data);
+//     } else if (imgData.b64_json) {
+//         buffer = Buffer.from(imgData.b64_json, "base64");
+//     }
+
+//     buffer = await sharp(buffer)
+//         .resize({ width: 600 })  // compress for thumbnail
+//         .jpeg({ quality: 75 })
+//         .toBuffer();
+
+//     const fileName = `comic_cover_${comicId}_${Date.now()}.jpg`;
+//     const s3Upload = await upload_files("comics-thumbnails", {
+//         name: fileName,
+//         data: buffer,
+//         mimetype: "image/jpeg",
+//     });
+
+//     // Save thumbnail link in DB
+//     // await Comic.findByIdAndUpdate(comicId, { thumbnailUrl: s3Upload });
+
+//     // return res.send({ thumbnailUrl: s3Upload });
+// };
+
 
 
 
