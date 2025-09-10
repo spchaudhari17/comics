@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL;
 const signup = async (req, res) => {
 
     let { firstname = '', lastname = '', password = '', username = '', email = '', countryCode = '+1',
-        mobileNumber = '',  device_udid='', device_type='' } = req.body
+        mobileNumber = '', device_udid = '', device_type = '' } = req.body
 
 
     // if (firstname === '') {
@@ -36,7 +36,7 @@ const signup = async (req, res) => {
 
         return res.send({ "error": true, 'status': 201, "message": "Email is required.", "message_desc": "Email is required" })
 
-    } 
+    }
     else if (password === '') {
 
         return res.send({ "error": true, 'status': 201, "message": "Password is required.", "message_desc": "Password is required" })
@@ -395,35 +395,35 @@ const login = async (req, res) => {
 // }
 
 const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: true, message: "Email is required" });
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ error: true, message: "Email is required" });
+        }
+
+        const user = await Users.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ error: true, message: "Email not found" });
+        }
+
+        // generate 4 digit OTP
+        const otp = Math.floor(1000 + Math.random() * 9000);
+
+        user.otp = otp;
+        user.otp_expiry = Date.now() + 10 * 60 * 1000; // 10 min validity
+        await user.save();
+
+        await mailer.sendMail({
+            from: '"Comics App" <comicsapp@gmail.com>',
+            to: email,
+            subject: "Password Reset OTP",
+            html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
+        });
+
+        return res.json({ error: false, message: "OTP sent to email" });
+    } catch (err) {
+        return res.status(500).json({ error: true, message: err.message });
     }
-
-    const user = await Users.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ error: true, message: "Email not found" });
-    }
-
-    // generate 4 digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000);
-
-    user.otp = otp;
-    user.otp_expiry = Date.now() + 10 * 60 * 1000; // 10 min validity
-    await user.save();
-
-    await mailer.sendMail({
-      from: '"Comics App" <comicsapp@gmail.com>',
-      to: email,
-      subject: "Password Reset OTP",
-      html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
-    });
-
-    return res.json({ error: false, message: "OTP sent to email" });
-  } catch (err) {
-    return res.status(500).json({ error: true, message: err.message });
-  }
 };
 
 
@@ -539,24 +539,24 @@ const resendOtp = async (req, res) => {
 // }
 
 const resetPassword = async (req, res) => {
-  try {
-    const { reset_key, password } = req.body;
-    if (!reset_key || !password) {
-      return res.status(400).json({ error: true, message: "Reset key & password required" });
+    try {
+        const { reset_key, password } = req.body;
+        if (!reset_key || !password) {
+            return res.status(400).json({ error: true, message: "Reset key & password required" });
+        }
+
+        const user = await Users.findOne({ reset_key });
+        if (!user) return res.status(400).json({ error: true, message: "Invalid reset key" });
+
+        const hashed = await bcrypt.hash(password, 12);
+        user.password = hashed;
+        user.reset_key = null;
+        await user.save();
+
+        return res.json({ error: false, message: "Password reset successful" });
+    } catch (err) {
+        return res.status(500).json({ error: true, message: err.message });
     }
-
-    const user = await Users.findOne({ reset_key });
-    if (!user) return res.status(400).json({ error: true, message: "Invalid reset key" });
-
-    const hashed = await bcrypt.hash(password, 12);
-    user.password = hashed;
-    user.reset_key = null;
-    await user.save();
-
-    return res.json({ error: false, message: "Password reset successful" });
-  } catch (err) {
-    return res.status(500).json({ error: true, message: err.message });
-  }
 };
 
 
@@ -608,58 +608,72 @@ const submitPassword = async (req, res) => {
 }
 
 const test = async (req, res) => {
-  try {
-    if (!req.files || !req.files.profile_image) {
-      return res.status(400).send({
-        error: true,
-        message: "No file uploaded"
-      });
+    try {
+        if (!req.files || !req.files.profile_image) {
+            return res.status(400).send({
+                error: true,
+                message: "No file uploaded"
+            });
+        }
+
+        const image = req.files.profile_image;
+
+        // Validate type
+        const allowedMimes = [
+            "image/gif",
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/svg+xml",
+            "image/webp"
+        ];
+        if (!allowedMimes.includes(image.mimetype)) {
+            return res.status(400).send({
+                error: true,
+                message: "Invalid image type"
+            });
+        }
+
+        // Validate size (2MB limit)
+        let imageSize = image.size / 1024; // kb
+        if (imageSize > 2048) {
+            return res.status(400).send({
+                error: true,
+                message: "Image size cannot be greater than 2 MB"
+            });
+        }
+
+        // ✅ Upload to S3
+        let imageUrl = await upload_files("profile-images", image);
+
+        return res.status(200).send({
+            error: false,
+            message: "Upload successful",
+            url: imageUrl
+        });
+    } catch (error) {
+        console.error("Upload error:", error);
+        return res.status(500).send({
+            error: true,
+            message: "Internal server error",
+            details: error.message
+        });
     }
-
-    const image = req.files.profile_image;
-
-    // Validate type
-    const allowedMimes = [
-      "image/gif",
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/svg+xml",
-      "image/webp"
-    ];
-    if (!allowedMimes.includes(image.mimetype)) {
-      return res.status(400).send({
-        error: true,
-        message: "Invalid image type"
-      });
-    }
-
-    // Validate size (2MB limit)
-    let imageSize = image.size / 1024; // kb
-    if (imageSize > 2048) {
-      return res.status(400).send({
-        error: true,
-        message: "Image size cannot be greater than 2 MB"
-      });
-    }
-
-    // ✅ Upload to S3
-    let imageUrl = await upload_files("profile-images", image);
-
-    return res.status(200).send({
-      error: false,
-      message: "Upload successful",
-      url: imageUrl
-    });
-  } catch (error) {
-    console.error("Upload error:", error);
-    return res.status(500).send({
-      error: true,
-      message: "Internal server error",
-      details: error.message
-    });
-  }
 };
 
 
-module.exports = { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test }
+const privacys = (req, res) => {
+
+    try {
+        res.render("privacy", {
+            title: "Privacy Policy",
+            // logo: "/images/logo.png",
+            description: "This is our Privacy Policy page."
+        });
+    } catch (e) {
+        return res.send({ "error": true, "message": "Something went wrong." + e, "message_desc": "Something went wrong." })
+    }
+}
+
+
+module.exports = { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys }

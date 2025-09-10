@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics } = require('../app/controller/api/comicController');
-const { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test } = require('../app/controller/api/userController');
+const { signup, login, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
@@ -54,5 +54,9 @@ router.get("/admin/users", getAllUsers);
 router.post("/user/generate-quiz", authentication, generateQuiz);
 router.get("/user/comic/:id/quiz", getQuizByComic);
 router.post("/user/quiz/publish", authentication, publishQuiz);
+
+
+//******************************** quiz routes routes started from here ***************************** */
+router.get("/user/privacy", privacys);
 
 module.exports = router;

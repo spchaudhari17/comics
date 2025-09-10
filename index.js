@@ -27,6 +27,15 @@ app.use(cors({
   credentials: true
 }));
 
+const templatePath = path.join(__dirname, "../backend/views");
+
+app.set('view engine', 'hbs');
+
+app.set("views", templatePath);
+var corsOptions = {
+  origin: '*'
+}
+
 app.get('/', (req, res) => {
   console.log("triggered====> :)")
   res.send('Hello from Node.js!');

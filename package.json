@@ -23,6 +23,7 @@
     "email-validator": "^2.0.4",
     "express": "^5.1.0",
     "express-fileupload": "^1.5.2",
+    "hbs": "^4.2.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.30.1",
