@@ -120,7 +120,7 @@ const openai = new OpenAI({
 // };
 
 const refinePrompt = async (req, res) => {
-    const { title, author, subject, story, themeId, styleId } = req.body;
+    const { title, author, subject, story, themeId, styleId, country, grade } = req.body;
 
     try {
         // Fetch theme + style prompts
@@ -219,6 +219,8 @@ Format:
             story,
             themeId,
             styleId,
+            country,
+            grade,
             prompt: JSON.stringify(pages), // save refined prompt
             comicStatus: "draft",
         });
@@ -394,11 +396,11 @@ ${pagePrompt}
 `;
 
                 const imageResponse = await openai.images.generate({
-                    // model: "dall-e-3",
-                    model: "gpt-image-1",
+                    model: "dall-e-3",
+                    // model: "gpt-image-1",
                     prompt: fullPrompt,
-                    size: "1024x1536", // 
-                    // size: "1024x1792", // dall-e-3
+                    // size: "1024x1536", // 
+                    size: "1024x1792", // dall-e-3
                     n: 1,
                 });
 
@@ -702,6 +704,7 @@ const listUserComics = async (req, res) => {
         const userId = req.user.login_data._id;
 
         const comics = await Comic.find({ user_id: userId }, "-prompt")
+            .sort({ createdAt: -1 })
             .select("");
 
         const comicsWithThumbnail = await Promise.all(

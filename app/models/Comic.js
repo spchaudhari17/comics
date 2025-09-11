@@ -13,6 +13,8 @@ const comicSchema = new mongoose.Schema({
   thumbnailUrl: { type: String },
   prompt: { type: String, required: true },
   pdfUrl: { type: String },
+  country: { type: String },
+  grade: { type: String },
   status: {
     type: String,
     enum: ["pending", "approved", "rejected"], // for admin
