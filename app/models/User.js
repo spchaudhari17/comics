@@ -9,8 +9,8 @@ var UserSchema = new mongoose.Schema({
     password: { type: String },
     email: {
         type: String,
-        unique: true,   // email unique rahe
-        sparse: true,   // sirf non-null/non-empty values pe unique check hoga
+        // unique: true,   // email unique rahe
+        // sparse: true,   // sirf non-null/non-empty values pe unique check hoga
         trim: true,
         default: null
     },
