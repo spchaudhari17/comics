@@ -4,8 +4,10 @@ const { ObjectId } = Schema.Types
 
 const comicSchema = new mongoose.Schema({
   user_id: { type: ObjectId, ref: "users" },
+  themeId: { type: ObjectId, ref: "Theme" },
+  styleId: { type: ObjectId, ref: "Style" },
   title: { type: String, required: true, trim: true },
-  author: { type: String, required: true, trim: true },
+  author: { type: String, trim: true },
   subject: { type: String, required: true, trim: true },
   story: { type: String, required: true },
   thumbnailUrl: { type: String },

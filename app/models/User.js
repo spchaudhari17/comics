@@ -7,7 +7,12 @@ var UserSchema = new mongoose.Schema({
     lastname: { type: String },
     username: { type: String },
     password: { type: String },
-    email: { type: String, default: "", index: { unique: true } },
+    email: {
+        type: String,
+        unique: true,   // email unique rahe
+        sparse: true,   // sirf non-null/non-empty values pe unique check hoga
+        trim: true
+    },
     userType: { type: String, default: "user" },
     profile_pic: { type: String, default: "" },
     device_type: { type: String, default: "" },
