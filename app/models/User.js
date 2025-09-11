@@ -15,6 +15,7 @@ var UserSchema = new mongoose.Schema({
         default: ''
     },
     userType: { type: String, default: "user" },
+    age: { type: Number, min: 0, max: 120 },
     profile_pic: { type: String, default: "" },
     device_type: { type: String, default: "" },
     device_udid: { type: String, default: "" },
