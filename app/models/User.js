@@ -12,7 +12,7 @@ var UserSchema = new mongoose.Schema({
         // unique: true,   // email unique rahe
         // sparse: true,   // sirf non-null/non-empty values pe unique check hoga
         trim: true,
-        default: null
+        default: ''
     },
     userType: { type: String, default: "user" },
     profile_pic: { type: String, default: "" },
