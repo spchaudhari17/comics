@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics } = require('../app/controller/api/comicController');
-const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic } = require('../app/controller/api/userController');
+const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
@@ -33,6 +33,7 @@ router.post('/user/test', test)
 router.post('/user/updatePic',authentication, updatePic)
 router.post('/user/deletePic',authentication, deletePic)
 router.get('/user/getProfile',authentication, profileDetails)
+router.post('/user/deleteAccount',authentication, deleteAccount)
 
 
 //******************************** Prompt routes started from here ***************************** */

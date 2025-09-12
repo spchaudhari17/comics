@@ -823,7 +823,53 @@ const profileDetails = async (req, res) => {
 };
 
 
+const deleteAccount =  async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
 
+    
+        const user = await Users.findOne(
+            { _id: new mongoose.Types.ObjectId(userId) },
+            { profile_pic: 1 }
+        );
+
+        if (!user) {
+            return res.send({
+                error: true,
+                status: 404,
+                message: "User not found.",
+                message_desc: "No account exists with this ID."
+            });
+        }
+
+      
+        if (user.profile_pic) {
+            try {
+                const oldKey = user.profile_pic.split("/").pop();
+                await deleteFiles("profile-images", oldKey);
+            } catch (err) {
+                console.warn("S3 delete failed:", err.message);
+            }
+        }
+
+   
+        await Users.deleteOne({ _id: new mongoose.Types.ObjectId(userId) });
+
+        return res.send({
+            error: false,
+            status: 200,
+            message: "Account deleted successfully.",
+            message_desc: "User account has been permanently deleted."
+        });
+    } catch (e) {
+        return res.send({
+            error: true,
+            status: 500,
+            message: "Something went wrong.",
+            message_desc: "Unhandled exception: " + e
+        });
+    }
+};
 
 
 
@@ -832,5 +878,5 @@ const profileDetails = async (req, res) => {
 
 module.exports = {
     signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys,
-    updatePic, profileDetails, deletePic
+    updatePic, profileDetails, deletePic, deleteAccount
 }
