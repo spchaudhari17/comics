@@ -5,7 +5,9 @@ var bcrypt = require('bcryptjs');
 var crypto = require("crypto");
 let mailer = require("../../../config/mailer");
 const MOMENT = require('moment');
-const { upload_files } = require("../../../helper/helper");
+const { upload_files, deleteFiles } = require("../../../helper/helper");
+const mongoose = require("mongoose");
+const QuizSubmission = require("../../models/QuizSubmission");
 
 
 const BASE_URL = process.env.BASE_URL;
@@ -576,4 +578,259 @@ const privacys = (req, res) => {
 }
 
 
-module.exports = { signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys }
+const updatePic = async (req, res) => {
+    try {
+        const user = req.user.login_data;
+        const userId = user._id;
+
+        if (!req.files || !req.files.profile_pic) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "No image selected",
+                message_desc: "No image selected."
+            });
+        }
+
+        const image = req.files.profile_pic;
+
+        // ✅ Allowed mime types
+        const allowedMimes = [
+            "image/gif",
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/svg+xml",
+            "image/webp"
+        ];
+        if (!allowedMimes.includes(image.mimetype)) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "Invalid image type.",
+                message_desc: "Allowed only gif, jpeg, png, svg, webp."
+            });
+        }
+
+        // ✅ Size validation (2 MB)
+        let imageSize = image.size / 1024;
+        if (imageSize > 2048) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "Profile image size cannot be greater than 2 MB.",
+                message_desc: "Profile image size cannot be greater than 2 MB."
+            });
+        }
+
+        // ✅ Get existing image
+        const getImage = await Users.findOne({ _id: userId }, { profile_pic: 1 });
+
+        // ✅ Upload new image
+        const imageUrl = await upload_files("profile-images", image);
+
+        // ✅ Delete old image from S3 if exists
+        if (getImage && getImage.profile_pic) {
+            try {
+                const oldKey = getImage.profile_pic.split("/").pop(); // safer
+                await deleteFiles("profile-images", oldKey);
+            } catch (err) {
+                console.warn("Old image delete failed:", err.message);
+            }
+        }
+
+        // ✅ Update DB
+        const updated = await Users.updateOne(
+            { _id: new mongoose.Types.ObjectId(userId) },
+            { profile_pic: imageUrl }
+        );
+
+        if (updated.modifiedCount > 0) {
+            return res.send({
+                error: false,
+                status: 200,
+                message: "Profile image updated successfully.",
+                profile_pic: imageUrl
+            });
+        } else {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "An error has occurred.",
+                message_desc: "An error has occurred."
+            });
+        }
+    } catch (e) {
+        return res.send({
+            error: true,
+            message: "Something went wrong: " + e
+        });
+    }
+};
+
+const deletePic = async (req, res) => {
+    try {
+        const user = req.user.login_data;
+        const userId = user._id;
+
+        // Check existing image
+        const getUser = await Users.findOne(
+            { _id: new mongoose.Types.ObjectId(userId) },
+            { profile_pic: 1 }
+        );
+
+        if (!getUser || !getUser.profile_pic) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "No profile image found.",
+                message_desc: "Profile image not set."
+            });
+        }
+
+        // Extract key and delete from S3
+        const oldKey = getUser.profile_pic.split("/").pop();
+        try {
+            await deleteFiles("profile-images", oldKey);
+        } catch (err) {
+            console.warn("S3 delete failed:", err.message);
+        }
+
+        // Update DB (set profile_pic = "")
+        const updated = await Users.updateOne(
+            { _id: new mongoose.Types.ObjectId(userId) },
+            { profile_pic: "" }
+        );
+
+        if (updated.modifiedCount > 0) {
+            return res.send({
+                error: false,
+                status: 200,
+                message: "Profile image deleted successfully.",
+                profile_pic: ""
+            });
+        } else {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "An error has occurred.",
+                message_desc: "Failed to delete profile image."
+            });
+        }
+    } catch (e) {
+        return res.send({
+            error: true,
+            status: 500,
+            message: "Something went wrong: " + e
+        });
+    }
+};
+
+
+const profileDetails = async (req, res) => {
+    try {
+        let userId = req.user.login_data._id;
+
+        // ✅ User profile basic info
+        const userDetails = await Users.aggregate([
+            {
+                $match: { _id: new mongoose.Types.ObjectId(userId) }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    email: 1,
+                    username: 1,
+                    email_verified_at: 1,
+                    profile_pic: 1,
+                    created_at: "$createdAt",
+                    updated_at: "$updatedAt"
+                }
+            }
+        ]);
+
+        if (!userDetails || userDetails.length === 0) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "User not found",
+                message_desc: "No user found with this id",
+                data: {}
+            });
+        }
+
+        // Total quizzes taken
+        const totalQuizzesTaken = await QuizSubmission.countDocuments({ userId });
+
+        // Comics completed (unique comicId from quizzes attempted)
+        const comicsCompleted = await QuizSubmission.aggregate([
+            { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+            {
+                $lookup: {
+                    from: "quizzes", // collection name of Quiz
+                    localField: "quizId",
+                    foreignField: "_id",
+                    as: "quizData"
+                }
+            },
+            { $unwind: "$quizData" },
+            {
+                $group: {
+                    _id: "$quizData.comicId"
+                }
+            }
+        ]);
+
+        const numberOfComicsCompleted = comicsCompleted.length;
+
+
+        const submissions = await QuizSubmission.find({ userId });
+        let correctAnswers = 0;
+        submissions.forEach(sub => {
+            sub.answers.forEach(ans => {
+                if (ans.isCorrect) correctAnswers++;
+            });
+        });
+        const totalCoinsEarned = correctAnswers;
+
+
+
+
+        const profile = {
+            ...userDetails[0],
+            number_of_comics_completed: numberOfComicsCompleted,
+            total_quizzes_taken: totalQuizzesTaken,
+            total_coins_earned: totalCoinsEarned,
+            total_gems_earned: 0
+        };
+
+        return res.send({
+            error: false,
+            status: 200,
+            message: "Success.",
+            message_desc: "Success",
+            data: profile
+        });
+    } catch (e) {
+        return res.send({
+            error: true,
+            status: 500,
+            message: "Something went wrong.",
+            message_desc: "Unhandled exception: " + e,
+            data: {}
+        });
+    }
+};
+
+
+
+
+
+
+
+
+
+module.exports = {
+    signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys,
+    updatePic, profileDetails, deletePic
+}

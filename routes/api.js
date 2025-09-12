@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics } = require('../app/controller/api/comicController');
-const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail } = require('../app/controller/api/userController');
+const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
@@ -14,7 +14,7 @@ const { createSubject, deleteSubject, getAllSubjects } = require('../app/control
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
 
 
-//******************************** Authentication started from here ***************************** */
+//******************************** routes started from here ***************************** */
 // Website routes (email based)
 router.post('/user/register', signupWithEmail)
 router.post('/user/login', loginWithEmail)
@@ -29,6 +29,11 @@ router.post('/user/resendOtp', resendOtp)
 router.post('/user/verify_otp', verify_otp)
 router.post('/user/submitPassword', submitPassword)
 router.post('/user/test', test)
+//******************************** Authentication started from here ***************************** */
+router.post('/user/updatePic',authentication, updatePic)
+router.post('/user/deletePic',authentication, deletePic)
+router.get('/user/getProfile',authentication, profileDetails)
+
 
 //******************************** Prompt routes started from here ***************************** */
 router.post("/user/create-themes", createTheme);
@@ -80,5 +85,9 @@ router.post("/user/quiz/publish", authentication, publishQuiz);
 
 //******************************** quiz routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
+
+
+
+
 
 module.exports = router;
