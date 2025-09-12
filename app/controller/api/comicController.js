@@ -181,7 +181,8 @@ Format:
 `;
 
         const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            // model: "gpt-3.5-turbo",
+            model: "gpt-4o",
             messages: [
                 {
                     role: "system",
@@ -396,11 +397,11 @@ ${pagePrompt}
 `;
 
                 const imageResponse = await openai.images.generate({
-                    model: "dall-e-3",
-                    // model: "gpt-image-1",
+                    // model: "dall-e-3",
+                    model: "gpt-image-1",
                     prompt: fullPrompt,
-                    // size: "1024x1536", // 
-                    size: "1024x1792", // dall-e-3
+                    size: "1024x1536", // 
+                    // size: "1024x1792", // dall-e-3
                     n: 1,
                 });
 

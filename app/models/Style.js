@@ -7,6 +7,7 @@ const StyleSchema = new mongoose.Schema(
     subjects: [{ type: String }], // Example: ["K–5 subjects", "Grammar"]
     grades: { type: String }, // Example: "K–6"
     prompt: { type: String }, // Image AI ke liye
+    image: { type: String },
   },
   { timestamps: true }
 );

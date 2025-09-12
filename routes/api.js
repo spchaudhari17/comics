@@ -9,7 +9,7 @@ const { submitQuiz } = require('../app/controller/api/submitQuizController');
 const { getAllUsers } = require('../app/controller/api/admin/userController');
 const { generateFAQs, listFAQs } = require('../app/controller/api/faqController');
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
-const { createStyle, createTheme, getAllStyles, getAllThemes } = require('../app/controller/api/themeStyleController');
+const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
 const { createSubject, deleteSubject, getAllSubjects } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
 
@@ -33,6 +33,7 @@ router.post('/user/test', test)
 //******************************** Prompt routes started from here ***************************** */
 router.post("/user/create-themes", createTheme);
 router.post("/user/create-styles", createStyle);
+router.post("/user/update-style", updateStyle);
 router.get("/user/getAllThemes", getAllThemes);
 router.get("/user/getAllStyles", getAllStyles);
 
