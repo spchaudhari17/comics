@@ -8,7 +8,11 @@ const comicSchema = new mongoose.Schema({
   styleId: { type: ObjectId, ref: "Style" },
   title: { type: String, required: true, trim: true },
   author: { type: String, trim: true },
-  subject: { type: String, required: true, trim: true },
+  subjectId: { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true },
+  // subject: { type: String, required: true, trim: true },
+
+  concept: { type: String, trim: true },
+  conceptId: { type: mongoose.Schema.Types.ObjectId, ref: "Concept" },
   story: { type: String, required: true },
   thumbnailUrl: { type: String },
   prompt: { type: String, required: true },

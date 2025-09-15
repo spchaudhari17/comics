@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const { upload_files, deleteFiles } = require("../../../helper/helper");
 const Comic = require("../../models/Comic");
+const Concept = require("../../models/concept");
 const ComicPage = require("../../models/ComicPage");
 const PDFDocument = require("pdfkit");
 const sharp = require("sharp");
@@ -120,7 +121,7 @@ const openai = new OpenAI({
 // };
 
 const refinePrompt = async (req, res) => {
-    const { title, author, subject, story, themeId, styleId, country, grade } = req.body;
+    const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
 
     try {
         // Fetch theme + style prompts
@@ -130,6 +131,15 @@ const refinePrompt = async (req, res) => {
         if (!theme || !style) {
             return res.status(400).json({ error: "Invalid theme or style" });
         }
+
+        // ***********
+        const cleanConcept = concept.trim();
+
+        let conceptDoc = await Concept.findOne({ name: cleanConcept, subjectId });
+        if (!conceptDoc) {
+            conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
+        }
+        const conceptId = conceptDoc._id;
 
         const wrappedStory = `
 Analyse the prompt given below and check whether the concept is small enough 
@@ -181,8 +191,8 @@ Format:
 `;
 
         const response = await openai.chat.completions.create({
-            // model: "gpt-3.5-turbo",
-            model: "gpt-4o",
+            model: "gpt-3.5-turbo",
+            // model: "gpt-4o",
             messages: [
                 {
                     role: "system",
@@ -220,6 +230,9 @@ Format:
             story,
             themeId,
             styleId,
+            subjectId,
+            concept: cleanConcept, // string
+            conceptId,
             country,
             grade,
             prompt: JSON.stringify(pages), // save refined prompt
@@ -397,11 +410,11 @@ ${pagePrompt}
 `;
 
                 const imageResponse = await openai.images.generate({
-                    // model: "dall-e-3",
-                    model: "gpt-image-1",
+                    model: "dall-e-3",
+                    // model: "gpt-image-1",
                     prompt: fullPrompt,
-                    size: "1024x1536", // 
-                    // size: "1024x1792", // dall-e-3
+                    // size: "1024x1536", // 
+                    size: "1024x1792", // dall-e-3
                     n: 1,
                 });
 
@@ -542,6 +555,15 @@ const listComics = async (req, res) => {
                     as: "faqs",
                 },
             },
+            {
+                $lookup: {
+                    from: "subjects",
+                    localField: "subjectId",
+                    foreignField: "_id",
+                    as: "subjectData"
+                }
+            },
+            { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
 
             // DidYouKnow join
             {
@@ -572,12 +594,25 @@ const listComics = async (req, res) => {
                 },
             },
 
+            {
+                $addFields: {
+                    hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
+                    hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+                    thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
+
+                    // subjectId & subjectName
+                    subjectId: "$subjectData._id",
+                    subject: "$subjectData.name",
+                },
+            },
+
             // unnecessary arrays remove
             {
                 $project: {
                     faqs: 0,
                     facts: 0,
                     pages: 0,
+                    subjectData: 0,
                     prompt: 0
                 },
             },

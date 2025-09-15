@@ -1,6 +1,8 @@
 const { upload_files, deleteFiles } = require("../../../helper/helper");
+const Comic = require("../../models/Comic");
 const Subject = require("../../models/Subject");
 const sharp = require("sharp");
+const mongoose = require('mongoose')
 
 const createSubject = async (req, res) => {
     try {
@@ -85,4 +87,238 @@ const deleteSubject = async (req, res) => {
     }
 };
 
-module.exports = { createSubject, getAllSubjects, deleteSubject };
+
+// const getConceptsBySubject = async (req, res) => {
+//   try {
+//     const subjectId = req.params.subjectId;
+
+//     // Subject validate
+//     const subject = await Subject.findById(subjectId);
+//     if (!subject) {
+//       return res.status(404).json({ error: "Subject not found" });
+//     }
+
+//     const result = await Comic.aggregate([
+//       {
+//         $match: {
+//           status: "approved",
+//           subjectId: new mongoose.Types.ObjectId(subjectId),
+//         },
+//       },
+
+//        // Pages join (thumbnail ke liye)
+//       {
+//         $lookup: {
+//           from: "comicpages",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "pages",
+//         },
+//       },
+
+//       // thumbnail field add
+//       {
+//         $addFields: {
+//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
+//         },
+//       },
+
+
+//       {
+//         $group: {
+//           _id: "$concept", // ✅ direct concept string
+//           comicCount: { $sum: 1 },
+//           comics: {
+//             $push: {
+//               _id: "$_id",
+//               title: "$title",
+//               pdfUrl:"$pdfUrl",
+//                thumbnail: "$thumbnail",
+//             },
+//           },
+//         },
+//       },
+
+//       {
+//         $project: {
+//           _id: 0,
+//           name: "$_id", // _id me concept ka naam hai
+//           comicCount: 1,
+//           comics: 1,
+//         },
+//       },
+//     ]);
+
+//     res.json({
+//       subject: subject.name,
+//       concepts: result,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching concepts by subject:", error);
+//     res.status(500).json({ error: "Failed to fetch concepts by subject" });
+//   }
+// };
+
+const getConceptsBySubject = async (req, res) => {
+  try {
+    const subjectId = req.params.subjectId;
+
+    // Subject validate
+    const subject = await Subject.findById(subjectId);
+    if (!subject) {
+      return res.status(404).json({ error: "Subject not found" });
+    }
+
+    const result = await Comic.aggregate([
+      {
+        $match: {
+          status: "approved",
+          subjectId: new mongoose.Types.ObjectId(subjectId),
+        },
+      },
+
+      {
+        $group: {
+          _id: "$conceptId",
+          comicCount: { $sum: 1 },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "concepts",
+          localField: "_id",
+          foreignField: "_id",
+          as: "conceptData",
+        },
+      },
+      { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
+
+      {
+        $project: {
+          _id: 0,
+          conceptId: "$conceptData._id",
+          name: "$conceptData.name",
+          comicCount: 1,
+        },
+      },
+    ]);
+
+    res.json({
+      subject: subject.name,
+      concepts: result,
+    });
+  } catch (error) {
+    console.error("Error fetching concepts:", error);
+    res.status(500).json({ error: "Failed to fetch concepts" });
+  }
+};
+
+
+const getComicsByConcept = async (req, res) => {
+  try {
+    const conceptId = req.params.conceptId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const comics = await Comic.aggregate([
+      {
+        $match: {
+          status: "approved",
+          conceptId: new mongoose.Types.ObjectId(conceptId),
+        },
+      },
+
+      // latest pehle
+      { $sort: { createdAt: -1 } },
+
+      // pagination apply
+      { $skip: skip },
+      { $limit: limit },
+
+      // FAQs join
+      {
+        $lookup: {
+          from: "faqs",
+          localField: "_id",
+          foreignField: "comicId",
+          as: "faqs",
+        },
+      },
+      // Subjects join
+      {
+        $lookup: {
+          from: "subjects",
+          localField: "subjectId",
+          foreignField: "_id",
+          as: "subjectData",
+        },
+      },
+      { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
+
+      // DidYouKnow join
+      {
+        $lookup: {
+          from: "didyouknows",
+          localField: "_id",
+          foreignField: "comicId",
+          as: "facts",
+        },
+      },
+
+      // Pages join for thumbnail
+      {
+        $lookup: {
+          from: "comicpages",
+          localField: "_id",
+          foreignField: "comicId",
+          as: "pages",
+        },
+      },
+
+      // extra fields
+      {
+        $addFields: {
+          hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
+          hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+          thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
+          subjectId: "$subjectData._id",
+          subject: "$subjectData.name",
+        },
+      },
+
+      // unnecessary arrays remove
+      {
+        $project: {
+          faqs: 0,
+          facts: 0,
+          pages: 0,
+          subjectData: 0,
+          prompt: 0,
+        },
+      },
+    ]);
+
+    // total count for pagination
+    const totalComics = await Comic.countDocuments({
+      status: "approved",
+      conceptId: new mongoose.Types.ObjectId(conceptId),
+    });
+
+    res.json({
+      conceptId,
+      page,
+      limit,
+      totalPages: Math.ceil(totalComics / limit),
+      totalComics,
+      comics,
+    });
+  } catch (error) {
+    console.error("Error fetching comics by concept:", error);
+    res.status(500).json({ error: "Failed to fetch comics" });
+  }
+};
+
+
+module.exports = { createSubject, getAllSubjects, deleteSubject, getConceptsBySubject, getComicsByConcept};

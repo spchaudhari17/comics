@@ -10,7 +10,7 @@ const { getAllUsers } = require('../app/controller/api/admin/userController');
 const { generateFAQs, listFAQs } = require('../app/controller/api/faqController');
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
-const { createSubject, deleteSubject, getAllSubjects } = require('../app/controller/api/subjectController');
+const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
 
 
@@ -69,6 +69,8 @@ router.get("/user/comics/:id", getComic);
 router.post("/user/deleteComic",authentication, deleteComic);
 router.post("/user/submit-quiz", authentication, submitQuiz);
 
+router.get("/user/concepts-by-subject/:subjectId", getConceptsBySubject);
+router.get("/user/concepts/:conceptId/comics", getComicsByConcept);
 
 
 //******************************** admin routes routes started from here ***************************** */
