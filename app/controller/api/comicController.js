@@ -18,108 +18,6 @@ const openai = new OpenAI({
 });
 
 
-// old workding fine
-// const refinePrompt = async (req, res) => {
-//     const { title, author, subject, story } = req.body;
-
-//     const wrappedStory = `
-// Analyse the prompt given below and check whether the concept is small enough 
-// to have it explained properly and in detail in an 8-10 page comic, 
-// if not, then divide the following concept into smaller chunks which can be converted into comics. 
-// Give the answer in part wise format and mention the key terms to be introduced, 
-// define the start and the end point of the concept: ${story}
-// `;
-
-//     try {
-//         const promptText = `
-// You are an expert comic prompt engineer.
-// Task: Break the following story into multiple pages and panels for a comic.
-// Each page must have several vertical panels (top to bottom), clear borders, and speech bubbles with the exact given dialogue.
-
-// Style: realistic hand-drawn comic illustration with thin ink outlines and soft watercolor tones.
-// Use clean, simple handwritten comic lettering — legible, black on white, inside clear speech bubbles or captions.
-
-// Comic Title: ${title}
-// Author: ${author}
-// Subject: ${subject}
-
-// Story:
-// ${wrappedStory}
-
-// ⚠️ Output rules (MUST follow):
-// - Return ONLY valid JSON.
-// - Do NOT include markdown fences (no \`\`\`).
-// - Do NOT include comments or extra text.
-// - Every key must be in double quotes.
-// - Every string must be in double quotes.
-// - No trailing commas.
-
-// Format:
-// [
-//   {
-//     "page": 1,
-//     "panels": [
-//       {
-//         "scene": "Describe the visual scene",
-//         "caption": "Narrator text (or empty string if none)",
-//         "dialogue": [
-//           { "character": "Name", "text": "Exact speech bubble text" }
-//         ]
-//       }
-//     ]
-//   }
-// ]
-// `;
-
-//         const response = await openai.chat.completions.create({
-//             // model: "gpt-4o",
-//             model: "gpt-3.5-turbo",
-//             messages: [
-//                 {
-//                     role: "system",
-//                     content:
-//                         "You are a strict JSON generator. Always return ONLY valid JSON that can be parsed with JSON.parse.",
-//                 },
-//                 { role: "user", content: promptText },
-//             ],
-//             temperature: 0.5,
-//             max_tokens: 2000,
-//         });
-
-//         let raw = response.choices[0].message.content.trim();
-
-//         if (raw.startsWith("```")) {
-//             raw = raw.replace(/```json|```/g, "").trim();
-//         }
-
-//         let pages;
-//         try {
-//             pages = JSON.parse(raw);
-//         } catch (err) {
-//             console.error("JSON parse failed:", err.message);
-//             return res
-//                 .status(500)
-//                 .json({ error: "Failed to parse JSON output", details: err.message });
-//         }
-
-//         // Save in DB
-//         const comic = await Comic.create({
-//             user_id: req.user.login_data._id,
-//             title,
-//             author,
-//             subject,
-//             story,
-//             prompt: JSON.stringify(pages), // save refined prompt
-//             comicStatus: "draft",
-//         });
-
-//         res.json({ comicId: comic._id, pages });
-//     } catch (error) {
-//         console.error("Error generating prompts:", error);
-//         res.status(500).json({ error: "Prompt generation failed" });
-//     }
-// };
-
 const refinePrompt = async (req, res) => {
     const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
 
@@ -132,13 +30,19 @@ const refinePrompt = async (req, res) => {
             return res.status(400).json({ error: "Invalid theme or style" });
         }
 
-        // ***********
+        // *********** Concept handling ***********
         const cleanConcept = concept.trim();
 
+        // Check if concept already exists for the subject
         let conceptDoc = await Concept.findOne({ name: cleanConcept, subjectId });
-        if (!conceptDoc) {
-            conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
+        if (conceptDoc) {
+            return res.status(400).json({
+                error: "Sorry, this concept of comics is already available."
+            });
         }
+
+        // If not exists, create new concept
+        conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
         const conceptId = conceptDoc._id;
 
         const wrappedStory = `
