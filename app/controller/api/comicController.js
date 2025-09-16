@@ -33,16 +33,29 @@ const refinePrompt = async (req, res) => {
         // *********** Concept handling ***********
         const cleanConcept = concept.trim();
 
-        // Check if concept already exists for the subject
-        let conceptDoc = await Concept.findOne({ name: cleanConcept, subjectId });
-        if (conceptDoc) {
-            return res.status(400).json({
-                error: "Sorry, this concept of comics is already available."
+        const existingComic = await Comic.findOne({ concept: cleanConcept })
+            .populate("subjectId", "name");
+
+        if (existingComic) {
+            return res.status(200).json({
+                alreadyExists: true,
+                comic: {
+                    id: existingComic._id,
+                    country: existingComic.country,
+                    grade: existingComic.grade,
+                    subject: existingComic.subjectId?.name,
+                    title: existingComic.title,
+                    concept: existingComic.concept,
+                    pdfUrl: existingComic.pdfUrl || null,
+                },
             });
         }
 
-        // If not exists, create new concept
-        conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
+        // Create new Concept if not already saved
+        let conceptDoc = await Concept.findOne({ name: cleanConcept });
+        if (!conceptDoc) {
+            conceptDoc = await Concept.create({ name: cleanConcept });
+        }
         const conceptId = conceptDoc._id;
 
         const wrappedStory = `
