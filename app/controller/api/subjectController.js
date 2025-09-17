@@ -48,41 +48,7 @@ const createSubject = async (req, res) => {
   }
 };
 
-// const getAllSubjects = async (req, res) => {
-//   const subjects = await Subject.find();
-//   res.json(subjects);
-// };
- 
-// proper working
-// const getAllSubjects = async (req, res) => {
-//   try {
-//     const subjects = await Subject.aggregate([
-//       {
-//         $lookup: {
-//           from: "concepts",             // concepts collection
-//           localField: "_id",            // Subject._id
-//           foreignField: "subjectId",    // Concept.subjectId
-//           as: "concepts",
-//         },
-//       },
-//       {
-//         $addFields: {
-//           conceptCount: { $size: "$concepts" }, // count concepts
-//         },
-//       },
-//       {
-//         $project: {
-//           concepts: 0, // full concept array nahi bhejna, sirf count
-//         },
-//       },
-//     ]);
 
-//     res.json(subjects);
-//   } catch (err) {
-//     console.error("Error fetching subjects with counts:", err);
-//     res.status(500).json({ error: "Failed to fetch subjects" });
-//   }
-// };
 
 
 const getAllSubjects = async (req, res) => {
@@ -189,78 +155,6 @@ const deleteSubject = async (req, res) => {
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 };
-
-
-// const getConceptsBySubject = async (req, res) => {
-//   try {
-//     const subjectId = req.params.subjectId;
-
-//     // Subject validate
-//     const subject = await Subject.findById(subjectId);
-//     if (!subject) {
-//       return res.status(404).json({ error: "Subject not found" });
-//     }
-
-//     const result = await Comic.aggregate([
-//       {
-//         $match: {
-//           status: "approved",
-//           subjectId: new mongoose.Types.ObjectId(subjectId),
-//         },
-//       },
-
-//        // Pages join (thumbnail ke liye)
-//       {
-//         $lookup: {
-//           from: "comicpages",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "pages",
-//         },
-//       },
-
-//       // thumbnail field add
-//       {
-//         $addFields: {
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//         },
-//       },
-
-
-//       {
-//         $group: {
-//           _id: "$concept", // ✅ direct concept string
-//           comicCount: { $sum: 1 },
-//           comics: {
-//             $push: {
-//               _id: "$_id",
-//               title: "$title",
-//               pdfUrl:"$pdfUrl",
-//                thumbnail: "$thumbnail",
-//             },
-//           },
-//         },
-//       },
-
-//       {
-//         $project: {
-//           _id: 0,
-//           name: "$_id", // _id me concept ka naam hai
-//           comicCount: 1,
-//           comics: 1,
-//         },
-//       },
-//     ]);
-
-//     res.json({
-//       subject: subject.name,
-//       concepts: result,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching concepts by subject:", error);
-//     res.status(500).json({ error: "Failed to fetch concepts by subject" });
-//   }
-// };
 
 
 
