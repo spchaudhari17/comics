@@ -48,51 +48,32 @@ const createSubject = async (req, res) => {
   }
 };
 
+// const getAllSubjects = async (req, res) => {
+//   const subjects = await Subject.find();
+//   res.json(subjects);
+// };
 
 const getAllSubjects = async (req, res) => {
   try {
     const subjects = await Subject.aggregate([
       {
         $lookup: {
-          from: "concepts",
-          localField: "_id",
-          foreignField: "subjectId",
+          from: "concepts",             // concepts collection
+          localField: "_id",            // Subject._id
+          foreignField: "subjectId",    // Concept.subjectId
           as: "concepts",
         },
       },
-      { $unwind: { path: "$concepts", preserveNullAndEmptyArrays: true } },
-
-      //  link concepts -> comics (sirf approved)
-      {
-        $lookup: {
-          from: "comics",
-          localField: "concepts._id",
-          foreignField: "conceptId",
-          as: "conceptComics",
-          pipeline: [
-            { $match: { status: "approved" } } // sirf approved comics
-          ]
-        }
-      },
-
-      //  agar concept ke saath koi approved comic hai to valid
       {
         $addFields: {
-          hasApprovedComic: { $gt: [{ $size: "$conceptComics" }, 0] }
-        }
+          conceptCount: { $size: "$concepts" }, // count concepts
+        },
       },
-
-      //  sirf valid concepts count karo
       {
-        $group: {
-          _id: "$_id",
-          name: { $first: "$name" },
-          createdAt: { $first: "$createdAt" },
-          conceptCount: {
-            $sum: { $cond: ["$hasApprovedComic", 1, 0] }
-          }
-        }
-      }
+        $project: {
+          concepts: 0, // full concept array nahi bhejna, sirf count
+        },
+      },
     ]);
 
     res.json(subjects);
@@ -101,6 +82,60 @@ const getAllSubjects = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
+
+
+// const getAllSubjects = async (req, res) => {
+//   try {
+//     const data = await Subject.aggregate([
+//       {
+//         $lookup: {
+//           from: "concepts",
+//           localField: "_id",
+//           foreignField: "subjectId",
+//           as: "concepts"
+//         }
+//       },
+//       {
+//         $lookup: {
+//           from: "comics",
+//           localField: "concepts._id",
+//           foreignField: "conceptId",
+//           as: "relatedComics"
+//         }
+//       },
+//       {
+//         $project: {
+//           name: 1,
+//           conceptCount: {
+//             $size: {
+//               $filter: {
+//                 input: "$relatedComics",
+//                 as: "comic",
+//                 cond: { $eq: ["$$comic.status", "approved"] }
+//               }
+//             }
+//           },
+//           concepts: {
+//             _id: 1,
+//             name: 1
+//           },
+//           relatedComics: {
+//             _id: 1,
+//             title: 1,
+//             status: 1,
+//             conceptId: 1
+//           }
+//         }
+//       }
+//     ]);
+
+//     res.json(data);
+//   } catch (err) {
+//     console.error("Debug error:", err);
+//     res.status(500).json({ error: "Failed to debug" });
+//   }
+// };
+
 
 
 
