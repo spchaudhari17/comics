@@ -8,7 +8,7 @@ const QuizSubmissionSchema = new Schema({
   answers: [
     {
       questionId: { type: ObjectId, ref: "QuizQuestion", required: true },
-      selectedAnswer: { type: String, required: true },
+      selectedAnswer: { type: String},
       isCorrect: { type: Boolean, required: true }
     }
   ],
