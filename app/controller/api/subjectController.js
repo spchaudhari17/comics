@@ -48,32 +48,51 @@ const createSubject = async (req, res) => {
   }
 };
 
-// const getAllSubjects = async (req, res) => {
-//   const subjects = await Subject.find();
-//   res.json(subjects);
-// };
 
 const getAllSubjects = async (req, res) => {
   try {
     const subjects = await Subject.aggregate([
       {
         $lookup: {
-          from: "concepts",             // concepts collection
-          localField: "_id",            // Subject._id
-          foreignField: "subjectId",    // Concept.subjectId
+          from: "concepts",
+          localField: "_id",
+          foreignField: "subjectId",
           as: "concepts",
         },
       },
+      { $unwind: { path: "$concepts", preserveNullAndEmptyArrays: true } },
+
+      //  link concepts -> comics (sirf approved)
+      {
+        $lookup: {
+          from: "comics",
+          localField: "concepts._id",
+          foreignField: "conceptId",
+          as: "conceptComics",
+          pipeline: [
+            { $match: { status: "approved" } } // sirf approved comics
+          ]
+        }
+      },
+
+      //  agar concept ke saath koi approved comic hai to valid
       {
         $addFields: {
-          conceptCount: { $size: "$concepts" }, // count concepts
-        },
+          hasApprovedComic: { $gt: [{ $size: "$conceptComics" }, 0] }
+        }
       },
+
+      //  sirf valid concepts count karo
       {
-        $project: {
-          concepts: 0, // full concept array nahi bhejna, sirf count
-        },
-      },
+        $group: {
+          _id: "$_id",
+          name: { $first: "$name" },
+          createdAt: { $first: "$createdAt" },
+          conceptCount: {
+            $sum: { $cond: ["$hasApprovedComic", 1, 0] }
+          }
+        }
+      }
     ]);
 
     res.json(subjects);
@@ -82,6 +101,7 @@ const getAllSubjects = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
+
 
 
 
