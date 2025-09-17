@@ -54,7 +54,7 @@ const refinePrompt = async (req, res) => {
         // Create new Concept if not already saved
         let conceptDoc = await Concept.findOne({ name: cleanConcept });
         if (!conceptDoc) {
-            conceptDoc = await Concept.create({ name: cleanConcept });
+            conceptDoc = await Concept.create({ name: cleanConcept, subjectId:subjectId });
         }
         const conceptId = conceptDoc._id;
 

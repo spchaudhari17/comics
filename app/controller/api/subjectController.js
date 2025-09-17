@@ -52,28 +52,98 @@ const createSubject = async (req, res) => {
 //   const subjects = await Subject.find();
 //   res.json(subjects);
 // };
+ 
+// proper working
+// const getAllSubjects = async (req, res) => {
+//   try {
+//     const subjects = await Subject.aggregate([
+//       {
+//         $lookup: {
+//           from: "concepts",             // concepts collection
+//           localField: "_id",            // Subject._id
+//           foreignField: "subjectId",    // Concept.subjectId
+//           as: "concepts",
+//         },
+//       },
+//       {
+//         $addFields: {
+//           conceptCount: { $size: "$concepts" }, // count concepts
+//         },
+//       },
+//       {
+//         $project: {
+//           concepts: 0, // full concept array nahi bhejna, sirf count
+//         },
+//       },
+//     ]);
+
+//     res.json(subjects);
+//   } catch (err) {
+//     console.error("Error fetching subjects with counts:", err);
+//     res.status(500).json({ error: "Failed to fetch subjects" });
+//   }
+// };
+
 
 const getAllSubjects = async (req, res) => {
   try {
     const subjects = await Subject.aggregate([
+      // 1) link subjects -> concepts
       {
         $lookup: {
-          from: "concepts",             // concepts collection
-          localField: "_id",            // Subject._id
-          foreignField: "subjectId",    // Concept.subjectId
-          as: "concepts",
-        },
+          from: "concepts",
+          localField: "_id",
+          foreignField: "subjectId",
+          as: "concepts"
+        }
       },
+
+      // 2) extract conceptIds
       {
         $addFields: {
-          conceptCount: { $size: "$concepts" }, // count concepts
-        },
+          conceptIds: {
+            $map: { input: "$concepts", as: "c", in: "$$c._id" }
+          }
+        }
       },
+
+      // 3) lookup approved comics matching those conceptIds
+      {
+        $lookup: {
+          from: "comics",
+          let: { cids: "$conceptIds" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$conceptId", "$$cids"] },
+                    { $eq: ["$status", "approved"] }
+                  ]
+                }
+              }
+            },
+            { $group: { _id: "$conceptId" } } // unique concepts only
+          ],
+          as: "approvedConcepts"
+        }
+      },
+
+      // 4) count approved concepts
+      {
+        $addFields: {
+          conceptCount: { $size: "$approvedConcepts" }
+        }
+      },
+
+      // 5) clean up
       {
         $project: {
-          concepts: 0, // full concept array nahi bhejna, sirf count
-        },
-      },
+          concepts: 0,
+          conceptIds: 0,
+          approvedConcepts: 0
+        }
+      }
     ]);
 
     res.json(subjects);
@@ -82,59 +152,6 @@ const getAllSubjects = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
-
-
-// const getAllSubjects = async (req, res) => {
-//   try {
-//     const data = await Subject.aggregate([
-//       {
-//         $lookup: {
-//           from: "concepts",
-//           localField: "_id",
-//           foreignField: "subjectId",
-//           as: "concepts"
-//         }
-//       },
-//       {
-//         $lookup: {
-//           from: "comics",
-//           localField: "concepts._id",
-//           foreignField: "conceptId",
-//           as: "relatedComics"
-//         }
-//       },
-//       {
-//         $project: {
-//           name: 1,
-//           conceptCount: {
-//             $size: {
-//               $filter: {
-//                 input: "$relatedComics",
-//                 as: "comic",
-//                 cond: { $eq: ["$$comic.status", "approved"] }
-//               }
-//             }
-//           },
-//           concepts: {
-//             _id: 1,
-//             name: 1
-//           },
-//           relatedComics: {
-//             _id: 1,
-//             title: 1,
-//             status: 1,
-//             conceptId: 1
-//           }
-//         }
-//       }
-//     ]);
-
-//     res.json(data);
-//   } catch (err) {
-//     console.error("Debug error:", err);
-//     res.status(500).json({ error: "Failed to debug" });
-//   }
-// };
 
 
 
