@@ -48,10 +48,41 @@ const createSubject = async (req, res) => {
   }
 };
 
+// const getAllSubjects = async (req, res) => {
+//   const subjects = await Subject.find();
+//   res.json(subjects);
+// };
+
 const getAllSubjects = async (req, res) => {
-  const subjects = await Subject.find();
-  res.json(subjects);
+  try {
+    const subjects = await Subject.aggregate([
+      {
+        $lookup: {
+          from: "concepts",             // concepts collection
+          localField: "_id",            // Subject._id
+          foreignField: "subjectId",    // Concept.subjectId
+          as: "concepts",
+        },
+      },
+      {
+        $addFields: {
+          conceptCount: { $size: "$concepts" }, // count concepts
+        },
+      },
+      {
+        $project: {
+          concepts: 0, // full concept array nahi bhejna, sirf count
+        },
+      },
+    ]);
+
+    res.json(subjects);
+  } catch (err) {
+    console.error("Error fetching subjects with counts:", err);
+    res.status(500).json({ error: "Failed to fetch subjects" });
+  }
 };
+
 
 
 const deleteSubject = async (req, res) => {
