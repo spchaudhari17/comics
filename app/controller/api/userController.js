@@ -727,6 +727,103 @@ const deletePic = async (req, res) => {
 };
 
 
+
+// const profileDetails = async (req, res) => {
+//     try {
+//         let userId = req.user.login_data._id;
+
+//         // ✅ User profile basic info
+//         const userDetails = await Users.aggregate([
+//             {
+//                 $match: { _id: new mongoose.Types.ObjectId(userId) }
+//             },
+//             {
+//                 $project: {
+//                     _id: 1,
+//                     email: 1,
+//                     username: 1,
+//                     email_verified_at: 1,
+//                     profile_pic: 1,
+//                     created_at: "$createdAt",
+//                     updated_at: "$updatedAt"
+//                 }
+//             }
+//         ]);
+
+//         if (!userDetails || userDetails.length === 0) {
+//             return res.send({
+//                 error: true,
+//                 status: 201,
+//                 message: "User not found",
+//                 message_desc: "No user found with this id",
+//                 data: {}
+//             });
+//         }
+
+//         // Total quizzes taken
+//         const totalQuizzesTaken = await QuizSubmission.countDocuments({ userId });
+
+//         // Comics completed (unique comicId from quizzes attempted)
+//         const comicsCompleted = await QuizSubmission.aggregate([
+//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+//             {
+//                 $lookup: {
+//                     from: "quizzes", // collection name of Quiz
+//                     localField: "quizId",
+//                     foreignField: "_id",
+//                     as: "quizData"
+//                 }
+//             },
+//             { $unwind: "$quizData" },
+//             {
+//                 $group: {
+//                     _id: "$quizData.comicId"
+//                 }
+//             }
+//         ]);
+
+//         const numberOfComicsCompleted = comicsCompleted.length;
+
+
+//         const submissions = await QuizSubmission.find({ userId });
+//         let correctAnswers = 0;
+//         submissions.forEach(sub => {
+//             sub.answers.forEach(ans => {
+//                 if (ans.isCorrect) correctAnswers++;
+//             });
+//         });
+//         const totalCoinsEarned = correctAnswers;
+
+
+
+
+//         const profile = {
+//             ...userDetails[0],
+//             number_of_comics_completed: numberOfComicsCompleted,
+//             total_quizzes_taken: totalQuizzesTaken,
+//             total_coins_earned: totalCoinsEarned,
+//             total_gems_earned: 0
+//         };
+
+//         return res.send({
+//             error: false,
+//             status: 200,
+//             message: "Success.",
+//             message_desc: "Success",
+//             data: profile
+//         });
+//     } catch (e) {
+//         return res.send({
+//             error: true,
+//             status: 500,
+//             message: "Something went wrong.",
+//             message_desc: "Unhandled exception: " + e,
+//             data: {}
+//         });
+//     }
+// };
+
+
 const profileDetails = async (req, res) => {
     try {
         let userId = req.user.login_data._id;
@@ -759,15 +856,19 @@ const profileDetails = async (req, res) => {
             });
         }
 
-        // Total quizzes taken
-        const totalQuizzesTaken = await QuizSubmission.countDocuments({ userId });
+        // ✅ Total unique quizzes attempted (not counting repeats)
+        const quizzesTaken = await QuizSubmission.aggregate([
+            { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+            { $group: { _id: "$quizId" } }
+        ]);
+        const totalQuizzesTaken = quizzesTaken.length;
 
-        // Comics completed (unique comicId from quizzes attempted)
+        // ✅ Comics completed (unique comicId from attempted quizzes)
         const comicsCompleted = await QuizSubmission.aggregate([
             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
             {
                 $lookup: {
-                    from: "quizzes", // collection name of Quiz
+                    from: "quizzes", // Quiz collection name
                     localField: "quizId",
                     foreignField: "_id",
                     as: "quizData"
@@ -780,10 +881,9 @@ const profileDetails = async (req, res) => {
                 }
             }
         ]);
-
         const numberOfComicsCompleted = comicsCompleted.length;
 
-
+        // ✅ Total coins earned = total correct answers
         const submissions = await QuizSubmission.find({ userId });
         let correctAnswers = 0;
         submissions.forEach(sub => {
@@ -793,15 +893,13 @@ const profileDetails = async (req, res) => {
         });
         const totalCoinsEarned = correctAnswers;
 
-
-
-
+        // ✅ Final profile response
         const profile = {
             ...userDetails[0],
             number_of_comics_completed: numberOfComicsCompleted,
             total_quizzes_taken: totalQuizzesTaken,
             total_coins_earned: totalCoinsEarned,
-            total_gems_earned: 0
+            total_gems_earned: 0 // agar future me logic aayega to update karna
         };
 
         return res.send({
@@ -812,6 +910,7 @@ const profileDetails = async (req, res) => {
             data: profile
         });
     } catch (e) {
+        console.error("Profile Details Error:", e);
         return res.send({
             error: true,
             status: 500,
@@ -821,6 +920,7 @@ const profileDetails = async (req, res) => {
         });
     }
 };
+
 
 
 const deleteAccount =  async (req, res) => {
