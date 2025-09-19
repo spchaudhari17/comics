@@ -17,6 +17,153 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+// old working
+// const refinePrompt = async (req, res) => {
+//     const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
+
+//     try {
+//         // Fetch theme + style prompts
+//         const theme = await Theme.findById(themeId);
+//         const style = await Style.findById(styleId);
+
+//         if (!theme || !style) {
+//             return res.status(400).json({ error: "Invalid theme or style" });
+//         }
+
+//         // *********** Concept handling ***********
+//         const cleanConcept = concept.trim();
+
+//         const existingComic = await Comic.findOne({ concept: cleanConcept })
+//             .populate("subjectId", "name");
+
+//         if (existingComic) {
+//             return res.status(200).json({
+//                 alreadyExists: true,
+//                 comic: {
+//                     id: existingComic._id,
+//                     country: existingComic.country,
+//                     grade: existingComic.grade,
+//                     subject: existingComic.subjectId?.name,
+//                     title: existingComic.title,
+//                     concept: existingComic.concept,
+//                     pdfUrl: existingComic.pdfUrl || null,
+//                 },
+//             });
+//         }
+
+//         // Create new Concept if not already saved
+//         let conceptDoc = await Concept.findOne({ name: cleanConcept });
+//         if (!conceptDoc) {
+//             conceptDoc = await Concept.create({ name: cleanConcept, subjectId:subjectId });
+//         }
+//         const conceptId = conceptDoc._id;
+
+//         const wrappedStory = `
+// Analyse the prompt given below and check whether the concept is small enough 
+// to have it explained properly and in detail in an 8-10 page comic, 
+// if not, then divide the following concept into smaller chunks which can be converted into comics. 
+// Give the answer in part wise format and mention the key terms to be introduced, 
+// define the start and the end point of the concept: ${story}
+// `;
+
+//         const promptText = `
+// You are an expert comic prompt engineer.
+
+// Theme Instructions:
+// ${theme.prompt}
+
+// Style Instructions:
+// ${style.prompt}
+
+// Comic Title: ${title}
+// Author: ${author}
+// Subject: ${subject}
+
+// Story:
+// ${wrappedStory}
+
+// ⚠️ Output rules (MUST follow):
+// - Return ONLY valid JSON.
+// - Do NOT include markdown fences (no \`\`\`).
+// - Do NOT include comments or extra text.
+// - Every key must be in double quotes.
+// - Every string must be in double quotes.
+// - No trailing commas.
+
+// Format:
+// [
+//   {
+//     "page": 1,
+//     "panels": [
+//       {
+//         "scene": "Describe the visual scene",
+//         "caption": "Narrator text (or empty string if none)",
+//         "dialogue": [
+//           { "character": "Name", "text": "Exact speech bubble text" }
+//         ]
+//       }
+//     ]
+//   }
+// ]
+// `;
+
+//         const response = await openai.chat.completions.create({
+//             // model: "gpt-3.5-turbo",
+//             model: "gpt-4o",
+//             messages: [
+//                 {
+//                     role: "system",
+//                     content:
+//                         "You are a strict JSON generator. Always return ONLY valid JSON that can be parsed with JSON.parse.",
+//                 },
+//                 { role: "user", content: promptText },
+//             ],
+//             temperature: 0.5,
+//             max_tokens: 2000,
+//         });
+
+//         let raw = response.choices[0].message.content.trim();
+
+//         if (raw.startsWith("```")) {
+//             raw = raw.replace(/```json|```/g, "").trim();
+//         }
+
+//         let pages;
+//         try {
+//             pages = JSON.parse(raw);
+//         } catch (err) {
+//             console.error("JSON parse failed:", err.message);
+//             return res
+//                 .status(500)
+//                 .json({ error: "Failed to parse JSON output", details: err.message });
+//         }
+
+//         // Save in DB
+//         const comic = await Comic.create({
+//             user_id: req.user.login_data._id,
+//             title,
+//             author,
+//             subject,
+//             story,
+//             themeId,
+//             styleId,
+//             subjectId,
+//             concept: cleanConcept, // string
+//             conceptId,
+//             country,
+//             grade,
+//             prompt: JSON.stringify(pages), // save refined prompt
+//             comicStatus: "draft",
+//         });
+
+//         res.json({ comicId: comic._id, pages });
+//     } catch (error) {
+//         console.error("Error generating prompts:", error);
+//         res.status(500).json({ error: "Prompt generation failed" });
+//     }
+// };
+
+
 
 const refinePrompt = async (req, res) => {
     const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
@@ -54,10 +201,11 @@ const refinePrompt = async (req, res) => {
         // Create new Concept if not already saved
         let conceptDoc = await Concept.findOne({ name: cleanConcept });
         if (!conceptDoc) {
-            conceptDoc = await Concept.create({ name: cleanConcept, subjectId:subjectId });
+            conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
         }
         const conceptId = conceptDoc._id;
 
+        // *********** Story Wrapping ***********
         const wrappedStory = `
 Analyse the prompt given below and check whether the concept is small enough 
 to have it explained properly and in detail in an 8-10 page comic, 
@@ -66,6 +214,19 @@ Give the answer in part wise format and mention the key terms to be introduced,
 define the start and the end point of the concept: ${story}
 `;
 
+        // *********** Grade Instructions ***********
+        let gradeInstruction = "";
+        if (grade) {
+            gradeInstruction = `
+When creating the comic, you MUST adapt the tone, difficulty, and language 
+to suit a ${grade} student. 
+- For lower grades (K–5), keep text simple, playful, and use child-friendly visuals.
+- For middle grades (6–8), balance fun visuals with basic explanations.
+- For higher grades (9–12), use more detailed explanations, real-world references, and slightly mature language.
+`;
+        }
+
+        // *********** Final Prompt ***********
         const promptText = `
 You are an expert comic prompt engineer.
 
@@ -74,6 +235,8 @@ ${theme.prompt}
 
 Style Instructions:
 ${style.prompt}
+
+${gradeInstruction}
 
 Comic Title: ${title}
 Author: ${author}
@@ -93,6 +256,7 @@ ${wrappedStory}
 Format:
 [
   {
+
     "page": 1,
     "panels": [
       {
@@ -107,14 +271,13 @@ Format:
 ]
 `;
 
+        // *********** OpenAI Call ***********
         const response = await openai.chat.completions.create({
-            // model: "gpt-3.5-turbo",
-            model: "gpt-4o",
+            model: "gpt-4o", // Faster + better for JSON outputs
             messages: [
                 {
                     role: "system",
-                    content:
-                        "You are a strict JSON generator. Always return ONLY valid JSON that can be parsed with JSON.parse.",
+                    content: "You are a strict JSON generator. Always return ONLY valid JSON that can be parsed with JSON.parse.",
                 },
                 { role: "user", content: promptText },
             ],
@@ -138,7 +301,7 @@ Format:
                 .json({ error: "Failed to parse JSON output", details: err.message });
         }
 
-        // Save in DB
+        // *********** Save in DB ***********
         const comic = await Comic.create({
             user_id: req.user.login_data._id,
             title,
@@ -159,126 +322,11 @@ Format:
         res.json({ comicId: comic._id, pages });
     } catch (error) {
         console.error("Error generating prompts:", error);
-        res.status(500).json({ error: "Prompt generation failed" });
+        res.status(500).json({ error: "Prompt generation failed", details: error.message });
     }
 };
 
 
-// old working fine
-// const generateComicImage = async (req, res) => {
-//     const { comicId, pages } = req.body;
-
-//     try {
-//         const characterReferences = {};
-
-//         const imageUrls = await Promise.all(
-//             pages.map(async (page) => {
-//                 // Build per-panel text for prompt
-//                 const pagePrompt = page.panels
-//                     .map((p, idx) => {
-//                         let dialogueText = p.dialogue
-//                             .map((d) => {
-//                                 // If we already have a reference for this character, note it
-//                                 if (!characterReferences[d.character]) {
-//                                     characterReferences[d.character] = null; // mark as to be saved
-//                                 }
-//                                 return `${d.character}: "${d.text}"`;
-//                             })
-//                             .join(" ");
-//                         return `Panel ${idx + 1}: Scene: ${p.scene}. Caption: ${p.caption}. Dialogue: ${dialogueText}`;
-//                     })
-//                     .join("\n");
-
-//                 // Build prompt including references for already generated characters
-//                 let referencesText = "";
-//                 for (const [character, refUrl] of Object.entries(characterReferences)) {
-//                     if (refUrl) {
-//                         referencesText += `Use this reference image for ${character}: ${refUrl}\n`;
-//                     } else {
-//                         referencesText += `Generate ${character} consistently across all pages.\n`;
-//                     }
-//                 }
-
-//                 const fullPrompt = `
-// A comic page with ${page.panels.length} vertical panels.
-// Style: realistic hand-drawn comic illustration with thin ink outlines and soft watercolor tones.
-// ${referencesText}
-// Panels:
-// ${pagePrompt}
-// `;
-
-//                 // Generate Image
-//                 const imageResponse = await openai.images.generate({
-//                     // model: "gpt-image-1",
-//                     model: "dall-e-3",
-//                     prompt: fullPrompt,
-//                     // size: "1024x1536",
-//                     size: "1024x1792", // dall-e-3
-//                     n: 1,
-//                 });
-
-//                 if (!imageResponse.data || !imageResponse.data[0]) {
-//                     throw new Error(`Image generation failed for page ${page.page}`);
-//                 }
-
-//                 const imgData = imageResponse.data[0];
-//                 let buffer;
-
-
-//                 if (imgData.url) {
-//                     const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
-//                     buffer = Buffer.from(response.data);
-//                 } else if (imgData.b64_json) {
-//                     buffer = Buffer.from(imgData.b64_json, "base64");
-//                 }
-
-
-//                 buffer = await sharp(buffer)
-//                     .resize({ width: 1024 })
-//                     .jpeg({ quality: 75 })
-//                     .toBuffer();
-
-//                 const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
-
-//                 // Upload to S3
-//                 const s3Upload = await upload_files("comics", {
-//                     name: fileName,
-//                     data: buffer,
-//                     mimetype: "image/jpeg",
-//                 });
-
-//                 const imageUrl = s3Upload;
-//                 const s3Key = `comics/${fileName}`;
-
-//                 // Save ComicPage in DB
-//                 await ComicPage.create({
-//                     comicId,
-//                     user_id: req.user.login_data._id,
-//                     pageNumber: page.page,
-//                     panels: page.panels,
-//                     imageUrl,
-//                     s3Key,
-//                 });
-
-//                 // Save first appearance reference for each character
-//                 page.panels.forEach((panel) => {
-//                     panel.dialogue.forEach((d) => {
-//                         if (!characterReferences[d.character]) {
-//                             characterReferences[d.character] = imageUrl;
-//                         }
-//                     });
-//                 });
-
-//                 return { page: page.page, imageUrl };
-//             })
-//         );
-
-//         res.json({ comicId, images: imageUrls });
-//     } catch (error) {
-//         console.error("Image API Error:", error);
-//         res.status(500).json({ error: "Image generation failed", details: error.message });
-//     }
-// };
 
 
 const generateComicImage = async (req, res) => {

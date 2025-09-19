@@ -4,7 +4,8 @@ const { ObjectId } = Schema.Types
 
 const DidYouKnowSchema = new mongoose.Schema({
   comicId: { type: ObjectId, ref: "Comic" },
-  fact: String
+  fact: { type: String },
+  imageUrl: { type: String },
 }, { timestamps: true });
 
 module.exports = mongoose.model("DidYouKnow", DidYouKnowSchema);

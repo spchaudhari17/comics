@@ -77,7 +77,7 @@ router.get("/user/concepts/:conceptId/comics", getComicsByConcept);
 
 router.get("/admin/comics", authentication, listAllComicsAdmin);
 router.post("/admin/comics/status", authentication, approveComicStatusAdmin);
-router.get("/admin/users", getAllUsers);
+router.get("/admin/getAllUsers", getAllUsers);
 
 //******************************** quiz routes routes started from here ***************************** */
 
