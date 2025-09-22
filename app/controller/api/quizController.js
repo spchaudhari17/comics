@@ -7,6 +7,7 @@ const PDFDocument = require("pdfkit");
 const Quiz = require("../../models/Quiz");
 const QuizQuestion = require("../../models/QuizQuestion");
 const Comic = require("../../models/Comic");
+const QuizSubmission = require("../../models/QuizSubmission");
 
 
 
@@ -193,17 +194,48 @@ const generateQuiz = async (req, res) => {
 
 
 
+// const getQuizByComic = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
+
+//         if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+
+//         res.json({ quiz });
+//     } catch (error) {
+//         res.status(500).json({ error: "Failed to fetch quiz" });
+//     }
+// };
+
+
 const getQuizByComic = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
+  try {
+    const { id } = req.params;       // comicId
+    const {userId} = req.params     // userId
 
-        if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+    // Quiz nikalna
+    const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
+    if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
-        res.json({ quiz });
-    } catch (error) {
-        res.status(500).json({ error: "Failed to fetch quiz" });
+    // Check agar user ne attempt kiya hai
+    let hasAttempted = false;
+    if (userId) {
+      const submission = await QuizSubmission.findOne({
+        quizId: quiz._id,
+        userId: userId,
+      });
+
+      hasAttempted = !!submission;
     }
+
+    res.json({
+      quiz,
+      hasAttempted, 
+    });
+  } catch (error) {
+    console.error("Error fetching quiz:", error);
+    res.status(500).json({ error: "Failed to fetch quiz" });
+  }
 };
 
 

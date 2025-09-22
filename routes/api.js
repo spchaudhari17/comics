@@ -84,7 +84,7 @@ router.get("/admin/getAllUsers", getAllUsers);
 //******************************** quiz routes routes started from here ***************************** */
 
 router.post("/user/generate-quiz", authentication, generateQuiz);
-router.get("/user/comic/:id/quiz", getQuizByComic);
+router.get("/user/comic/:id/quiz/:userId", getQuizByComic);
 router.post("/user/quiz/publish", authentication, publishQuiz);
 
 
