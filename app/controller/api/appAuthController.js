@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL;
 
 
 const signupWithUsername = async (req, res) => {
-    let { firstname = '', lastname = '', password = '', username = '', age = null } = req.body;
+    let { firstname = '', lastname = '', password = '', username = '', age = null, grade='' } = req.body;
 
     if (username.trim() === '') {
         return res.send({ error: true, status: 201, message: "Username is required." });
@@ -37,6 +37,7 @@ const signupWithUsername = async (req, res) => {
             username: username.trim().toLowerCase(),
             password: passwordHash,
             age,
+            grade,
             is_verify: 1  // ✅ App flow mein OTP skip
         });
 

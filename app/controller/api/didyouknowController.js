@@ -166,9 +166,9 @@ Make it engaging, colorful, consistent with comic style.
 `;
 
         const imageResponse = await openai.images.generate({
-          model: "dall-e-3",
+          model: "gpt-image-1",
           prompt: imagePrompt,
-          size: "1024x1024",
+          size: "1024x1536",
           n: 1,
         });
 
