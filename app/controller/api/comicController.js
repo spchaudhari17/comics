@@ -13,6 +13,7 @@ const DidYouKnow = require("../../models/DidYouKnow");
 const Theme = require("../../models/Theme");
 const Style = require("../../models/Style");
 const ComicSeries = require("../../models/ComicSeries");
+const QuizSubmission = require("../../models/QuizSubmission");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -315,6 +316,119 @@ Format:
 
 
 
+// const generateComicImage = async (req, res) => {
+//     const { comicId, pages } = req.body;
+
+//     try {
+//         const comic = await Comic.findById(comicId).populate("styleId");
+//         if (!comic) {
+//             return res.status(404).json({ error: "Comic not found" });
+//         }
+
+//         const stylePrompt = comic.styleId.prompt; // use style prompt from DB
+//         const characterReferences = {};
+
+//         const imageUrls = await Promise.all(
+//             pages.map(async (page) => {
+//                 const pagePrompt = page.panels
+//                     .map((p, idx) => {
+//                         let dialogueText = p.dialogue
+//                             .map((d) => {
+//                                 if (!characterReferences[d.character]) {
+//                                     characterReferences[d.character] = null;
+//                                 }
+//                                 return `${d.character}: "${d.text}"`;
+//                             })
+//                             .join(" ");
+//                         return `Panel ${idx + 1}: Scene: ${p.scene}. Caption: ${p.caption}. Dialogue: ${dialogueText}`;
+//                     })
+//                     .join("\n");
+
+//                 let referencesText = "";
+//                 for (const [character, refUrl] of Object.entries(characterReferences)) {
+//                     if (refUrl) {
+//                         referencesText += `Use this reference image for ${character}: ${refUrl}\n`;
+//                     } else {
+//                         referencesText += `Generate ${character} consistently across all pages.\n`;
+//                     }
+//                 }
+
+//                 const fullPrompt = `
+// A comic page with ${page.panels.length} vertical panels.
+// ${stylePrompt}
+// ${referencesText}
+// Panels:
+// ${pagePrompt}
+// `;
+
+//                 const imageResponse = await openai.images.generate({
+//                     model: "dall-e-3",
+//                     // model: "gpt-image-1",
+//                     prompt: fullPrompt,
+//                     // size: "1024x1536", // 
+//                     size: "1024x1792", // dall-e-3
+//                     n: 1,
+//                 });
+
+//                 if (!imageResponse.data || !imageResponse.data[0]) {
+//                     throw new Error(`Image generation failed for page ${page.page}`);
+//                 }
+
+//                 const imgData = imageResponse.data[0];
+//                 let buffer;
+
+//                 if (imgData.url) {
+//                     const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
+//                     buffer = Buffer.from(response.data);
+//                 } else if (imgData.b64_json) {
+//                     buffer = Buffer.from(imgData.b64_json, "base64");
+//                 }
+
+//                 buffer = await sharp(buffer)
+//                     .resize({ width: 1024 })
+//                     .jpeg({ quality: 75 })
+//                     .toBuffer();
+
+//                 const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
+
+//                 const s3Upload = await upload_files("comics", {
+//                     name: fileName,
+//                     data: buffer,
+//                     mimetype: "image/jpeg",
+//                 });
+
+//                 const imageUrl = s3Upload;
+//                 const s3Key = `comics/${fileName}`;
+
+//                 await ComicPage.create({
+//                     comicId,
+//                     user_id: req.user.login_data._id,
+//                     pageNumber: page.page,
+//                     panels: page.panels,
+//                     imageUrl,
+//                     s3Key,
+//                 });
+
+//                 page.panels.forEach((panel) => {
+//                     panel.dialogue.forEach((d) => {
+//                         if (!characterReferences[d.character]) {
+//                             characterReferences[d.character] = imageUrl;
+//                         }
+//                     });
+//                 });
+
+//                 return { page: page.page, imageUrl };
+//             })
+//         );
+
+//         res.json({ comicId, images: imageUrls });
+//     } catch (error) {
+//         console.error("Image API Error:", error);
+//         res.status(500).json({ error: "Image generation failed", details: error.message });
+//     }
+// };
+
+
 const generateComicImage = async (req, res) => {
     const { comicId, pages } = req.body;
 
@@ -327,6 +441,17 @@ const generateComicImage = async (req, res) => {
         const stylePrompt = comic.styleId.prompt; // use style prompt from DB
         const characterReferences = {};
 
+        // ✅ sanitize function
+        const sanitizeText = (text) => {
+            if (!text) return "";
+            return text
+                .replace(/["“”]/g, "") // remove quotes
+                .replace(/\bclown\b/gi, "funny character")
+                .replace(/\bmystery\b/gi, "puzzle")
+                .replace(/\bdetective\b/gi, "problem solver")
+                .replace(/\bcrime\b/gi, "problem"); // optional safe replacement
+        };
+
         const imageUrls = await Promise.all(
             pages.map(async (page) => {
                 const pagePrompt = page.panels
@@ -336,24 +461,26 @@ const generateComicImage = async (req, res) => {
                                 if (!characterReferences[d.character]) {
                                     characterReferences[d.character] = null;
                                 }
-                                return `${d.character}: "${d.text}"`;
+                                return `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`;
                             })
                             .join(" ");
-                        return `Panel ${idx + 1}: Scene: ${p.scene}. Caption: ${p.caption}. Dialogue: ${dialogueText}`;
+                        return `Panel ${idx + 1}: Scene: ${sanitizeText(p.scene)}. Caption: ${sanitizeText(p.caption)}. Dialogue: ${dialogueText}`;
                     })
                     .join("\n");
 
                 let referencesText = "";
                 for (const [character, refUrl] of Object.entries(characterReferences)) {
                     if (refUrl) {
-                        referencesText += `Use this reference image for ${character}: ${refUrl}\n`;
+                        referencesText += `Use this reference image for ${sanitizeText(character)}: ${refUrl}\n`;
                     } else {
-                        referencesText += `Generate ${character} consistently across all pages.\n`;
+                        referencesText += `Generate ${sanitizeText(character)} consistently across all pages.\n`;
                     }
                 }
 
+                // ✅ safe prompt
                 const fullPrompt = `
-A comic page with ${page.panels.length} vertical panels.
+Educational kid-friendly comic page with ${page.panels.length} vertical panels.
+Safe for children, no violence, no unsafe content.
 ${stylePrompt}
 ${referencesText}
 Panels:
@@ -362,10 +489,8 @@ ${pagePrompt}
 
                 const imageResponse = await openai.images.generate({
                     model: "dall-e-3",
-                    // model: "gpt-image-1",
                     prompt: fullPrompt,
-                    // size: "1024x1536", // 
-                    size: "1024x1792", // dall-e-3
+                    size: "1024x1792",
                     n: 1,
                 });
 
@@ -399,14 +524,20 @@ ${pagePrompt}
                 const imageUrl = s3Upload;
                 const s3Key = `comics/${fileName}`;
 
-                await ComicPage.create({
-                    comicId,
-                    user_id: req.user.login_data._id,
-                    pageNumber: page.page,
-                    panels: page.panels,
-                    imageUrl,
-                    s3Key,
-                });
+                await ComicPage.findOneAndUpdate(
+                    { comicId, pageNumber: page.page }, // find existing page for same comic
+                    {
+                        comicId,
+                        user_id: req.user.login_data._id,
+                        pageNumber: page.page,
+                        panels: page.panels,
+                        imageUrl,
+                        s3Key,
+                        createdAt: new Date()
+                    },
+                    { upsert: true, new: true, setDefaultsOnInsert: true }
+                );
+
 
                 page.panels.forEach((panel) => {
                     panel.dialogue.forEach((d) => {
@@ -426,6 +557,7 @@ ${pagePrompt}
         res.status(500).json({ error: "Image generation failed", details: error.message });
     }
 };
+
 
 
 
@@ -584,6 +716,7 @@ const listComics = async (req, res) => {
         res.status(500).json({ error: "Failed to list comics" });
     }
 };
+
 
 
 

@@ -2,7 +2,9 @@ const { upload_files, deleteFiles } = require("../../../helper/helper");
 const Comic = require("../../models/Comic");
 const Subject = require("../../models/Subject");
 const sharp = require("sharp");
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
+const Quiz = require("../../models/Quiz");
+const QuizSubmission = require("../../models/QuizSubmission");
 
 const createSubject = async (req, res) => {
   try {
@@ -297,12 +299,120 @@ const getConceptsBySubject = async (req, res) => {
 
 
 
+// const getComicsByConcept = async (req, res) => {
+//   try {
+//     const conceptId = req.params.conceptId;
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const skip = (page - 1) * limit;
+
+//     const comics = await Comic.aggregate([
+//       {
+//         $match: {
+//           status: "approved",
+//           conceptId: new mongoose.Types.ObjectId(conceptId),
+//         },
+//       },
+
+//       // latest pehle
+//       { $sort: { createdAt: -1 } },
+
+//       // pagination apply
+//       { $skip: skip },
+//       { $limit: limit },
+
+//       // FAQs join
+//       {
+//         $lookup: {
+//           from: "faqs",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "faqs",
+//         },
+//       },
+//       // Subjects join
+//       {
+//         $lookup: {
+//           from: "subjects",
+//           localField: "subjectId",
+//           foreignField: "_id",
+//           as: "subjectData",
+//         },
+//       },
+//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
+
+//       // DidYouKnow join
+//       {
+//         $lookup: {
+//           from: "didyouknows",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "facts",
+//         },
+//       },
+
+//       // Pages join for thumbnail
+//       {
+//         $lookup: {
+//           from: "comicpages",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "pages",
+//         },
+//       },
+
+//       // extra fields
+//       {
+//         $addFields: {
+//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
+//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
+//           subjectId: "$subjectData._id",
+//           subject: "$subjectData.name",
+//         },
+//       },
+
+//       // unnecessary arrays remove
+//       {
+//         $project: {
+//           faqs: 0,
+//           facts: 0,
+//           pages: 0,
+//           subjectData: 0,
+//           prompt: 0,
+//         },
+//       },
+//     ]);
+
+//     // total count for pagination
+//     const totalComics = await Comic.countDocuments({
+//       status: "approved",
+//       conceptId: new mongoose.Types.ObjectId(conceptId),
+//     });
+
+//     res.json({
+//       conceptId,
+//       page,
+//       limit,
+//       totalPages: Math.ceil(totalComics / limit),
+//       totalComics,
+//       comics,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching comics by concept:", error);
+//     res.status(500).json({ error: "Failed to fetch comics" });
+//   }
+// };
+
+
 const getComicsByConcept = async (req, res) => {
   try {
     const conceptId = req.params.conceptId;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+
+    const userId = req.query.userId; // 👈 user identify
 
     const comics = await Comic.aggregate([
       {
@@ -311,15 +421,10 @@ const getComicsByConcept = async (req, res) => {
           conceptId: new mongoose.Types.ObjectId(conceptId),
         },
       },
-
-      // latest pehle
       { $sort: { createdAt: -1 } },
-
-      // pagination apply
       { $skip: skip },
       { $limit: limit },
 
-      // FAQs join
       {
         $lookup: {
           from: "faqs",
@@ -328,7 +433,6 @@ const getComicsByConcept = async (req, res) => {
           as: "faqs",
         },
       },
-      // Subjects join
       {
         $lookup: {
           from: "subjects",
@@ -339,7 +443,6 @@ const getComicsByConcept = async (req, res) => {
       },
       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
 
-      // DidYouKnow join
       {
         $lookup: {
           from: "didyouknows",
@@ -348,8 +451,6 @@ const getComicsByConcept = async (req, res) => {
           as: "facts",
         },
       },
-
-      // Pages join for thumbnail
       {
         $lookup: {
           from: "comicpages",
@@ -358,8 +459,6 @@ const getComicsByConcept = async (req, res) => {
           as: "pages",
         },
       },
-
-      // extra fields
       {
         $addFields: {
           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
@@ -369,8 +468,6 @@ const getComicsByConcept = async (req, res) => {
           subject: "$subjectData.name",
         },
       },
-
-      // unnecessary arrays remove
       {
         $project: {
           faqs: 0,
@@ -382,7 +479,31 @@ const getComicsByConcept = async (req, res) => {
       },
     ]);
 
-    // total count for pagination
+    // ✅ hasAttempted check karna
+    if (userId) {
+      const comicIds = comics.map((c) => c._id);
+
+      // quizzes nikal lo for these comics
+      const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+
+      const submissions = await QuizSubmission.find(
+        {
+          quizId: { $in: quizzes.map((q) => q._id) },
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+        "quizId"
+      );
+
+      const attemptedQuizIds = new Set(submissions.map((s) => s.quizId.toString()));
+
+      comics.forEach((comic) => {
+        const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
+        comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
+      });
+    } else {
+      comics.forEach((comic) => (comic.hasAttempted = false));
+    }
+
     const totalComics = await Comic.countDocuments({
       status: "approved",
       conceptId: new mongoose.Types.ObjectId(conceptId),
@@ -401,7 +522,6 @@ const getComicsByConcept = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch comics" });
   }
 };
-
 
 
 
