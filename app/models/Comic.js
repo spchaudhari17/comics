@@ -3,6 +3,9 @@ const { Schema } = require("mongoose");
 const { ObjectId } = Schema.Types
 
 const comicSchema = new mongoose.Schema({
+  seriesId: { type: ObjectId, ref: "ComicSeries" }, // NEW
+  partNumber: { type: Number }, // NEW
+
   user_id: { type: ObjectId, ref: "users" },
   themeId: { type: ObjectId, ref: "Theme" },
   styleId: { type: ObjectId, ref: "Style" },
@@ -13,6 +16,7 @@ const comicSchema = new mongoose.Schema({
 
   concept: { type: String, trim: true },
   conceptId: { type: mongoose.Schema.Types.ObjectId, ref: "Concept" },
+
   story: { type: String, required: true },
   thumbnailUrl: { type: String },
   prompt: { type: String, required: true },

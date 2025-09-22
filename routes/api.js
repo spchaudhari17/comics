@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin } = require('../app/controller/api/admin/adminComicController');
@@ -30,10 +30,10 @@ router.post('/user/verify_otp', verify_otp)
 router.post('/user/submitPassword', submitPassword)
 router.post('/user/test', test)
 //******************************** Authentication started from here ***************************** */
-router.post('/user/updatePic',authentication, updatePic)
-router.post('/user/deletePic',authentication, deletePic)
-router.get('/user/getProfile',authentication, profileDetails)
-router.post('/user/deleteAccount',authentication, deleteAccount)
+router.post('/user/updatePic', authentication, updatePic)
+router.post('/user/deletePic', authentication, deletePic)
+router.get('/user/getProfile', authentication, profileDetails)
+router.post('/user/deleteAccount', authentication, deleteAccount)
 
 
 //******************************** Prompt routes started from here ***************************** */
@@ -50,6 +50,8 @@ router.post("/user/delete-subject", deleteSubject);
 router.get("/user/getallSubject", getAllSubjects);
 
 //******************************** Prompt routes started from here ***************************** */
+// router.post("/user/split", authentication, splitConcept)
+// router.post("/user/generateComicsFromConcept", authentication, generateComicsFromConcept)
 router.post("/user/refine-prompt", authentication, refinePrompt)
 router.post("/user/generate-comic", authentication, generateComicImage)
 router.post("/user/generateComicPDF", generateComicPDF)
@@ -66,7 +68,7 @@ router.get("/user/comic-didyouknow/:comicId", listDidYouKnow);
 
 router.get("/user/comics", listComics);
 router.get("/user/comics/:id", getComic);
-router.post("/user/deleteComic",authentication, deleteComic);
+router.post("/user/deleteComic", authentication, deleteComic);
 router.post("/user/submit-quiz", authentication, submitQuiz);
 
 router.get("/user/concepts-by-subject/:subjectId", getConceptsBySubject);

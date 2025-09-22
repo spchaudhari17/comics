@@ -51,9 +51,91 @@ const createSubject = async (req, res) => {
 
 
 
+// const getAllSubjects = async (req, res) => {
+//   try {
+//     const subjects = await Subject.aggregate([
+//       // 1) link subjects -> concepts
+//       {
+//         $lookup: {
+//           from: "concepts",
+//           localField: "_id",
+//           foreignField: "subjectId",
+//           as: "concepts"
+//         }
+//       },
+
+//       // 2) extract conceptIds
+//       {
+//         $addFields: {
+//           conceptIds: {
+//             $map: { input: "$concepts", as: "c", in: "$$c._id" }
+//           }
+//         }
+//       },
+
+//       // 3) lookup approved comics matching those conceptIds
+//       {
+//         $lookup: {
+//           from: "comics",
+//           let: { cids: "$conceptIds" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     { $in: ["$conceptId", "$$cids"] },
+//                     { $eq: ["$status", "approved"] }
+//                   ]
+//                 }
+//               }
+//             },
+//             { $group: { _id: "$conceptId" } } // unique concepts only
+//           ],
+//           as: "approvedConcepts"
+//         }
+//       },
+
+//       // 4) count approved concepts
+//       {
+//         $addFields: {
+//           conceptCount: { $size: "$approvedConcepts" }
+//         }
+//       },
+
+//       // 5) clean up
+//       {
+//         $project: {
+//           concepts: 0,
+//           conceptIds: 0,
+//           approvedConcepts: 0
+//         }
+//       }
+//     ]);
+
+//     res.json(subjects);
+//   } catch (err) {
+//     console.error("Error fetching subjects with counts:", err);
+//     res.status(500).json({ error: "Failed to fetch subjects" });
+//   }
+// };
+
+
 const getAllSubjects = async (req, res) => {
   try {
-    const subjects = await Subject.aggregate([
+    const { search } = req.query; // ?search=Math
+
+    const pipeline = [];
+
+    // 0) Search filter (agar search query hai to)
+    if (search) {
+      pipeline.push({
+        $match: {
+          name: { $regex: search, $options: "i" } // "name" field par search
+        }
+      });
+    }
+
+    pipeline.push(
       // 1) link subjects -> concepts
       {
         $lookup: {
@@ -110,7 +192,9 @@ const getAllSubjects = async (req, res) => {
           approvedConcepts: 0
         }
       }
-    ]);
+    );
+
+    const subjects = await Subject.aggregate(pipeline);
 
     res.json(subjects);
   } catch (err) {
@@ -118,8 +202,6 @@ const getAllSubjects = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
-
-
 
 
 
