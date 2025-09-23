@@ -459,8 +459,7 @@ const getComicsByConcept = async (req, res) => {
 // Save or update user subject priority
 const saveSubjectPriority = async (req, res) => {
   try {
-    // const userId = req.user?._id || req.body.userId; 
-    const userId = '689cb1ca766520d85d519370'
+    const userId = req.body.userId; 
     
     const { selectedSubjects } = req.body;
 
