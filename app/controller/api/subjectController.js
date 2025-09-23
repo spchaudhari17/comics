@@ -5,6 +5,7 @@ const sharp = require("sharp");
 const mongoose = require('mongoose');
 const Quiz = require("../../models/Quiz");
 const QuizSubmission = require("../../models/QuizSubmission");
+const UserSubjectPriority = require("../../models/UserSubjectPriority");
 
 const createSubject = async (req, res) => {
   try {
@@ -51,11 +52,22 @@ const createSubject = async (req, res) => {
 };
 
 
-
-
 // const getAllSubjects = async (req, res) => {
 //   try {
-//     const subjects = await Subject.aggregate([
+//     const { search } = req.query; // ?search=Math
+
+//     const pipeline = [];
+
+//     // 0) Search filter (agar search query hai to)
+//     if (search) {
+//       pipeline.push({
+//         $match: {
+//           name: { $regex: search, $options: "i" } // "name" field par search
+//         }
+//       });
+//     }
+
+//     pipeline.push(
 //       // 1) link subjects -> concepts
 //       {
 //         $lookup: {
@@ -112,7 +124,9 @@ const createSubject = async (req, res) => {
 //           approvedConcepts: 0
 //         }
 //       }
-//     ]);
+//     );
+
+//     const subjects = await Subject.aggregate(pipeline);
 
 //     res.json(subjects);
 //   } catch (err) {
@@ -124,15 +138,16 @@ const createSubject = async (req, res) => {
 
 const getAllSubjects = async (req, res) => {
   try {
-    const { search } = req.query; // ?search=Math
+    const { search } = req.query;
+    const userId =req.query.userId;
 
     const pipeline = [];
 
-    // 0) Search filter (agar search query hai to)
+    // 🔎 Search filter
     if (search) {
       pipeline.push({
         $match: {
-          name: { $regex: search, $options: "i" } // "name" field par search
+          name: { $regex: search, $options: "i" }
         }
       });
     }
@@ -196,7 +211,29 @@ const getAllSubjects = async (req, res) => {
       }
     );
 
-    const subjects = await Subject.aggregate(pipeline);
+    // 👇 fetch subjects
+    let subjects = await Subject.aggregate(pipeline);
+
+    // ✅ User priority apply karo
+    if (userId) {
+      const pref = await UserSubjectPriority.findOne({ userId });
+
+      if (pref?.selectedSubjects?.length > 0) {
+        const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+
+        // Pehle user ke selected subjects order maintain karke
+        const selectedSubjects = selectedIds
+          .map((id) => subjects.find((s) => s._id.toString() === id))
+          .filter(Boolean);
+
+        // Fir baki subjects
+        const remainingSubjects = subjects.filter(
+          (s) => !selectedIds.includes(s._id.toString())
+        );
+
+        subjects = [...selectedSubjects, ...remainingSubjects];
+      }
+    }
 
     res.json(subjects);
   } catch (err) {
@@ -297,112 +334,6 @@ const getConceptsBySubject = async (req, res) => {
   }
 };
 
-
-
-// const getComicsByConcept = async (req, res) => {
-//   try {
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-
-//     const comics = await Comic.aggregate([
-//       {
-//         $match: {
-//           status: "approved",
-//           conceptId: new mongoose.Types.ObjectId(conceptId),
-//         },
-//       },
-
-//       // latest pehle
-//       { $sort: { createdAt: -1 } },
-
-//       // pagination apply
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       // FAQs join
-//       {
-//         $lookup: {
-//           from: "faqs",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "faqs",
-//         },
-//       },
-//       // Subjects join
-//       {
-//         $lookup: {
-//           from: "subjects",
-//           localField: "subjectId",
-//           foreignField: "_id",
-//           as: "subjectData",
-//         },
-//       },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-
-//       // DidYouKnow join
-//       {
-//         $lookup: {
-//           from: "didyouknows",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "facts",
-//         },
-//       },
-
-//       // Pages join for thumbnail
-//       {
-//         $lookup: {
-//           from: "comicpages",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "pages",
-//         },
-//       },
-
-//       // extra fields
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subjectId: "$subjectData._id",
-//           subject: "$subjectData.name",
-//         },
-//       },
-
-//       // unnecessary arrays remove
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           pages: 0,
-//           subjectData: 0,
-//           prompt: 0,
-//         },
-//       },
-//     ]);
-
-//     // total count for pagination
-//     const totalComics = await Comic.countDocuments({
-//       status: "approved",
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     });
-
-//     res.json({
-//       conceptId,
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching comics by concept:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
 
 
 const getComicsByConcept = async (req, res) => {
@@ -525,4 +456,33 @@ const getComicsByConcept = async (req, res) => {
 
 
 
-module.exports = { createSubject, getAllSubjects, deleteSubject, getConceptsBySubject, getComicsByConcept };
+// Save or update user subject priority
+const saveSubjectPriority = async (req, res) => {
+  try {
+    // const userId = req.user?._id || req.body.userId; 
+    const userId = '689cb1ca766520d85d519370'
+    
+    const { selectedSubjects } = req.body;
+
+    if (!userId || !selectedSubjects || !Array.isArray(selectedSubjects)) {
+      return res.status(400).json({ error: "userId and selectedSubjects[] required" });
+    }
+
+    // Save or update
+    const priority = await UserSubjectPriority.findOneAndUpdate(
+      { userId },
+      { selectedSubjects },
+      { upsert: true, new: true }
+    );
+
+    res.json({ success: true, priority });
+  } catch (error) {
+    console.error("Error saving subject priority:", error);
+    res.status(500).json({ error: "Failed to save subject priority" });
+  }
+};
+
+
+
+
+module.exports = { createSubject, getAllSubjects, deleteSubject, getConceptsBySubject, getComicsByConcept, saveSubjectPriority };

@@ -10,7 +10,7 @@ const { getAllUsers } = require('../app/controller/api/admin/userController');
 const { generateFAQs, listFAQs } = require('../app/controller/api/faqController');
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
-const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept } = require('../app/controller/api/subjectController');
+const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
 
 
@@ -49,9 +49,9 @@ router.post("/user/create-subject", createSubject);
 router.post("/user/delete-subject", deleteSubject);
 router.get("/user/getallSubject", getAllSubjects);
 
+router.post("/user/subject-priority", saveSubjectPriority);
+
 //******************************** Prompt routes started from here ***************************** */
-// router.post("/user/split", authentication, splitConcept)
-// router.post("/user/generateComicsFromConcept", authentication, generateComicsFromConcept)
 router.post("/user/refine-prompt", authentication, refinePrompt)
 router.post("/user/generate-comic", authentication, generateComicImage)
 router.post("/user/generateComicPDF", generateComicPDF)
