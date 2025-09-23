@@ -12,6 +12,7 @@ const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/di
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
 const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
+const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
 
 
 //******************************** routes started from here ***************************** */
@@ -90,6 +91,10 @@ router.post("/user/quiz/publish", authentication, publishQuiz);
 
 //******************************** quiz routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
+
+router.post("/user/contact", createContact);
+router.get("/user/contacts", getAllContacts);
+router.delete("/user/contact/:id", deleteContact);
 
 
 
