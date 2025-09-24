@@ -489,10 +489,10 @@ ${pagePrompt}
 
                 const imageResponse = await openai.images.generate({
 
-                    model: "gpt-image-1",
+                    model: "dall-e-3",
                     prompt: fullPrompt,
-                    size: "1024x1536", // 
-                    //size: "1024x1792", // dall-e-3
+                    // size: "1024x1536", // 
+                    size: "1024x1792", // dall-e-3
                     n: 1,
                 });
 
@@ -725,19 +725,18 @@ const listComics = async (req, res) => {
 
 const getComic = async (req, res) => {
     try {
-        const { id } = req.params;
+        const comic = await Comic.findById(req.params.id).lean();
+        const pages = await ComicPage.find({ comicId: req.params.id }).lean();
 
-        const comic = await Comic.findById(id);
-        if (!comic) {
-            return res.status(404).json({ error: "Comic not found" });
+        let parts = [];
+        if (comic?.seriesId) {
+            parts = await Comic.find({ seriesId: comic.seriesId }).select("_id partNumber title concept").lean();
         }
 
-        const pages = await ComicPage.find({ comicId: id }).sort({ pageNumber: 1 });
-
-        res.json({ comic, pages });
-    } catch (error) {
-        console.error("Error fetching comic:", error);
-        res.status(500).json({ error: "Failed to get comic" });
+        res.json({ comic, pages, parts });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to fetch comic" });
     }
 };
 

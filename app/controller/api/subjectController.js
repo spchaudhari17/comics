@@ -139,7 +139,7 @@ const createSubject = async (req, res) => {
 const getAllSubjects = async (req, res) => {
   try {
     const { search } = req.query;
-    const userId =req.query.userId;
+    const userId = req.query.userId;
 
     const pipeline = [];
 
@@ -235,6 +235,8 @@ const getAllSubjects = async (req, res) => {
       }
     }
 
+    subjects.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     res.json(subjects);
   } catch (err) {
     console.error("Error fetching subjects with counts:", err);
@@ -277,7 +279,7 @@ const deleteSubject = async (req, res) => {
   }
 };
 
- 
+
 
 const getConceptsBySubject = async (req, res) => {
   try {
@@ -459,8 +461,8 @@ const getComicsByConcept = async (req, res) => {
 // Save or update user subject priority
 const saveSubjectPriority = async (req, res) => {
   try {
-    const userId = req.body.userId; 
-    
+    const userId = req.body.userId;
+
     const { selectedSubjects } = req.body;
 
     if (!userId || !selectedSubjects || !Array.isArray(selectedSubjects)) {
