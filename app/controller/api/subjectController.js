@@ -54,15 +54,16 @@ const createSubject = async (req, res) => {
 
 // const getAllSubjects = async (req, res) => {
 //   try {
-//     const { search } = req.query; // ?search=Math
+//     const { search } = req.query;
+//     const userId = req.query.userId;
 
 //     const pipeline = [];
 
-//     // 0) Search filter (agar search query hai to)
+//     // 🔎 Search filter
 //     if (search) {
 //       pipeline.push({
 //         $match: {
-//           name: { $regex: search, $options: "i" } // "name" field par search
+//           name: { $regex: search, $options: "i" }
 //         }
 //       });
 //     }
@@ -126,7 +127,31 @@ const createSubject = async (req, res) => {
 //       }
 //     );
 
-//     const subjects = await Subject.aggregate(pipeline);
+//     // 👇 fetch subjects
+//     let subjects = await Subject.aggregate(pipeline);
+
+//     // ✅ User priority apply karo
+//     if (userId) {
+//       const pref = await UserSubjectPriority.findOne({ userId });
+
+//       if (pref?.selectedSubjects?.length > 0) {
+//         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+
+//         // Pehle user ke selected subjects order maintain karke
+//         const selectedSubjects = selectedIds
+//           .map((id) => subjects.find((s) => s._id.toString() === id))
+//           .filter(Boolean);
+
+//         // Fir baki subjects
+//         const remainingSubjects = subjects.filter(
+//           (s) => !selectedIds.includes(s._id.toString())
+//         );
+
+//         subjects = [...selectedSubjects, ...remainingSubjects];
+//       }
+//     }
+
+
 
 //     res.json(subjects);
 //   } catch (err) {
@@ -134,7 +159,6 @@ const createSubject = async (req, res) => {
 //     res.status(500).json({ error: "Failed to fetch subjects" });
 //   }
 // };
-
 
 const getAllSubjects = async (req, res) => {
   try {
@@ -153,7 +177,6 @@ const getAllSubjects = async (req, res) => {
     }
 
     pipeline.push(
-      // 1) link subjects -> concepts
       {
         $lookup: {
           from: "concepts",
@@ -162,8 +185,6 @@ const getAllSubjects = async (req, res) => {
           as: "concepts"
         }
       },
-
-      // 2) extract conceptIds
       {
         $addFields: {
           conceptIds: {
@@ -171,8 +192,6 @@ const getAllSubjects = async (req, res) => {
           }
         }
       },
-
-      // 3) lookup approved comics matching those conceptIds
       {
         $lookup: {
           from: "comics",
@@ -188,20 +207,16 @@ const getAllSubjects = async (req, res) => {
                 }
               }
             },
-            { $group: { _id: "$conceptId" } } // unique concepts only
+            { $group: { _id: "$conceptId" } }
           ],
           as: "approvedConcepts"
         }
       },
-
-      // 4) count approved concepts
       {
         $addFields: {
           conceptCount: { $size: "$approvedConcepts" }
         }
       },
-
-      // 5) clean up
       {
         $project: {
           concepts: 0,
@@ -211,38 +226,57 @@ const getAllSubjects = async (req, res) => {
       }
     );
 
-    // 👇 fetch subjects
     let subjects = await Subject.aggregate(pipeline);
 
-    // ✅ User priority apply karo
+    let prioritySubjects = [];
+    let remainingSubjects = subjects;
+
     if (userId) {
       const pref = await UserSubjectPriority.findOne({ userId });
 
       if (pref?.selectedSubjects?.length > 0) {
         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
 
-        // Pehle user ke selected subjects order maintain karke
-        const selectedSubjects = selectedIds
+        // Pehle user ke selected subjects
+        prioritySubjects = selectedIds
           .map((id) => subjects.find((s) => s._id.toString() === id))
           .filter(Boolean);
 
         // Fir baki subjects
-        const remainingSubjects = subjects.filter(
+        remainingSubjects = subjects.filter(
           (s) => !selectedIds.includes(s._id.toString())
         );
-
-        subjects = [...selectedSubjects, ...remainingSubjects];
       }
     }
 
-    subjects.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // ✅ Sabse latest subject nikal lo
+    let latest = null;
+    if (subjects.length > 0) {
+      latest = subjects.reduce((a, b) =>
+        new Date(a.createdAt) > new Date(b.createdAt) ? a : b
+      );
+    }
 
-    res.json(subjects);
+    // ✅ Agar latest already priority me nahi hai, to usse priority ke niche insert karo
+    let finalSubjects = [...prioritySubjects];
+    if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
+      finalSubjects.push(latest);
+      remainingSubjects = remainingSubjects.filter(
+        (s) => s._id.toString() !== latest._id.toString()
+      );
+    }
+
+    // ✅ Baaki subjects append kar do
+    finalSubjects = [...finalSubjects, ...remainingSubjects];
+
+    res.json(finalSubjects);
   } catch (err) {
     console.error("Error fetching subjects with counts:", err);
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
+
+
 
 
 
