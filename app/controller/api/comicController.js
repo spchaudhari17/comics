@@ -628,7 +628,8 @@ const generateComicImage = async (req, res) => {
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
         const comicCount = await Comic.countDocuments({
             user_id: userId,
-            createdAt: { $gte: oneWeekAgo }
+            createdAt: { $gte: oneWeekAgo },
+            pdfUrl: { $exists: true, $ne: null }
         });
 
         if (comicCount >= 5) {
