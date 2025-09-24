@@ -175,7 +175,7 @@ const generateFAQs = async (req, res) => {
     ).join("\n\n");
 
     const faqPrompt = `
-      Extract 3 unique FAQs with answers from this story.
+      Extract 2-4 unique FAQs with answers from this story.
       ❌ Do NOT use dialogues.
       ✅ Focus only on educational concepts.
 
@@ -217,9 +217,11 @@ Panel 2: Student answers: "${faq.answer}"
         `;
 
         const imgRes = await openai.images.generate({
-          model: "dall-e-3",
+          model: "gpt-image-1",
+          // model: "dall-e-3",
           prompt: imgPrompt,
-          size: "1024x1792",
+          // size: "1024x1792", // dall-e-3
+          size: "1024x1536",
           n: 1,
         });
 

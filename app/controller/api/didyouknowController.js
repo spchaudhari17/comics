@@ -183,7 +183,7 @@ const generateDidYouKnow = async (req, res) => {
       .join("\n\n");
 
     const factPrompt = `
-      Generate 3 fun and educational "Did You Know?" facts.
+      Generate 1-2 fun and educational "Did You Know?" facts.
       ❌ Do NOT use dialogues.
       ✅ Focus only on knowledge, subject concepts, and factual information.
 
@@ -228,9 +228,10 @@ Make it colorful, engaging, and consistent with the comic style.
         `;
 
         const imgRes = await openai.images.generate({
-          model: "dall-e-3",
+          model: "gpt-image-1",
+          // model: "dall-e-3",
           prompt: imgPrompt,
-          size: "1024x1792",
+          size: "1024x1536",
           n: 1,
         });
 
