@@ -198,6 +198,27 @@ const refinePrompt = async (req, res) => {
     const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
 
     try {
+
+        const userId = req.user.login_data._id;
+
+        //  Weekly limit check for series
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+        const seriesCount = await ComicSeries.countDocuments({
+            user_id: userId,
+            createdAt: { $gte: oneWeekAgo }
+        });
+
+        if (seriesCount >= 5) {
+            return res.status(403).json({
+                error: "You have reached your weekly limit of 5 new series. Please wait until next week."
+            });
+        }
+
+
+
+        // main flow start here
         const cleanConcept = concept.trim();
         let existingSeries = await ComicSeries.findOne({ concept: cleanConcept, grade }).populate("parts");
 
@@ -433,6 +454,26 @@ const generateComicImage = async (req, res) => {
     const { comicId, pages } = req.body;
 
     try {
+
+        const userId = req.user.login_data._id;
+
+        // Weekly limit check (images = comics)
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+        const comicCount = await Comic.countDocuments({
+            user_id: userId,
+            createdAt: { $gte: oneWeekAgo }
+        });
+
+        if (comicCount >= 5) {
+            return res.status(403).json({
+                error: "You have reached your weekly limit of 5 comics. Please wait until next week."
+            });
+        }
+
+
+        // continue normal flow
         const comic = await Comic.findById(comicId).populate("styleId");
         if (!comic) {
             return res.status(404).json({ error: "Comic not found" });
