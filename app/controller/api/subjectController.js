@@ -371,6 +371,125 @@ const getConceptsBySubject = async (req, res) => {
 };
 
 
+// perfect working
+// const getComicsByConcept = async (req, res) => {
+//   try {
+//     const conceptId = req.params.conceptId;
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const skip = (page - 1) * limit;
+
+//     const userId = req.query.userId; // 👈 user identify
+
+//     const comics = await Comic.aggregate([
+//       {
+//         $match: {
+//           status: "approved",
+//           conceptId: new mongoose.Types.ObjectId(conceptId),
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//       { $skip: skip },
+//       { $limit: limit },
+
+//       {
+//         $lookup: {
+//           from: "faqs",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "faqs",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "subjects",
+//           localField: "subjectId",
+//           foreignField: "_id",
+//           as: "subjectData",
+//         },
+//       },
+//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
+
+//       {
+//         $lookup: {
+//           from: "didyouknows",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "facts",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "comicpages",
+//           localField: "_id",
+//           foreignField: "comicId",
+//           as: "pages",
+//         },
+//       },
+//       {
+//         $addFields: {
+//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
+//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
+//           subjectId: "$subjectData._id",
+//           subject: "$subjectData.name",
+//         },
+//       },
+//       {
+//         $project: {
+//           faqs: 0,
+//           facts: 0,
+//           pages: 0,
+//           subjectData: 0,
+//           prompt: 0,
+//         },
+//       },
+//     ]);
+
+//     // ✅ hasAttempted check karna
+//     if (userId) {
+//       const comicIds = comics.map((c) => c._id);
+
+//       // quizzes nikal lo for these comics
+//       const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+
+//       const submissions = await QuizSubmission.find(
+//         {
+//           quizId: { $in: quizzes.map((q) => q._id) },
+//           userId: new mongoose.Types.ObjectId(userId),
+//         },
+//         "quizId"
+//       );
+
+//       const attemptedQuizIds = new Set(submissions.map((s) => s.quizId.toString()));
+
+//       comics.forEach((comic) => {
+//         const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
+//         comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
+//       });
+//     } else {
+//       comics.forEach((comic) => (comic.hasAttempted = false));
+//     }
+
+//     const totalComics = await Comic.countDocuments({
+//       status: "approved",
+//       conceptId: new mongoose.Types.ObjectId(conceptId),
+//     });
+
+//     res.json({
+//       conceptId,
+//       page,
+//       limit,
+//       totalPages: Math.ceil(totalComics / limit),
+//       totalComics,
+//       comics,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching comics by concept:", error);
+//     res.status(500).json({ error: "Failed to fetch comics" });
+//   }
+// };
+
 
 const getComicsByConcept = async (req, res) => {
   try {
@@ -381,14 +500,14 @@ const getComicsByConcept = async (req, res) => {
 
     const userId = req.query.userId; // 👈 user identify
 
-    const comics = await Comic.aggregate([
+    let comics = await Comic.aggregate([
       {
         $match: {
           status: "approved",
           conceptId: new mongoose.Types.ObjectId(conceptId),
         },
       },
-      { $sort: { createdAt: -1 } },
+      { $sort: { partNumber: 1 } }, // har series ke andar part number ka order
       { $skip: skip },
       { $limit: limit },
 
@@ -446,12 +565,15 @@ const getComicsByConcept = async (req, res) => {
       },
     ]);
 
-    // ✅ hasAttempted check karna
+    // ✅ hasAttempted check
     if (userId) {
       const comicIds = comics.map((c) => c._id);
 
       // quizzes nikal lo for these comics
-      const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+      const quizzes = await Quiz.find(
+        { comicId: { $in: comicIds } },
+        "_id comicId"
+      );
 
       const submissions = await QuizSubmission.find(
         {
@@ -461,15 +583,54 @@ const getComicsByConcept = async (req, res) => {
         "quizId"
       );
 
-      const attemptedQuizIds = new Set(submissions.map((s) => s.quizId.toString()));
+      const attemptedQuizIds = new Set(
+        submissions.map((s) => s.quizId.toString())
+      );
 
       comics.forEach((comic) => {
-        const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
-        comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
+        const quiz = quizzes.find(
+          (q) => q.comicId.toString() === comic._id.toString()
+        );
+        comic.hasAttempted = quiz
+          ? attemptedQuizIds.has(quiz._id.toString())
+          : false;
       });
     } else {
       comics.forEach((comic) => (comic.hasAttempted = false));
     }
+
+    // ✅ isOpen logic series-wise
+    comics = comics.sort((a, b) => {
+      if (a.seriesId.toString() === b.seriesId.toString()) {
+        return a.partNumber - b.partNumber; // same series → part order
+      }
+      return a.seriesId.toString().localeCompare(b.seriesId.toString()); // series wise group
+    });
+
+    // series wise group banao
+    const seriesGroups = {};
+    comics.forEach((comic) => {
+      const seriesKey = comic.seriesId.toString();
+      if (!seriesGroups[seriesKey]) {
+        seriesGroups[seriesKey] = [];
+      }
+      seriesGroups[seriesKey].push(comic);
+    });
+
+    // har series me sequential isOpen apply karo
+    Object.values(seriesGroups).forEach((seriesComics) => {
+      seriesComics.sort((a, b) => a.partNumber - b.partNumber);
+      seriesComics.forEach((comic) => {
+        if (comic.partNumber === 1) {
+          comic.isOpen = true; // Part 1 hamesha open
+        } else {
+          const prevComic = seriesComics.find(
+            (c) => c.partNumber === comic.partNumber - 1
+          );
+          comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
+        }
+      });
+    });
 
     const totalComics = await Comic.countDocuments({
       status: "approved",
@@ -489,6 +650,7 @@ const getComicsByConcept = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch comics" });
   }
 };
+
 
 
 
