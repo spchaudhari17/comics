@@ -159,7 +159,7 @@ const generateFAQs = async (req, res) => {
   const { comicId } = req.body;
 
   try {
-    const comic = await Comic.findById(comicId).populate("styleId themeId");
+    const comic = await Comic.findById(comicId).populate("styleId themeId subjectId");
     if (!comic) return res.status(404).json({ error: "Comic not found" });
 
     // ✅ Prevent duplicates
@@ -170,22 +170,34 @@ const generateFAQs = async (req, res) => {
 
     // Extract story text from saved prompt
     const pages = JSON.parse(comic.prompt || "[]");
-    const storyText = pages.map(p =>
-      p.panels.map(pp => `${pp.scene} - ${pp.caption}`).join("\n")
-    ).join("\n\n");
+    const storyText = pages
+      .map(p => p.panels.map(pp => `${pp.scene}: ${pp.caption}`).join("\n"))
+      .join("\n\n");
 
+    // ✅ Improved prompt with subject + concept + grade
     const faqPrompt = `
-      Extract 2-4 unique FAQs with answers from this story.
-      ❌ Do NOT use dialogues.
-      ✅ Focus only on educational concepts.
+You are an educational assistant.
+Generate 2-4 meaningful FAQs and answers based on the following comic.
 
-      Story:
-      ${storyText}
+Context:
+// - Subject: ${comic.subject || comic.subjectId?.name || "General Knowledge"}
+- Concept: ${comic.concept || ""}
+- Grade Level: ${comic.grade || "School Level"}
 
-      ⚠️ Output strictly JSON only:
-      [
-        { "question": "string", "answer": "string" }
-      ]
+Comic Story (summary, ignore dialogues and characters): 
+${storyText}
+
+Guidelines:
+- FAQs must test conceptual understanding (definitions, reasoning, cause-effect, applications).
+- Questions must be directly related to "${comic.concept}" and "${comic.subject}".
+- Do NOT ask about characters, artwork, or dialogues.
+- Keep answers short and clear.
+- Return ONLY valid JSON.
+
+Format:
+[
+  { "question": "string", "answer": "string" }
+]
     `;
 
     const response = await openai.chat.completions.create({
@@ -202,18 +214,18 @@ const generateFAQs = async (req, res) => {
     const faqs = safeJsonParse(raw);
 
     // Generate images with same theme & style
-    const stylePrompt = comic.styleId.prompt;
-    const themePrompt = comic.themeId.prompt;
+    const stylePrompt = comic.styleId?.prompt || "";
+    const themePrompt = comic.themeId?.prompt || "";
 
     const faqImages = await Promise.all(
       faqs.map(async (faq, idx) => {
         const imgPrompt = `
-Educational comic page.
+Educational comic panel.
 Theme: ${themePrompt}
 Style: ${stylePrompt}
 
-Panel 1: Teacher asks: "${faq.question}"
-Panel 2: Student answers: "${faq.answer}"
+Panel 1: Student asks an educational question: "${faq.question}"
+Panel 2: Teacher answers clearly: "${faq.answer}"
         `;
 
         const imgRes = await openai.images.generate({
@@ -242,7 +254,7 @@ Panel 2: Student answers: "${faq.answer}"
           .toBuffer();
 
         // ✅ Upload to S3
-        const fileName = `${Date.now()}_faq_page${idx + 1}_${Date.now()}.jpg`;
+        const fileName = `${Date.now()}_faq_page${idx + 1}.jpg`;
         const s3Upload = await upload_files("faqs", {
           name: fileName,
           data: buffer,
@@ -270,6 +282,7 @@ Panel 2: Student answers: "${faq.answer}"
     res.status(500).json({ error: "FAQ generation failed", details: err.message });
   }
 };
+
 
 
 

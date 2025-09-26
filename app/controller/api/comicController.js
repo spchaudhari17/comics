@@ -274,7 +274,7 @@ End: ${part.end}
             `;
 
             const comicPrompt = `
-Create a JSON comic script with 5 pages. 
+Create a JSON comic script with 8-10 pages. 
 Comic Title: ${title} - Part ${part.part}: ${part.title}
 Subject: ${subject}
 Grade: ${grade}
@@ -495,7 +495,7 @@ const checkPromptSafety = async (prompt) => {
         const moderation = await openai.moderations.create({
             input: prompt
         });
-        
+
         const results = moderation.results[0];
         if (results.flagged) {
             console.log("Prompt flagged for:", results.categories);
@@ -517,25 +517,25 @@ const makePromptSafer = (prompt) => {
         "G-rated and family-friendly imagery only.",
         "Characters are friendly, positive, and educational."
     ];
-    
+
     // Rotate through different safety messages to avoid repetition
     const randomSafety = safetyAppendages[Math.floor(Math.random() * safetyAppendages.length)];
-    
+
     return prompt + " " + randomSafety;
 };
 
 const generateImageWithRetry = async (prompt, retries = 3) => {
     let currentPrompt = prompt;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             console.log(`Attempt ${attempt}/${retries} for image generation`);
-            
+
             const isSafe = await checkPromptSafety(currentPrompt);
             if (!isSafe) {
                 console.log("Prompt flagged by moderation. Making safer...");
                 currentPrompt = makePromptSafer(currentPrompt);
-                
+
                 // Check if we should continue after making it safer
                 if (attempt === retries) {
                     throw new Error("Prompt still unsafe after modifications");
@@ -561,7 +561,7 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
                 await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Increased backoff
                 continue;
             }
-            
+
             // If it's not a content policy violation or we're out of retries, throw
             throw error;
         }
@@ -572,7 +572,7 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 // Enhanced sanitization function
 const sanitizeText = (text) => {
     if (!text) return "";
-    
+
     // First, handle common problematic terms
     const replacementMap = {
         'clown': 'funny character',
@@ -597,21 +597,21 @@ const sanitizeText = (text) => {
         'knife': 'utensil',
         'blood': 'paint'
     };
-    
+
     let safeText = text.toLowerCase();
-    
+
     // Replace problematic terms
     Object.keys(replacementMap).forEach(term => {
         const regex = new RegExp(`\\b${term}\\b`, 'gi');
         safeText = safeText.replace(regex, replacementMap[term]);
     });
-    
+
     // Remove special characters
     safeText = safeText
         .replace(/["“”'‘’]/g, "")
         .replace(/[^\w\s.,!?-]/g, "")
         .trim();
-    
+
     return safeText;
 };
 
@@ -623,7 +623,7 @@ const generateComicImage = async (req, res) => {
         const userId = req.user.login_data._id;
 
         // Weekly limit check (uncomment when ready)
-        
+
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
         const comicCount = await Comic.countDocuments({
@@ -637,7 +637,7 @@ const generateComicImage = async (req, res) => {
                 error: "You have reached your weekly limit of 5 comics. Please wait until next week."
             });
         }
-        
+
 
         const comic = await Comic.findById(comicId).populate("styleId");
         if (!comic) {
@@ -743,15 +743,15 @@ Generate safe, child-appropriate imagery only.
                     });
 
                     return { page: page.page, imageUrl };
-                    
+
                 } catch (error) {
                     console.error(`Error generating image for page ${page.page}:`, error);
                     // Return a failed result but don't break the entire process
-                    return { 
-                        page: page.page, 
-                        error: true, 
+                    return {
+                        page: page.page,
+                        error: true,
                         message: error.message,
-                        code: error.code 
+                        code: error.code
                     };
                 }
             })
@@ -763,13 +763,13 @@ Generate safe, child-appropriate imagery only.
             console.log(`Failed to generate ${failedPages.length} pages`);
         }
 
-        res.json({ 
-            comicId, 
+        res.json({
+            comicId,
             images: imageUrls,
             success: failedPages.length === 0,
             failedPages: failedPages.map(f => f.page)
         });
-        
+
     } catch (error) {
         console.error("Image API Error:", error);
         res.status(500).json({
