@@ -531,6 +531,15 @@ const getComicsByConcept = async (req, res) => {
 
       {
         $lookup: {
+          from: "themes", // 👈 new lookup
+          localField: "themeId",
+          foreignField: "_id",
+          as: "themeData",
+        },
+      },
+      { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
           from: "didyouknows",
           localField: "_id",
           foreignField: "comicId",
@@ -552,6 +561,8 @@ const getComicsByConcept = async (req, res) => {
           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
           subjectId: "$subjectData._id",
           subject: "$subjectData.name",
+          themeId: "$themeData._id",        // 👈 already have themeId
+          theme: "$themeData.name",
         },
       },
       {
@@ -561,6 +572,7 @@ const getComicsByConcept = async (req, res) => {
           pages: 0,
           subjectData: 0,
           prompt: 0,
+          themeData: 0,
         },
       },
     ]);
