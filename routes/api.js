@@ -86,6 +86,7 @@ router.get("/admin/getAllUsers", getAllUsers);
 
 router.post("/user/generate-quiz", authentication, generateQuiz);
 router.get("/user/comic/:id/quiz/:userId", getQuizByComic);
+router.get("/user/comic/:id/quiz/", getQuizByComic);
 router.post("/user/quiz/publish", authentication, publishQuiz);
 
 

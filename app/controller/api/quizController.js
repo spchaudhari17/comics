@@ -8,6 +8,7 @@ const Quiz = require("../../models/Quiz");
 const QuizQuestion = require("../../models/QuizQuestion");
 const Comic = require("../../models/Comic");
 const QuizSubmission = require("../../models/QuizSubmission");
+const { default: mongoose } = require("mongoose");
 
 
 
@@ -244,21 +245,53 @@ Format:
 };
 
 
+// const getQuizByComic = async (req, res) => {
+//   try {
+//     const { id } = req.params;       // comicId
+//     const {userId} = req.params     // userId
+
+//     // Quiz nikalna
+//     const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
+//     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+
+//     // Check agar user ne attempt kiya hai
+//     let hasAttempted = false;
+//     if (userId) {
+//       const submission = await QuizSubmission.findOne({
+//         quizId: quiz._id,
+//         userId: userId,
+//       });
+
+//       hasAttempted = !!submission;
+//     }
+
+//     res.json({
+//       quiz,
+//       hasAttempted, 
+//     });
+//   } catch (error) {
+//     console.error("Error fetching quiz:", error);
+//     res.status(500).json({ error: "Failed to fetch quiz" });
+//   }
+// };
+
+
 const getQuizByComic = async (req, res) => {
   try {
-    const { id } = req.params;       // comicId
-    const {userId} = req.params     // userId
+    const { id, userId } = req.params; // comicId aur userId (optional)
 
     // Quiz nikalna
     const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
-    // Check agar user ne attempt kiya hai
+    // Default false rakho
     let hasAttempted = false;
+
+    // Agar userId mila hai to hi attempt check karo
     if (userId) {
       const submission = await QuizSubmission.findOne({
         quizId: quiz._id,
-        userId: userId,
+        userId: new mongoose.Types.ObjectId(userId), // ObjectId mein convert
       });
 
       hasAttempted = !!submission;
@@ -266,13 +299,15 @@ const getQuizByComic = async (req, res) => {
 
     res.json({
       quiz,
-      hasAttempted, 
+      hasAttempted,
     });
   } catch (error) {
     console.error("Error fetching quiz:", error);
     res.status(500).json({ error: "Failed to fetch quiz" });
   }
 };
+
+
 
 
 const publishQuiz = async (req, res) => {
