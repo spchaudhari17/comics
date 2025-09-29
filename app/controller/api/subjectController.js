@@ -315,6 +315,61 @@ const deleteSubject = async (req, res) => {
 
 
 
+// const getConceptsBySubject = async (req, res) => {
+//   try {
+//     const subjectId = req.params.subjectId;
+
+//     // Subject validate
+//     const subject = await Subject.findById(subjectId);
+//     if (!subject) {
+//       return res.status(404).json({ error: "Subject not found" });
+//     }
+
+//     const result = await Comic.aggregate([
+//       {
+//         $match: {
+//           status: "approved",
+//           subjectId: new mongoose.Types.ObjectId(subjectId),
+//         },
+//       },
+
+//       {
+//         $group: {
+//           _id: "$conceptId",
+//           comicCount: { $sum: 1 },
+//         },
+//       },
+
+//       {
+//         $lookup: {
+//           from: "concepts",
+//           localField: "_id",
+//           foreignField: "_id",
+//           as: "conceptData",
+//         },
+//       },
+//       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
+
+//       {
+//         $project: {
+//           _id: 0,
+//           conceptId: "$conceptData._id",
+//           name: "$conceptData.name",
+//           comicCount: 1,
+//         },
+//       },
+//     ]);
+
+//     res.json({
+//       subject: subject.name,
+//       concepts: result,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching concepts:", error);
+//     res.status(500).json({ error: "Failed to fetch concepts" });
+//   }
+// };
+
 const getConceptsBySubject = async (req, res) => {
   try {
     const subjectId = req.params.subjectId;
@@ -335,26 +390,40 @@ const getConceptsBySubject = async (req, res) => {
 
       {
         $group: {
-          _id: "$conceptId",
+          _id: { conceptId: "$conceptId", themeId: "$themeId" },
           comicCount: { $sum: 1 },
         },
       },
 
+      // 🔍 concept join
       {
         $lookup: {
           from: "concepts",
-          localField: "_id",
+          localField: "_id.conceptId",
           foreignField: "_id",
           as: "conceptData",
         },
       },
       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
 
+      // 🔍 theme join
+      {
+        $lookup: {
+          from: "themes",
+          localField: "_id.themeId",
+          foreignField: "_id",
+          as: "themeData",
+        },
+      },
+      { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
+
       {
         $project: {
           _id: 0,
           conceptId: "$conceptData._id",
-          name: "$conceptData.name",
+          conceptName: "$conceptData.name",
+          themeId: "$themeData._id",
+          themeName: "$themeData.name",
           comicCount: 1,
         },
       },
@@ -370,125 +439,6 @@ const getConceptsBySubject = async (req, res) => {
   }
 };
 
-
-// perfect working
-// const getComicsByConcept = async (req, res) => {
-//   try {
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-
-//     const userId = req.query.userId; // 👈 user identify
-
-//     const comics = await Comic.aggregate([
-//       {
-//         $match: {
-//           status: "approved",
-//           conceptId: new mongoose.Types.ObjectId(conceptId),
-//         },
-//       },
-//       { $sort: { createdAt: -1 } },
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       {
-//         $lookup: {
-//           from: "faqs",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "faqs",
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "subjects",
-//           localField: "subjectId",
-//           foreignField: "_id",
-//           as: "subjectData",
-//         },
-//       },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-
-//       {
-//         $lookup: {
-//           from: "didyouknows",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "facts",
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "comicpages",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "pages",
-//         },
-//       },
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subjectId: "$subjectData._id",
-//           subject: "$subjectData.name",
-//         },
-//       },
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           pages: 0,
-//           subjectData: 0,
-//           prompt: 0,
-//         },
-//       },
-//     ]);
-
-//     // ✅ hasAttempted check karna
-//     if (userId) {
-//       const comicIds = comics.map((c) => c._id);
-
-//       // quizzes nikal lo for these comics
-//       const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
-
-//       const submissions = await QuizSubmission.find(
-//         {
-//           quizId: { $in: quizzes.map((q) => q._id) },
-//           userId: new mongoose.Types.ObjectId(userId),
-//         },
-//         "quizId"
-//       );
-
-//       const attemptedQuizIds = new Set(submissions.map((s) => s.quizId.toString()));
-
-//       comics.forEach((comic) => {
-//         const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
-//         comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
-//       });
-//     } else {
-//       comics.forEach((comic) => (comic.hasAttempted = false));
-//     }
-
-//     const totalComics = await Comic.countDocuments({
-//       status: "approved",
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     });
-
-//     res.json({
-//       conceptId,
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching comics by concept:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
 
 
 const getComicsByConcept = async (req, res) => {
