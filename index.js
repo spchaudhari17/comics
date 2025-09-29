@@ -15,7 +15,7 @@ var corsOptions = {
 
 // app.use(cors({ origin: "http://localhost:3000" })); 
 
-const allowedOrigins = ['http://localhost:3000', 'http://13.60.35.222', 'http://kridemy.com'];
+const allowedOrigins = ['http://localhost:3000', 'http://13.60.35.222', 'http://kridemy.com', 'https://kridemy.com'];
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
