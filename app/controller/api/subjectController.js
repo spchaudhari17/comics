@@ -51,7 +51,7 @@ const createSubject = async (req, res) => {
   }
 };
 
-
+// perfect working
 // const getAllSubjects = async (req, res) => {
 //   try {
 //     const { search } = req.query;
@@ -69,7 +69,6 @@ const createSubject = async (req, res) => {
 //     }
 
 //     pipeline.push(
-//       // 1) link subjects -> concepts
 //       {
 //         $lookup: {
 //           from: "concepts",
@@ -78,8 +77,6 @@ const createSubject = async (req, res) => {
 //           as: "concepts"
 //         }
 //       },
-
-//       // 2) extract conceptIds
 //       {
 //         $addFields: {
 //           conceptIds: {
@@ -87,8 +84,6 @@ const createSubject = async (req, res) => {
 //           }
 //         }
 //       },
-
-//       // 3) lookup approved comics matching those conceptIds
 //       {
 //         $lookup: {
 //           from: "comics",
@@ -104,20 +99,16 @@ const createSubject = async (req, res) => {
 //                 }
 //               }
 //             },
-//             { $group: { _id: "$conceptId" } } // unique concepts only
+//             { $group: { _id: "$conceptId" } }
 //           ],
 //           as: "approvedConcepts"
 //         }
 //       },
-
-//       // 4) count approved concepts
 //       {
 //         $addFields: {
 //           conceptCount: { $size: "$approvedConcepts" }
 //         }
 //       },
-
-//       // 5) clean up
 //       {
 //         $project: {
 //           concepts: 0,
@@ -127,43 +118,60 @@ const createSubject = async (req, res) => {
 //       }
 //     );
 
-//     // 👇 fetch subjects
 //     let subjects = await Subject.aggregate(pipeline);
 
-//     // ✅ User priority apply karo
+//     let prioritySubjects = [];
+//     let remainingSubjects = subjects;
+
 //     if (userId) {
 //       const pref = await UserSubjectPriority.findOne({ userId });
 
 //       if (pref?.selectedSubjects?.length > 0) {
 //         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
 
-//         // Pehle user ke selected subjects order maintain karke
-//         const selectedSubjects = selectedIds
+//         // Pehle user ke selected subjects
+//         prioritySubjects = selectedIds
 //           .map((id) => subjects.find((s) => s._id.toString() === id))
 //           .filter(Boolean);
 
 //         // Fir baki subjects
-//         const remainingSubjects = subjects.filter(
+//         remainingSubjects = subjects.filter(
 //           (s) => !selectedIds.includes(s._id.toString())
 //         );
-
-//         subjects = [...selectedSubjects, ...remainingSubjects];
 //       }
 //     }
 
+//     // ✅ Sabse latest subject nikal lo
+//     let latest = null;
+//     if (subjects.length > 0) {
+//       latest = subjects.reduce((a, b) =>
+//         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
+//       );
+//     }
 
+//     // ✅ Agar latest already priority me nahi hai, to usse priority ke niche insert karo
+//     let finalSubjects = [...prioritySubjects];
+//     if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
+//       finalSubjects.push(latest);
+//       remainingSubjects = remainingSubjects.filter(
+//         (s) => s._id.toString() !== latest._id.toString()
+//       );
+//     }
 
-//     res.json(subjects);
+//     // ✅ Baaki subjects append kar do
+//     finalSubjects = [...finalSubjects, ...remainingSubjects];
+
+//     res.json(finalSubjects);
 //   } catch (err) {
 //     console.error("Error fetching subjects with counts:", err);
 //     res.status(500).json({ error: "Failed to fetch subjects" });
 //   }
 // };
 
+
 const getAllSubjects = async (req, res) => {
   try {
-    const { search } = req.query;
-    const userId = req.query.userId;
+    const { search, grade, userId } = req.query;
 
     const pipeline = [];
 
@@ -228,6 +236,25 @@ const getAllSubjects = async (req, res) => {
 
     let subjects = await Subject.aggregate(pipeline);
 
+    // 🔥 Grade filter apply
+    if (grade) {
+      const gradeNum = parseInt(grade, 10);
+
+      subjects = subjects.filter((s) => {
+        // name me "Grades 6–12" type ka text nikalna hai
+        const match = s.name.match(/Grades?\s*(\d+)(?:–(\d+))?/);
+
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : start;
+
+          return gradeNum >= start && gradeNum <= end;
+        }
+
+        return false; // agar grade mention hi nahi hai to exclude
+      });
+    }
+
     let prioritySubjects = [];
     let remainingSubjects = subjects;
 
@@ -275,7 +302,6 @@ const getAllSubjects = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
-
 
 
 
