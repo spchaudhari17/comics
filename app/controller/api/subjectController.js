@@ -52,123 +52,6 @@ const createSubject = async (req, res) => {
 };
 
 // perfect working
-// const getAllSubjects = async (req, res) => {
-//   try {
-//     const { search } = req.query;
-//     const userId = req.query.userId;
-
-//     const pipeline = [];
-
-//     // 🔎 Search filter
-//     if (search) {
-//       pipeline.push({
-//         $match: {
-//           name: { $regex: search, $options: "i" }
-//         }
-//       });
-//     }
-
-//     pipeline.push(
-//       {
-//         $lookup: {
-//           from: "concepts",
-//           localField: "_id",
-//           foreignField: "subjectId",
-//           as: "concepts"
-//         }
-//       },
-//       {
-//         $addFields: {
-//           conceptIds: {
-//             $map: { input: "$concepts", as: "c", in: "$$c._id" }
-//           }
-//         }
-//       },
-//       {
-//         $lookup: {
-//           from: "comics",
-//           let: { cids: "$conceptIds" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $and: [
-//                     { $in: ["$conceptId", "$$cids"] },
-//                     { $eq: ["$status", "approved"] }
-//                   ]
-//                 }
-//               }
-//             },
-//             { $group: { _id: "$conceptId" } }
-//           ],
-//           as: "approvedConcepts"
-//         }
-//       },
-//       {
-//         $addFields: {
-//           conceptCount: { $size: "$approvedConcepts" }
-//         }
-//       },
-//       {
-//         $project: {
-//           concepts: 0,
-//           conceptIds: 0,
-//           approvedConcepts: 0
-//         }
-//       }
-//     );
-
-//     let subjects = await Subject.aggregate(pipeline);
-
-//     let prioritySubjects = [];
-//     let remainingSubjects = subjects;
-
-//     if (userId) {
-//       const pref = await UserSubjectPriority.findOne({ userId });
-
-//       if (pref?.selectedSubjects?.length > 0) {
-//         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
-
-//         // Pehle user ke selected subjects
-//         prioritySubjects = selectedIds
-//           .map((id) => subjects.find((s) => s._id.toString() === id))
-//           .filter(Boolean);
-
-//         // Fir baki subjects
-//         remainingSubjects = subjects.filter(
-//           (s) => !selectedIds.includes(s._id.toString())
-//         );
-//       }
-//     }
-
-//     // ✅ Sabse latest subject nikal lo
-//     let latest = null;
-//     if (subjects.length > 0) {
-//       latest = subjects.reduce((a, b) =>
-//         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
-//       );
-//     }
-
-//     // ✅ Agar latest already priority me nahi hai, to usse priority ke niche insert karo
-//     let finalSubjects = [...prioritySubjects];
-//     if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
-//       finalSubjects.push(latest);
-//       remainingSubjects = remainingSubjects.filter(
-//         (s) => s._id.toString() !== latest._id.toString()
-//       );
-//     }
-
-//     // ✅ Baaki subjects append kar do
-//     finalSubjects = [...finalSubjects, ...remainingSubjects];
-
-//     res.json(finalSubjects);
-//   } catch (err) {
-//     console.error("Error fetching subjects with counts:", err);
-//     res.status(500).json({ error: "Failed to fetch subjects" });
-//   }
-// };
-
-
 const getAllSubjects = async (req, res) => {
   try {
     const { search, grade, userId } = req.query;
@@ -253,6 +136,12 @@ const getAllSubjects = async (req, res) => {
 
         return false; // agar grade mention hi nahi hai to exclude
       });
+    }
+
+
+    // 🔥 Special case: Agar userId === "68dcbf37d868d326f3b21880"
+    if (userId === "68dcbf37d868d326f3b21880") {
+      subjects = subjects.filter((s) => s.conceptCount >= 1);
     }
 
     let prioritySubjects = [];
