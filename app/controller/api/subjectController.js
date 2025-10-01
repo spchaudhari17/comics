@@ -673,17 +673,24 @@ const getComicsByConcept = async (req, res) => {
     // har series me sequential isOpen apply karo
     Object.values(seriesGroups).forEach((seriesComics) => {
       seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-      seriesComics.forEach((comic) => {
-        if (comic.partNumber === 1) {
-          comic.isOpen = true; // Part 1 hamesha open
-        } else {
-          const prevComic = seriesComics.find(
-            (c) => c.partNumber === comic.partNumber - 1
-          );
-          comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
-        }
-      });
+
+      if (seriesComics.length === 1) {
+        // 👈 only one comic in this series → always open
+        seriesComics[0].isOpen = true;
+      } else {
+        seriesComics.forEach((comic) => {
+          if (comic.partNumber === 1) {
+            comic.isOpen = true; // Part 1 hamesha open
+          } else {
+            const prevComic = seriesComics.find(
+              (c) => c.partNumber === comic.partNumber - 1
+            );
+            comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
+          }
+        });
+      }
     });
+
 
 
     const totalComics = await Comic.countDocuments({
