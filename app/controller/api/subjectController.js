@@ -139,10 +139,10 @@ const getAllSubjects = async (req, res) => {
     }
 
 
-    // 🔥 Special case: Agar userId === "68dcbf37d868d326f3b21880"
-    if (userId === "68dcbf37d868d326f3b21880") {
-      subjects = subjects.filter((s) => s.conceptCount >= 1);
-    }
+   
+    // 🔥 Global rule: Empty concept list wale subjects ko exclude karo
+    subjects = subjects.filter((s) => s.conceptCount >= 1);
+
 
     let prioritySubjects = [];
     let remainingSubjects = subjects;
