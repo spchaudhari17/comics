@@ -13,6 +13,7 @@ const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = re
 const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
+const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz } = require('../app/controller/api/hardcoreQuizController');
 
 
 //******************************** routes started from here ***************************** */
@@ -88,7 +89,14 @@ router.post("/user/generate-quiz", authentication, generateQuiz);
 router.get("/user/comic/:id/quiz/:userId", getQuizByComic);
 router.get("/user/comic/:id/quiz/", getQuizByComic);
 router.post("/user/quiz/publish", authentication, publishQuiz);
+//******************************** Hard core quiz routes routes started from here ***************************** */
+router.post("/user/generate-hardcore-quiz", generateHardcoreQuiz);
 
+//  Get Hardcore Quiz for a Comic (with userId - optional)
+router.get("/user/comic/:id/hardcore-quiz/:userId", getHardcoreQuizByComic);
+// Get Hardcore Quiz for a Comic (without userId)
+router.get("/user/comic/:id/hardcore-quiz", getHardcoreQuizByComic);
+router.post("/user/submit-hardcore-quiz", authentication, submitHardcoreQuiz);
 
 //******************************** quiz routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
