@@ -466,9 +466,11 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
             }
 
             const imageResponse = await openai.images.generate({
-                model: "gpt-image-1",
+                // model: "gpt-image-1",
+                model: "dall-e-3",
                 prompt: currentPrompt,
-                size: "1024x1536",
+                // size: "1024x1536",
+                size: "1024x1792", // dall-e-3
                 n: 1,
             });
 
