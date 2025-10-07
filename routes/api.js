@@ -90,8 +90,8 @@ router.get("/user/comic/:id/quiz/:userId", getQuizByComic);
 router.get("/user/comic/:id/quiz/", getQuizByComic);
 router.post("/user/quiz/publish", authentication, publishQuiz);
 //******************************** Hard core quiz routes routes started from here ***************************** */
-router.post("/user/generate-hardcore-quiz", generateHardcoreQuiz);
 
+router.post("/user/generate-hardcore-quiz",authentication, generateHardcoreQuiz);
 //  Get Hardcore Quiz for a Comic (with userId - optional)
 router.get("/user/comic/:id/hardcore-quiz/:userId", getHardcoreQuizByComic);
 // Get Hardcore Quiz for a Comic (without userId)

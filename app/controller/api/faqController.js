@@ -168,19 +168,17 @@ const generateFAQs = async (req, res) => {
       return res.json({ faqs: existingFAQs });
     }
 
-    // Extract story text from saved prompt
     const pages = JSON.parse(comic.prompt || "[]");
     const storyText = pages
       .map(p => p.panels.map(pp => `${pp.scene}: ${pp.caption}`).join("\n"))
       .join("\n\n");
 
-    // ✅ Improved prompt with subject + concept + grade
     const faqPrompt = `
 You are an educational assistant.
-Generate 2-4 meaningful FAQs and answers based on the following comic.
+Generate 2–4 meaningful FAQs and answers based on the following comic.
 
 Context:
-// - Subject: ${comic.subject || comic.subjectId?.name || "General Knowledge"}
+- Subject: ${comic.subject || comic.subjectId?.name || "General Knowledge"}
 - Concept: ${comic.concept || ""}
 - Grade Level: ${comic.grade || "School Level"}
 
@@ -190,6 +188,8 @@ ${storyText}
 Guidelines:
 - FAQs must test conceptual understanding (definitions, reasoning, cause-effect, applications).
 - Questions must be directly related to "${comic.concept}" and "${comic.subject}".
+- ❌ Do NOT repeat information already covered in the comic storyline.
+- ✅ Focus on additional insights, deeper clarifications, or real-world applications.
 - Do NOT ask about characters, artwork, or dialogues.
 - Keep answers short and clear.
 - Return ONLY valid JSON.
@@ -213,7 +213,6 @@ Format:
     const raw = response.choices[0].message.content.trim();
     const faqs = safeJsonParse(raw);
 
-    // Generate images with same theme & style
     const stylePrompt = comic.styleId?.prompt || "";
     const themePrompt = comic.themeId?.prompt || "";
 
@@ -230,14 +229,11 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
 
         const imgRes = await openai.images.generate({
           model: "gpt-image-1",
-          // model: "dall-e-3",
           prompt: imgPrompt,
-          // size: "1024x1792", // dall-e-3
           size: "1024x1536",
           n: 1,
         });
 
-        // ✅ Download image buffer
         let buffer;
         const imgData = imgRes.data[0];
         if (imgData.url) {
@@ -247,13 +243,11 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
           buffer = Buffer.from(imgData.b64_json, "base64");
         }
 
-        // ✅ Optimize image
         buffer = await sharp(buffer)
           .resize({ width: 1024 })
           .jpeg({ quality: 75 })
           .toBuffer();
 
-        // ✅ Upload to S3
         const fileName = `${Date.now()}_faq_page${idx + 1}.jpg`;
         const s3Upload = await upload_files("faqs", {
           name: fileName,
@@ -263,7 +257,6 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
 
         const s3Key = `faqs/${fileName}`;
 
-        // ✅ Save in DB
         const savedFAQ = await FAQ.create({
           comicId,
           question: faq.question,
@@ -282,7 +275,6 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
     res.status(500).json({ error: "FAQ generation failed", details: err.message });
   }
 };
-
 
 
 

@@ -12,12 +12,13 @@ const comicSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   author: { type: String, trim: true },
   subjectId: { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true },
-  // subject: { type: String, required: true, trim: true },
+  subject: { type: String, trim: true },
 
   concept: { type: String, trim: true },
   conceptId: { type: mongoose.Schema.Types.ObjectId, ref: "Concept" },
 
   story: { type: String, required: true },
+  userStory: { type: String, trim: true },
   thumbnailUrl: { type: String },
   prompt: { type: String, required: true },
   pdfUrl: { type: String },

@@ -184,9 +184,7 @@ const openai = new OpenAI({
 
 function safeJsonParse(str) {
     try {
-        if (str.startsWith("```")) {
-            str = str.replace(/```json|```/g, "").trim();
-        }
+        if (str.startsWith("```")) str = str.replace(/```json|```/g, "").trim();
         return JSON.parse(str);
     } catch (err) {
         console.error("❌ JSON Parse Error:", err.message, "\nRaw Output:", str);
@@ -198,42 +196,43 @@ const refinePrompt = async (req, res) => {
     const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
 
     try {
-
         const userId = req.user.login_data._id;
 
-        //  Weekly limit check for series
+        // 🧮 Weekly limit
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
         const seriesCount = await ComicSeries.countDocuments({
             user_id: userId,
             createdAt: { $gte: oneWeekAgo }
         });
-
         if (seriesCount >= 5) {
             return res.status(403).json({
                 error: "You have reached your weekly limit of 5 new series. Please wait until next week."
             });
         }
 
-
-
-        // main flow start here
+        // 🧩 Core setup
         const cleanConcept = concept.trim();
-        let existingSeries = await ComicSeries.findOne({ concept: cleanConcept, grade }).populate("parts");
 
+        const theme = await Theme.findById(themeId);
+        const style = await Style.findById(styleId);
+        if (!theme || !style) {
+            return res.status(400).json({ error: "Invalid theme or style" });
+        }
+
+        let existingSeries = await ComicSeries.findOne({ concept: cleanConcept, grade }).populate("parts");
         if (existingSeries) {
             return res.status(200).json({ alreadyExists: true, series: existingSeries });
         }
 
-        // Ensure Concept exists
         let conceptDoc = await Concept.findOne({ name: cleanConcept });
         if (!conceptDoc) {
             conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
         }
 
+        // 🧠 Create new series
         const series = await ComicSeries.create({
-            user_id: req.user.login_data._id,
+            user_id: userId,
             themeId, styleId, subjectId,
             concept: cleanConcept,
             conceptId: conceptDoc._id,
@@ -241,20 +240,26 @@ const refinePrompt = async (req, res) => {
             parts: []
         });
 
-        // 🔹 Step 1: Divide into parts
+        // 🧠 Step 1: Divide into parts
         const divisionPrompt = `
-Divide the concept "${cleanConcept}" into smaller sub-parts for grade ${grade} students. 
-Each part should fit into 8-10 pages. 
-Return JSON array like:
+You are an expert education content designer.
+
+Given the concept "${cleanConcept}" and this story written by the user:
+"${story}"
+
+Task:
+- Break it into smaller sub-parts suitable for grade ${grade} students.
+- Each part should fit an 8–10 page educational comic.
+- Return strictly valid JSON array:
 [
-  { "part": 1, "title": "Birth of a Star", "keyTerms": ["Nebula"], "start": "Nebula", "end": "Protostar" }
+  { "part": 1, "title": "Part Title", "keyTerms": ["term1"], "start": "Intro", "end": "Conclusion" }
 ]
-        `;
+`;
 
         const divisionResponse = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
-                { role: "system", content: "Return ONLY valid JSON array. No text, no markdown, no explanation." },
+                { role: "system", content: "Return ONLY valid JSON. No markdown, no explanation." },
                 { role: "user", content: divisionPrompt }
             ],
             temperature: 0.3,
@@ -263,51 +268,84 @@ Return JSON array like:
 
         const parts = safeJsonParse(divisionResponse.choices[0].message.content.trim());
 
-        // 🔹 Step 2: Generate comic JSON for each part
-        let comicsCreated = [];
+        // 🎓 Grade Instruction
+        let gradeInstruction = "";
+        if (grade) {
+            gradeInstruction = `
+Adapt tone, difficulty, and visuals for ${grade} students:
+- Grades 1–5: fun, simple language, visual storytelling.
+- Grades 6–8: balanced explanations and visuals.
+- Grades 9–12: analytical, with real-world references.
+- UG/PG: research-oriented tone, technical clarity.
+`;
+        }
+
+        // 🧩 Step 2: Generate Comic JSONs
+        const comicsCreated = [];
+
         for (const part of parts) {
             const partStory = `
 Part ${part.part}: ${part.title}
 Key terms: ${part.keyTerms.join(", ")}
 Start: ${part.start}
 End: ${part.end}
-            `;
+`;
 
             const comicPrompt = `
-Create a JSON comic script with 8-10 pages. 
-Comic Title: ${title} - Part ${part.part}: ${part.title}
-Subject: ${subject}
-Grade: ${grade}
-Story: ${partStory}
+You are a professional educational comic creator.
 
-Format:
-[
-  { "page": 1, "panels": [ { "scene": "...", "caption": "...", "dialogue": [] } ] }
-]
-            `;
+Theme Guidelines:
+${theme.prompt}
+
+Style Guidelines:
+${style.prompt}
+
+${gradeInstruction}
+
+Base Context (User Story):
+"${story}"
+
+Now create a JSON-based comic script of **8–10 pages** for the concept "${cleanConcept}", focusing on:
+${partStory}
+
+Each page must have:
+- 1–3 panels
+- Each panel includes:
+  "scene": visual description,
+  "caption": narrator or description,
+  "dialogue": optional [ { "character": "Name", "text": "Speech bubble" } ]
+
+Output only valid JSON array.
+`;
 
             const response = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [
-                    { role: "system", content: "Return ONLY valid JSON array. No text, no markdown, no explanation." },
+                    { role: "system", content: "Return only valid JSON arrays, 8–10 items long." },
                     { role: "user", content: comicPrompt }
                 ],
                 temperature: 0.5,
-                max_tokens: 1500
+                max_tokens: 1800
             });
 
             const pages = safeJsonParse(response.choices[0].message.content.trim());
 
             const comic = await Comic.create({
                 seriesId: series._id,
-                user_id: req.user.login_data._id,
-                themeId, styleId, subjectId,
+                user_id: userId,
+                themeId,
+                styleId,
+                subjectId,
+                subject,               // ✅ store readable subject
                 concept: cleanConcept,
                 conceptId: conceptDoc._id,
                 partNumber: part.part,
                 title: `${title} - Part ${part.part}: ${part.title}`,
-                author, story: partStory,
-                grade, country,
+                author,
+                story: partStory,       // part story
+                userStory: story,       // full original story
+                grade,
+                country,
                 prompt: JSON.stringify(pages),
                 comicStatus: "draft"
             });
@@ -327,7 +365,6 @@ Format:
         await series.save();
 
         res.json({ success: true, series, parts: comicsCreated });
-
     } catch (error) {
         console.error("❌ Error in refinePrompt:", error);
         res.status(500).json({ error: "Prompt generation failed", details: error.message });
@@ -336,277 +373,76 @@ Format:
 
 
 
-// const generateComicImage = async (req, res) => {
-//     const { comicId, pages } = req.body;
-
-//     try {
-
-//         const userId = req.user.login_data._id;
-
-//         // Weekly limit check (images = comics)
-//         const oneWeekAgo = new Date();
-//         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-//         const comicCount = await Comic.countDocuments({
-//             user_id: userId,
-//             createdAt: { $gte: oneWeekAgo }
-//         });
-
-//         if (comicCount >= 5) {
-//             return res.status(403).json({
-//                 error: "You have reached your weekly limit of 5 comics. Please wait until next week."
-//             });
-//         }
 
 
-//         // continue normal flow
-//         const comic = await Comic.findById(comicId).populate("styleId");
-//         if (!comic) {
-//             return res.status(404).json({ error: "Comic not found" });
-//         }
 
-//         const stylePrompt = comic.styleId.prompt; // use style prompt from DB
-//         const characterReferences = {};
-
-//         // ✅ sanitize function
-//         const sanitizeText = (text) => {
-//             if (!text) return "";
-//             return text
-//                 .replace(/["“”]/g, "") // remove quotes
-//                 .replace(/\bclown\b/gi, "funny character")
-//                 .replace(/\bmystery\b/gi, "puzzle")
-//                 .replace(/\bdetective\b/gi, "problem solver")
-//                 .replace(/\bcrime\b/gi, "problem"); // optional safe replacement
-//         };
-
-//         const imageUrls = await Promise.all(
-//             pages.map(async (page) => {
-//                 const pagePrompt = page.panels
-//                     .map((p, idx) => {
-//                         let dialogueText = p.dialogue
-//                             .map((d) => {
-//                                 if (!characterReferences[d.character]) {
-//                                     characterReferences[d.character] = null;
-//                                 }
-//                                 return `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`;
-//                             })
-//                             .join(" ");
-//                         return `Panel ${idx + 1}: Scene: ${sanitizeText(p.scene)}. Caption: ${sanitizeText(p.caption)}. Dialogue: ${dialogueText}`;
-//                     })
-//                     .join("\n");
-
-//                 let referencesText = "";
-//                 for (const [character, refUrl] of Object.entries(characterReferences)) {
-//                     if (refUrl) {
-//                         referencesText += `Use this reference image for ${sanitizeText(character)}: ${refUrl}\n`;
-//                     } else {
-//                         referencesText += `Generate ${sanitizeText(character)} consistently across all pages.\n`;
-//                     }
-//                 }
-
-//                 // ✅ safe prompt
-//                 const fullPrompt = `
-// Educational kid-friendly comic page with ${page.panels.length} vertical panels.
-// Safe for children, no violence, no unsafe content.
-// ${stylePrompt}
-// ${referencesText}
-// Panels:
-// ${pagePrompt}
-// `;
-
-//                 const imageResponse = await openai.images.generate({
-
-//                     model: "dall-e-3",
-//                     prompt: fullPrompt,
-//                     // size: "1024x1536", // 
-//                     size: "1024x1792", // dall-e-3
-//                     n: 1,
-//                 });
-
-//                 if (!imageResponse.data || !imageResponse.data[0]) {
-//                     throw new Error(`Image generation failed for page ${page.page}`);
-//                 }
-
-//                 const imgData = imageResponse.data[0];
-//                 let buffer;
-
-//                 if (imgData.url) {
-//                     const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
-//                     buffer = Buffer.from(response.data);
-//                 } else if (imgData.b64_json) {
-//                     buffer = Buffer.from(imgData.b64_json, "base64");
-//                 }
-
-//                 buffer = await sharp(buffer)
-//                     .resize({ width: 1024 })
-//                     .jpeg({ quality: 75 })
-//                     .toBuffer();
-
-//                 const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
-
-//                 const s3Upload = await upload_files("comics", {
-//                     name: fileName,
-//                     data: buffer,
-//                     mimetype: "image/jpeg",
-//                 });
-
-//                 const imageUrl = s3Upload;
-//                 const s3Key = `comics/${fileName}`;
-
-//                 await ComicPage.findOneAndUpdate(
-//                     { comicId, pageNumber: page.page }, // find existing page for same comic
-//                     {
-//                         comicId,
-//                         user_id: req.user.login_data._id,
-//                         pageNumber: page.page,
-//                         panels: page.panels,
-//                         imageUrl,
-//                         s3Key,
-//                         createdAt: new Date()
-//                     },
-//                     { upsert: true, new: true, setDefaultsOnInsert: true }
-//                 );
-
-
-//                 page.panels.forEach((panel) => {
-//                     panel.dialogue.forEach((d) => {
-//                         if (!characterReferences[d.character]) {
-//                             characterReferences[d.character] = imageUrl;
-//                         }
-//                     });
-//                 });
-
-//                 return { page: page.page, imageUrl };
-//             })
-//         );
-
-//         res.json({ comicId, images: imageUrls });
-//     } catch (error) {
-//         console.error("Image API Error:", error);
-//         res.status(500).json({ error: "Image generation failed", details: error.message });
-//     }
-// };
-
-
-// Define helper functions first
+// ---------------------- Utility Functions ----------------------
 
 const checkPromptSafety = async (prompt) => {
     try {
         const moderation = await openai.moderations.create({
-            input: prompt
+            input: prompt,
         });
 
         const results = moderation.results[0];
         if (results.flagged) {
-            console.log("Prompt flagged for:", results.categories);
+            console.log("🚫 Prompt flagged for:", results.categories);
             return false;
         }
         return true;
     } catch (error) {
-        console.error("Moderation check failed:", error);
+        console.error("❌ Moderation check failed:", error.message);
         return false;
     }
 };
 
 const makePromptSafer = (prompt) => {
-    // More comprehensive safety modifications
     const safetyAppendages = [
         "This is a completely safe, educational comic for young children.",
         "All content is appropriate for ages 1-16.",
         "No violence, no scary elements, only positive educational content.",
         "G-rated and family-friendly imagery only.",
-        "Characters are friendly, positive, and educational."
+        "Characters are friendly, positive, and educational.",
     ];
 
-    // Rotate through different safety messages to avoid repetition
-    const randomSafety = safetyAppendages[Math.floor(Math.random() * safetyAppendages.length)];
+    const randomSafety =
+        safetyAppendages[Math.floor(Math.random() * safetyAppendages.length)];
 
-    return prompt + " " + randomSafety;
+    return `${prompt} ${randomSafety}`;
 };
 
-const generateImageWithRetry = async (prompt, retries = 3) => {
-    let currentPrompt = prompt;
-
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            console.log(`Attempt ${attempt}/${retries} for image generation`);
-
-            const isSafe = await checkPromptSafety(currentPrompt);
-            if (!isSafe) {
-                console.log("Prompt flagged by moderation. Making safer...");
-                currentPrompt = makePromptSafer(currentPrompt);
-
-                // Check if we should continue after making it safer
-                if (attempt === retries) {
-                    throw new Error("Prompt still unsafe after modifications");
-                }
-                continue;
-            }
-
-            const imageResponse = await openai.images.generate({
-                model: "gpt-image-1",
-                // model: "dall-e-3",
-                prompt: currentPrompt,
-                // size: "1024x1792", // dall-e-3
-                size: "1024x1536",
-                n: 1,
-            });
-
-            return imageResponse;
-
-        } catch (error) {
-            if (error.code === 'content_policy_violation' && attempt < retries) {
-                console.log(`Content policy violation. Attempt ${attempt}/${retries}. Making prompt safer...`);
-                currentPrompt = makePromptSafer(currentPrompt);
-                await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Increased backoff
-                continue;
-            }
-
-            // If it's not a content policy violation or we're out of retries, throw
-            throw error;
-        }
-    }
-    throw new Error("Max retries exceeded due to content policy violations");
-};
-
-// Enhanced sanitization function
 const sanitizeText = (text) => {
     if (!text) return "";
-
-    // First, handle common problematic terms
     const replacementMap = {
-        'clown': 'funny character',
-        'joker': 'playful character',
-        'creepy': 'interesting',
-        'scary': 'exciting',
-        'violent': 'active',
-        'mystery': 'puzzle',
-        'secret': 'special',
-        'hidden': 'waiting to be found',
-        'detective': 'explorer',
-        'investigator': 'researcher',
-        'crime': 'problem',
-        'theft': 'mix-up',
-        'robbery': 'misunderstanding',
-        'attack': 'approach',
-        'destroy': 'fix',
-        'kill': 'stop',
-        'harm': 'help',
-        'weapon': 'tool',
-        'gun': 'water pistol',
-        'knife': 'utensil',
-        'blood': 'paint'
+        clown: "funny character",
+        joker: "playful character",
+        creepy: "interesting",
+        scary: "exciting",
+        violent: "active",
+        mystery: "puzzle",
+        secret: "special",
+        hidden: "waiting to be found",
+        detective: "explorer",
+        investigator: "researcher",
+        crime: "problem",
+        theft: "mix-up",
+        robbery: "misunderstanding",
+        attack: "approach",
+        destroy: "fix",
+        kill: "stop",
+        harm: "help",
+        weapon: "tool",
+        gun: "water pistol",
+        knife: "utensil",
+        blood: "paint",
     };
 
     let safeText = text.toLowerCase();
-
-    // Replace problematic terms
-    Object.keys(replacementMap).forEach(term => {
-        const regex = new RegExp(`\\b${term}\\b`, 'gi');
+    Object.keys(replacementMap).forEach((term) => {
+        const regex = new RegExp(`\\b${term}\\b`, "gi");
         safeText = safeText.replace(regex, replacementMap[term]);
     });
 
-    // Remove special characters
     safeText = safeText
         .replace(/["“”'‘’]/g, "")
         .replace(/[^\w\s.,!?-]/g, "")
@@ -615,29 +451,76 @@ const sanitizeText = (text) => {
     return safeText;
 };
 
-// Main function
+// Retry-safe image generation
+const generateImageWithRetry = async (prompt, retries = 3) => {
+    let currentPrompt = prompt;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        console.log(`🖼️ Attempt ${attempt}/${retries} for image generation`);
+        try {
+            const isSafe = await checkPromptSafety(currentPrompt);
+            if (!isSafe) {
+                console.warn("⚠️ Prompt flagged — making safer...");
+                currentPrompt = makePromptSafer(currentPrompt);
+                continue;
+            }
+
+            const imageResponse = await openai.images.generate({
+                model: "gpt-image-1",
+                prompt: currentPrompt,
+                size: "1024x1536",
+                n: 1,
+            });
+
+            console.log(`✅ Image generated successfully (attempt ${attempt})`);
+            return imageResponse;
+        } catch (error) {
+            console.error(`❌ Error on attempt ${attempt}:`, error.message);
+            if (error.response?.data) {
+                console.error("🔍 OpenAI Response:", JSON.stringify(error.response.data, null, 2));
+            }
+
+            if (error.code === "content_policy_violation" && attempt < retries) {
+                console.warn("🚫 Policy violation, retrying with safer prompt...");
+                currentPrompt = makePromptSafer(currentPrompt);
+                await new Promise((r) => setTimeout(r, 2000 * attempt));
+                continue;
+            }
+
+            if (attempt === retries) {
+                throw new Error(
+                    `Image generation failed after ${retries} attempts: ${error.message}`
+                );
+            }
+        }
+    }
+
+    throw new Error("Max retries exceeded for image generation");
+};
+
+// ---------------------- Main Image Generation ----------------------
+
 const generateComicImage = async (req, res) => {
     const { comicId, pages } = req.body;
 
     try {
         const userId = req.user.login_data._id;
 
-        // Weekly limit check (uncomment when ready)
-
+        // 🧮 Weekly limit check (optional)
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
         const comicCount = await Comic.countDocuments({
             user_id: userId,
             createdAt: { $gte: oneWeekAgo },
-            pdfUrl: { $exists: true, $ne: null }
+            pdfUrl: { $exists: true, $ne: null },
         });
 
         if (comicCount >= 5) {
             return res.status(403).json({
-                error: "You have reached your weekly limit of 5 comics. Please wait until next week."
+                error:
+                    "You have reached your weekly limit of 5 comics. Please wait until next week.",
             });
         }
-
 
         const comic = await Comic.findById(comicId).populate("styleId");
         if (!comic) {
@@ -647,138 +530,159 @@ const generateComicImage = async (req, res) => {
         const stylePrompt = comic.styleId.prompt;
         const characterReferences = {};
 
-        const imageUrls = await Promise.all(
-            pages.map(async (page) => {
-                try {
-                    const pagePrompt = page.panels
-                        .map((p, idx) => {
-                            let dialogueText = p.dialogue
-                                .map((d) => {
-                                    if (!characterReferences[d.character]) {
-                                        characterReferences[d.character] = null;
-                                    }
-                                    return `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`;
-                                })
-                                .join(" ");
-                            return `Panel ${idx + 1}: Scene: ${sanitizeText(p.scene)}. Caption: ${sanitizeText(p.caption)}. Dialogue: ${dialogueText}`;
-                        })
-                        .join("\n");
+        // ✅ Generate images one by one (safer)
+        const imageUrls = [];
 
-                    let referencesText = "";
-                    for (const [character, refUrl] of Object.entries(characterReferences)) {
-                        if (refUrl) {
-                            referencesText += `Use this reference image for ${sanitizeText(character)}: ${refUrl}\n`;
-                        } else {
-                            referencesText += `Generate ${sanitizeText(character)} consistently across all pages.\n`;
-                        }
-                    }
+        for (const page of pages) {
+            try {
+                // Validate panels
+                if (!Array.isArray(page.panels) || page.panels.length === 0) {
+                    console.warn(`⚠️ Page ${page.page} has no panels — skipping.`);
+                    imageUrls.push({ page: page.page, skipped: true });
+                    continue;
+                }
 
-                    const fullPrompt = `
-Create an educational comic page suitable for children ages 6-12.
-The content must be: G-rated, completely safe for kids, educational, positive, and friendly.
-Absolutely no violence, no scary elements, no inappropriate content.
+                const pagePrompt = page.panels
+                    .map((p, idx) => {
+                        const dialogues = Array.isArray(p.dialogue) ? p.dialogue : [];
+                        const dialogueText = dialogues
+                            .map((d) => {
+                                if (d && d.character && !characterReferences[d.character]) {
+                                    characterReferences[d.character] = null;
+                                }
+                                return d && d.character && d.text
+                                    ? `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`
+                                    : "";
+                            })
+                            .filter(Boolean)
+                            .join(" ");
+
+                        return `Panel ${idx + 1}: Scene: ${sanitizeText(
+                            p.scene || ""
+                        )}. Caption: ${sanitizeText(p.caption || "")}. Dialogue: ${dialogueText}`;
+                    })
+                    .join("\n");
+
+                let referencesText = "";
+                for (const [character, refUrl] of Object.entries(characterReferences)) {
+                    referencesText += refUrl
+                        ? `Use this reference image for ${sanitizeText(character)}: ${refUrl}\n`
+                        : `Generate ${sanitizeText(
+                            character
+                        )} consistently across all pages.\n`;
+                }
+
+                const fullPrompt = `
+Create an educational comic page suitable for children ages 6–12.
+The content must be G-rated, safe, educational, positive, and friendly.
+No violence, no scary elements, no inappropriate content.
 
 Style: ${stylePrompt}
 ${referencesText}
 
-Page description: ${pagePrompt}
+Page description:
+${pagePrompt}
 
 Important: This comic is for educational purposes only. All characters are friendly and positive.
 Generate safe, child-appropriate imagery only.
-`;
+        `;
 
-                    // Use the retry function
-                    const imageResponse = await generateImageWithRetry(fullPrompt);
+                const imageResponse = await generateImageWithRetry(fullPrompt);
 
-                    if (!imageResponse.data || !imageResponse.data[0]) {
-                        throw new Error(`Image generation failed for page ${page.page}`);
-                    }
+                if (!imageResponse.data || !imageResponse.data[0]) {
+                    throw new Error(`Image generation failed for page ${page.page}`);
+                }
 
-                    const imgData = imageResponse.data[0];
-                    let buffer;
+                const imgData = imageResponse.data[0];
+                let buffer;
 
-                    if (imgData.url) {
-                        const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
-                        buffer = Buffer.from(response.data);
-                    } else if (imgData.b64_json) {
-                        buffer = Buffer.from(imgData.b64_json, "base64");
-                    }
-
-                    buffer = await sharp(buffer)
-                        .resize({ width: 1024 })
-                        .jpeg({ quality: 75 })
-                        .toBuffer();
-
-                    const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
-                    const s3Upload = await upload_files("comics", {
-                        name: fileName,
-                        data: buffer,
-                        mimetype: "image/jpeg",
+                if (imgData.url) {
+                    const response = await axios.get(imgData.url, {
+                        responseType: "arraybuffer",
                     });
+                    buffer = Buffer.from(response.data);
+                } else if (imgData.b64_json) {
+                    buffer = Buffer.from(imgData.b64_json, "base64");
+                }
 
-                    const imageUrl = s3Upload;
-                    const s3Key = `comics/${fileName}`;
+                buffer = await sharp(buffer)
+                    .resize({ width: 1024 })
+                    .jpeg({ quality: 75 })
+                    .toBuffer();
 
-                    await ComicPage.findOneAndUpdate(
-                        { comicId, pageNumber: page.page },
-                        {
-                            comicId,
-                            user_id: req.user.login_data._id,
-                            pageNumber: page.page,
-                            panels: page.panels,
-                            imageUrl,
-                            s3Key,
-                            createdAt: new Date()
-                        },
-                        { upsert: true, new: true, setDefaultsOnInsert: true }
-                    );
+                const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
+                const s3Upload = await upload_files("comics", {
+                    name: fileName,
+                    data: buffer,
+                    mimetype: "image/jpeg",
+                });
 
-                    // Update character references with the generated image
+                const imageUrl = s3Upload;
+                const s3Key = `comics/${fileName}`;
+
+                // ✅ Safe character reference update
+                if (Array.isArray(page.panels)) {
                     page.panels.forEach((panel) => {
-                        panel.dialogue.forEach((d) => {
-                            if (!characterReferences[d.character]) {
+                        const dialogues = Array.isArray(panel.dialogue)
+                            ? panel.dialogue
+                            : [];
+                        dialogues.forEach((d) => {
+                            if (d && d.character && !characterReferences[d.character]) {
                                 characterReferences[d.character] = imageUrl;
                             }
                         });
                     });
-
-                    return { page: page.page, imageUrl };
-
-                } catch (error) {
-                    console.error(`Error generating image for page ${page.page}:`, error);
-                    // Return a failed result but don't break the entire process
-                    return {
-                        page: page.page,
-                        error: true,
-                        message: error.message,
-                        code: error.code
-                    };
                 }
-            })
-        );
 
-        // Check if any pages failed
-        const failedPages = imageUrls.filter(result => result.error);
+                await ComicPage.findOneAndUpdate(
+                    { comicId, pageNumber: page.page },
+                    {
+                        comicId,
+                        user_id: req.user.login_data._id,
+                        pageNumber: page.page,
+                        panels: page.panels,
+                        imageUrl,
+                        s3Key,
+                        createdAt: new Date(),
+                    },
+                    { upsert: true, new: true, setDefaultsOnInsert: true }
+                );
+
+                imageUrls.push({ page: page.page, imageUrl });
+            } catch (error) {
+                console.error(`❌ Error generating image for page ${page.page}:`, error);
+                imageUrls.push({
+                    page: page.page,
+                    error: true,
+                    message: error.message,
+                });
+            }
+
+            // Optional small delay to prevent throttling
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        const failedPages = imageUrls.filter((r) => r.error);
         if (failedPages.length > 0) {
-            console.log(`Failed to generate ${failedPages.length} pages`);
+            console.warn(`⚠️ Failed to generate ${failedPages.length} pages`);
         }
 
         res.json({
             comicId,
             images: imageUrls,
             success: failedPages.length === 0,
-            failedPages: failedPages.map(f => f.page)
+            failedPages: failedPages.map((f) => f.page),
         });
-
     } catch (error) {
-        console.error("Image API Error:", error);
+        console.error("🔥 Image API Error:", error);
         res.status(500).json({
             error: "Image generation failed",
             details: error.message,
-            code: error.code
+            code: error.code,
         });
     }
 };
+
 
 
 

@@ -785,7 +785,7 @@ const getComicsByConcept = async (req, res) => {
         quizSubmissions.map((s) => s.quizId.toString())
       );
 
-      // 🧩 Hardcore quiz and submissions
+      //  Hardcore quiz and submissions
       const hardcoreQuizzes = await HardcoreQuiz.find(
         { comicId: { $in: comicIds } },
         "_id comicId"

@@ -183,17 +183,23 @@ const generateDidYouKnow = async (req, res) => {
       .join("\n\n");
 
     const factPrompt = `
-      Generate 1-2 fun and educational "Did You Know?" facts.
-      ❌ Do NOT use dialogues.
-      ✅ Focus only on knowledge, subject concepts, and factual information.
+You are an expert educational content creator.
 
-      Story Content:
-      ${storyText}
+Generate 1–2 fun and educational "Did You Know?" facts.
 
-      ⚠️ Output strictly JSON only:
-      [
-        { "fact": "string" }
-      ]
+❌ Do NOT use dialogues.
+✅ Focus on interesting insights, background information, or real-world connections related to the comic’s subject.
+
+⚠️ Do NOT repeat information already covered in the comic storyline.
+Focus only on **new facts or clarifications** that expand the student's understanding.
+
+Comic Story Content:
+${storyText}
+
+Return strictly JSON only:
+[
+  { "fact": "string" }
+]
     `;
 
     const response = await openai.chat.completions.create({
@@ -206,12 +212,11 @@ const generateDidYouKnow = async (req, res) => {
       max_tokens: 600
     });
 
-    // ✅ Safe parse
     const raw = response.choices[0].message.content.trim();
     let facts = safeJsonParse(raw);
     if (!Array.isArray(facts)) facts = [facts];
 
-    // ✅ Prompts with theme + style
+    // ✅ Generate images (theme + style)
     const stylePrompt = comic.styleId.prompt;
     const themePrompt = comic.themeId.prompt;
 
@@ -229,7 +234,6 @@ Make it colorful, engaging, and consistent with the comic style.
 
         const imgRes = await openai.images.generate({
           model: "gpt-image-1",
-          // model: "dall-e-3",
           prompt: imgPrompt,
           size: "1024x1536",
           n: 1,
@@ -281,6 +285,7 @@ Make it colorful, engaging, and consistent with the comic style.
     });
   }
 };
+
 
 
 
