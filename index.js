@@ -8,24 +8,40 @@ const path = require("path");
 const fileUpload = require("express-fileupload");
 const connectToDatabase = require('./config/database.js');
 const app = express();
-var corsOptions = {
-  origin: 'http://localhost:3000',
-  optionsSuccessStatus: 200
-}
 
-// app.use(cors({ origin: "http://localhost:3000" })); 
 
 const allowedOrigins = ['http://localhost:3000', 'http://13.60.35.222', 'http://kridemy.com', 'https://kridemy.com', 'https://www.kridemy.com', 'https://api.kridemy.com'];
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      return callback(new Error("CORS not allowed"), false);
-    }
-    return callback(null, true);
-  },
-  credentials: true
-}));
+
+// app.use(cors({
+//   origin: function (origin, callback) {
+//     if (!origin) return callback(null, true);
+//     if (allowedOrigins.indexOf(origin) === -1) {
+//       return callback(new Error("CORS not allowed"), false);
+//     }
+//     return callback(null, true);
+//   },
+//   credentials: true
+// }));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*"); // fallback for static content
+  }
+
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204); // handle preflight
+  }
+
+  next();
+});
+
 
 const templatePath = path.join(__dirname, "views");
 
