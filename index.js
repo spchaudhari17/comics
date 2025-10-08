@@ -12,16 +12,18 @@ const app = express();
 
 const allowedOrigins = ['http://localhost:3000', 'http://13.60.35.222', 'http://kridemy.com', 'https://kridemy.com', 'https://www.kridemy.com', 'https://api.kridemy.com'];
 
-// app.use(cors({
-//   origin: function (origin, callback) {
-//     if (!origin) return callback(null, true);
-//     if (allowedOrigins.indexOf(origin) === -1) {
-//       return callback(new Error("CORS not allowed"), false);
-//     }
-//     return callback(null, true);
-//   },
-//   credentials: true
-// }));
+if (process.env.NODE_ENV === "development") {
+  app.use(cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        return callback(new Error("CORS not allowed"), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true
+  }));
+}
 
 
 
