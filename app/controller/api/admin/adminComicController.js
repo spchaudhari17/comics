@@ -28,6 +28,28 @@ const listAllComicsAdmin = async (req, res) => {
   }
 };
 
+const getAdminComicDetails = async (req, res) => {
+  try {
+    const comicId = req.params.id;
+
+    const comic = await Comic.findById(comicId)
+      .populate("user_id", "firstname email userType")
+      .populate("subjectId", "name")
+      .populate("themeId", "name")
+      .populate("styleId", "name")
+      .lean();
+
+    if (!comic) return res.status(404).json({ error: "Comic not found" });
+
+    const pages = await ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean();
+
+    res.json({ comic, pages });
+  } catch (error) {
+    console.error("Error fetching admin comic details:", error);
+    res.status(500).json({ error: "Failed to fetch comic details" });
+  }
+};
+
 
 const approveComicStatusAdmin = async (req, res) => {
   try {
@@ -59,7 +81,7 @@ const approveComicStatusAdmin = async (req, res) => {
 
 
 
-module.exports = { approveComicStatusAdmin, listAllComicsAdmin }
+module.exports = { approveComicStatusAdmin, listAllComicsAdmin, getAdminComicDetails }
 
 
 

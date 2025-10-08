@@ -14,6 +14,11 @@ const Theme = require("../../models/Theme");
 const Style = require("../../models/Style");
 const ComicSeries = require("../../models/ComicSeries");
 const QuizSubmission = require("../../models/QuizSubmission");
+const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
+const { default: mongoose } = require("mongoose");
+const HardcoreQuizQuestion = require("../../models/HardcoreQuizQuestion");
+const Subject = require("../../models/Subject");
+const HardcoreQuiz = require("../../models/HardcoreQuiz");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -853,22 +858,103 @@ const listComics = async (req, res) => {
 
 
 
+// const getComic = async (req, res) => {
+//     try {
+//         const comic = await Comic.findById(req.params.id).lean();
+//         const pages = await ComicPage.find({ comicId: req.params.id }).lean();
+
+//         let parts = [];
+//         if (comic?.seriesId) {
+//             parts = await Comic.find({ seriesId: comic.seriesId }).select("_id partNumber title concept").lean();
+//         }
+
+//         res.json({ comic, pages, parts });
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ error: "Failed to fetch comic" });
+//     }
+// };
+
+
+
 const getComic = async (req, res) => {
-    try {
-        const comic = await Comic.findById(req.params.id).lean();
-        const pages = await ComicPage.find({ comicId: req.params.id }).lean();
+  try {
+    const comicId = req.params.id;
+    const userId = req.user?.login_data?._id; // Optional if logged in
 
-        let parts = [];
-        if (comic?.seriesId) {
-            parts = await Comic.find({ seriesId: comic.seriesId }).select("_id partNumber title concept").lean();
-        }
+    // 🔹 Fetch the base comic
+    const comic = await Comic.findById(comicId).lean();
+    if (!comic) return res.status(404).json({ error: "Comic not found" });
 
-        res.json({ comic, pages, parts });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Failed to fetch comic" });
+    // 🔹 Fetch related data in parallel
+    const [
+      pages,
+      theme,
+      subject,
+      style,
+      faqs,
+      facts,
+      hardcoreQuiz,
+    ] = await Promise.all([
+      ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean(),
+      Theme.findById(comic.themeId).lean(),
+      Subject.findById(comic.subjectId).lean(),
+      Style.findById(comic.styleId).lean(),
+      FAQ.find({ comicId }).lean(),
+      DidYouKnow.find({ comicId }).lean(),
+      HardcoreQuiz.findOne({ comicId }).lean(),
+    ]);
+
+    // 🔹 Check user hardcore quiz attempts
+    let hasAttemptedHardcore = false;
+    if (hardcoreQuiz && userId) {
+      const attempt = await HardcoreQuizSubmission.findOne({
+        quizId: hardcoreQuiz._id,
+        userId: new mongoose.Types.ObjectId(userId),
+      });
+      hasAttemptedHardcore = !!attempt;
     }
+
+    // 🔹 Fetch series parts if multi-part
+    let parts = [];
+    if (comic.seriesId) {
+      parts = await Comic.find({ seriesId: comic.seriesId })
+        .select("_id partNumber title concept")
+        .sort({ partNumber: 1 })
+        .lean();
+    }
+
+    // 🔹 Combine all data
+    const enhancedComic = {
+      ...comic,
+      themeId: theme?._id || null,
+      theme: theme?.name || "N/A",
+      subjectId: subject?._id || null,
+      subject: subject?.name || "N/A",
+      styleId: style?._id || null,
+      style: style?.name || "N/A",
+      hasFAQ: faqs.length > 0,
+      hasDidYouKnow: facts.length > 0,
+      hasHardcoreQuiz: !!hardcoreQuiz,
+      hasAttemptedHardcore,
+      thumbnail: pages[0]?.imageUrl || null,
+      totalPages: pages.length,
+    };
+
+    // ✅ Final response
+    res.json({
+      comic: enhancedComic,
+      pages,
+      parts,
+      faqs,
+      facts,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching comic:", err);
+    res.status(500).json({ error: "Failed to fetch comic" });
+  }
 };
+
 
 
 const updateComicStatus = async (req, res) => {
@@ -977,6 +1063,10 @@ const listUserComics = async (req, res) => {
         res.status(500).json({ error: "Failed to list user's comics" });
     }
 };
+
+
+
+
 
 
 
