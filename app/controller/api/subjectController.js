@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const Quiz = require("../../models/Quiz");
 const QuizSubmission = require("../../models/QuizSubmission");
 const UserSubjectPriority = require("../../models/UserSubjectPriority");
+const HardcoreQuiz = require("../../models/HardcoreQuiz");
+const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
 
 const createSubject = async (req, res) => {
   try {
@@ -683,9 +685,9 @@ const getComicsByConcept = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-
     const userId = req.query.userId;
 
+    // 🔍 Mongo aggregation
     let comics = await Comic.aggregate([
       {
         $match: {
@@ -697,13 +699,37 @@ const getComicsByConcept = async (req, res) => {
       { $skip: skip },
       { $limit: limit },
 
-      // 🔍 lookups for extra data
+      // 🔹 Lookups for extra data
       {
         $lookup: {
           from: "faqs",
           localField: "_id",
           foreignField: "comicId",
           as: "faqs",
+        },
+      },
+      {
+        $lookup: {
+          from: "didyouknows",
+          localField: "_id",
+          foreignField: "comicId",
+          as: "facts",
+        },
+      },
+      {
+        $lookup: {
+          from: "quizs",
+          localField: "_id",
+          foreignField: "comicId",
+          as: "quizData",
+        },
+      },
+      {
+        $lookup: {
+          from: "hardcorequizzes",
+          localField: "_id",
+          foreignField: "comicId",
+          as: "hardcoreQuizData",
         },
       },
       {
@@ -726,24 +752,20 @@ const getComicsByConcept = async (req, res) => {
       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
-          from: "didyouknows",
-          localField: "_id",
-          foreignField: "comicId",
-          as: "facts",
-        },
-      },
-      {
-        $lookup: {
           from: "comicpages",
           localField: "_id",
           foreignField: "comicId",
           as: "pages",
         },
       },
+
+      // 🔹 Derived fields (flags)
       {
         $addFields: {
           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+          hasQuiz: { $gt: [{ $size: "$quizData" }, 0] },
+          hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
           subjectId: "$subjectData._id",
           subject: "$subjectData.name",
@@ -751,24 +773,31 @@ const getComicsByConcept = async (req, res) => {
           theme: "$themeData.name",
         },
       },
+
+      // 🧹 Clean output
       {
         $project: {
           faqs: 0,
           facts: 0,
+          quizData: 0,
+          hardcoreQuizData: 0,
           pages: 0,
           subjectData: 0,
-          prompt: 0,
           themeData: 0,
+          prompt: 0,
         },
       },
     ]);
 
-    // ✅ User quiz attempt check
+    // 🧠 If user logged in, mark quiz attempt status
     if (userId) {
       const comicIds = comics.map((c) => c._id);
 
-      // 🧩 Normal quiz and submissions
       const quizzes = await Quiz.find(
+        { comicId: { $in: comicIds } },
+        "_id comicId"
+      );
+      const hardcoreQuizzes = await HardcoreQuiz.find(
         { comicId: { $in: comicIds } },
         "_id comicId"
       );
@@ -780,17 +809,6 @@ const getComicsByConcept = async (req, res) => {
         },
         "quizId"
       );
-
-      const attemptedQuizIds = new Set(
-        quizSubmissions.map((s) => s.quizId.toString())
-      );
-
-      //  Hardcore quiz and submissions
-      const hardcoreQuizzes = await HardcoreQuiz.find(
-        { comicId: { $in: comicIds } },
-        "_id comicId"
-      );
-
       const hardcoreSubmissions = await HardcoreQuizSubmission.find(
         {
           quizId: { $in: hardcoreQuizzes.map((hq) => hq._id) },
@@ -799,11 +817,13 @@ const getComicsByConcept = async (req, res) => {
         "quizId"
       );
 
-      const attemptedHardcoreQuizIds = new Set(
+      const attemptedQuizIds = new Set(
+        quizSubmissions.map((s) => s.quizId.toString())
+      );
+      const attemptedHardcoreIds = new Set(
         hardcoreSubmissions.map((s) => s.quizId.toString())
       );
 
-      // ✅ Attach both statuses
       comics.forEach((comic) => {
         const quiz = quizzes.find(
           (q) => q.comicId.toString() === comic._id.toString()
@@ -816,20 +836,18 @@ const getComicsByConcept = async (req, res) => {
           ? attemptedQuizIds.has(quiz._id.toString())
           : false;
 
-        comic.hasHardcoreQuiz = !!hardcoreQuiz;
         comic.hasAttemptedHardcore = hardcoreQuiz
-          ? attemptedHardcoreQuizIds.has(hardcoreQuiz._id.toString())
+          ? attemptedHardcoreIds.has(hardcoreQuiz._id.toString())
           : false;
       });
     } else {
       comics.forEach((comic) => {
         comic.hasAttempted = false;
-        comic.hasHardcoreQuiz = false;
         comic.hasAttemptedHardcore = false;
       });
     }
 
-    // ✅ isOpen logic (series wise)
+    // ✅ Sort & open logic same as before
     comics = comics.sort((a, b) => {
       const aSeries = a.seriesId ? a.seriesId.toString() : "";
       const bSeries = b.seriesId ? b.seriesId.toString() : "";
@@ -841,27 +859,21 @@ const getComicsByConcept = async (req, res) => {
 
     const seriesGroups = {};
     comics.forEach((comic) => {
-      const seriesKey = comic.seriesId ? comic.seriesId.toString() : "no-series";
-      if (!seriesGroups[seriesKey]) {
-        seriesGroups[seriesKey] = [];
-      }
-      seriesGroups[seriesKey].push(comic);
+      const key = comic.seriesId ? comic.seriesId.toString() : "no-series";
+      if (!seriesGroups[key]) seriesGroups[key] = [];
+      seriesGroups[key].push(comic);
     });
 
-    Object.values(seriesGroups).forEach((seriesComics) => {
-      seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-
-      if (seriesComics.length === 1) {
-        seriesComics[0].isOpen = true;
+    Object.values(seriesGroups).forEach((series) => {
+      series.sort((a, b) => a.partNumber - b.partNumber);
+      if (series.length === 1) {
+        series[0].isOpen = true;
       } else {
-        seriesComics.forEach((comic) => {
-          if (comic.partNumber === 1) {
-            comic.isOpen = true;
-          } else {
-            const prevComic = seriesComics.find(
-              (c) => c.partNumber === comic.partNumber - 1
-            );
-            comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
+        series.forEach((comic) => {
+          if (comic.partNumber === 1) comic.isOpen = true;
+          else {
+            const prev = series.find((c) => c.partNumber === comic.partNumber - 1);
+            comic.isOpen = prev && prev.hasAttempted;
           }
         });
       }
@@ -885,6 +897,8 @@ const getComicsByConcept = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch comics" });
   }
 };
+
+
 
 
 
