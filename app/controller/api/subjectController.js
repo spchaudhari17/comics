@@ -494,200 +494,15 @@ const getConceptsBySubject = async (req, res) => {
 
 
 
-// const getComicsByConcept = async (req, res) => {
-//   try {
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-
-//     const userId = req.query.userId; // 👈 user identify
-
-//     let comics = await Comic.aggregate([
-//       {
-//         $match: {
-//           status: "approved",
-//           conceptId: new mongoose.Types.ObjectId(conceptId),
-//         },
-//       },
-//       { $sort: { partNumber: 1 } }, // har series ke andar part number ka order
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       {
-//         $lookup: {
-//           from: "faqs",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "faqs",
-//         },
-//       },
-
-//       {
-//         $lookup: {
-//           from: "subjects",
-//           localField: "subjectId",
-//           foreignField: "_id",
-//           as: "subjectData",
-//         },
-//       },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-
-//       {
-//         $lookup: {
-//           from: "themes", // 👈 new lookup
-//           localField: "themeId",
-//           foreignField: "_id",
-//           as: "themeData",
-//         },
-//       },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-//       {
-//         $lookup: {
-//           from: "didyouknows",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "facts",
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "comicpages",
-//           localField: "_id",
-//           foreignField: "comicId",
-//           as: "pages",
-//         },
-//       },
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subjectId: "$subjectData._id",
-//           subject: "$subjectData.name",
-//           themeId: "$themeData._id",        // 👈 already have themeId
-//           theme: "$themeData.name",
-//         },
-//       },
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           pages: 0,
-//           subjectData: 0,
-//           prompt: 0,
-//           themeData: 0,
-//         },
-//       },
-//     ]);
-
-//     // ✅ hasAttempted check
-//     if (userId) {
-//       const comicIds = comics.map((c) => c._id);
-
-//       // quizzes nikal lo for these comics
-//       const quizzes = await Quiz.find(
-//         { comicId: { $in: comicIds } },
-//         "_id comicId"
-//       );
-
-//       const submissions = await QuizSubmission.find(
-//         {
-//           quizId: { $in: quizzes.map((q) => q._id) },
-//           userId: new mongoose.Types.ObjectId(userId),
-//         },
-//         "quizId"
-//       );
-
-//       const attemptedQuizIds = new Set(
-//         submissions.map((s) => s.quizId.toString())
-//       );
-
-//       comics.forEach((comic) => {
-//         const quiz = quizzes.find(
-//           (q) => q.comicId.toString() === comic._id.toString()
-//         );
-//         comic.hasAttempted = quiz
-//           ? attemptedQuizIds.has(quiz._id.toString())
-//           : false;
-//       });
-//     } else {
-//       comics.forEach((comic) => (comic.hasAttempted = false));
-//     }
-
-//     // ✅ isOpen logic series-wise
-//     comics = comics.sort((a, b) => {
-//       const aSeries = a.seriesId ? a.seriesId.toString() : "";
-//       const bSeries = b.seriesId ? b.seriesId.toString() : "";
-
-//       if (aSeries === bSeries) {
-//         return a.partNumber - b.partNumber; // same series → part order
-//       }
-//       return aSeries.localeCompare(bSeries); // series wise group
-//     });
-
-//     // series wise group banao
-//     const seriesGroups = {};
-//     comics.forEach((comic) => {
-//       const seriesKey = comic.seriesId ? comic.seriesId.toString() : "no-series";
-//       if (!seriesGroups[seriesKey]) {
-//         seriesGroups[seriesKey] = [];
-//       }
-//       seriesGroups[seriesKey].push(comic);
-//     });
-
-//     // har series me sequential isOpen apply karo
-//     Object.values(seriesGroups).forEach((seriesComics) => {
-//       seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-
-//       if (seriesComics.length === 1) {
-//         // 👈 only one comic in this series → always open
-//         seriesComics[0].isOpen = true;
-//       } else {
-//         seriesComics.forEach((comic) => {
-//           if (comic.partNumber === 1) {
-//             comic.isOpen = true; // Part 1 hamesha open
-//           } else {
-//             const prevComic = seriesComics.find(
-//               (c) => c.partNumber === comic.partNumber - 1
-//             );
-//             comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
-//           }
-//         });
-//       }
-//     });
-
-
-
-//     const totalComics = await Comic.countDocuments({
-//       status: "approved",
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     });
-
-//     res.json({
-//       conceptId,
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching comics by concept:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
-
-
 const getComicsByConcept = async (req, res) => {
   try {
     const conceptId = req.params.conceptId;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const userId = req.query.userId;
 
-    const userId = req.query.userId; // 👈 user identify
-
+    // 🧩 Fetch comics with all related data
     let comics = await Comic.aggregate([
       {
         $match: {
@@ -695,101 +510,56 @@ const getComicsByConcept = async (req, res) => {
           conceptId: new mongoose.Types.ObjectId(conceptId),
         },
       },
-      { $sort: { partNumber: 1 } }, // har series ke andar part number ka order
+      { $sort: { partNumber: 1 } },
       { $skip: skip },
       { $limit: limit },
 
-      {
-        $lookup: {
-          from: "faqs",
-          localField: "_id",
-          foreignField: "comicId",
-          as: "faqs",
-        },
-      },
-      {
-        $lookup: {
-          from: "hardcorequizzes",
-          localField: "_id",
-          foreignField: "comicId",
-          as: "hardcoreQuizData",
-        },
-      },
-      {
-        $lookup: {
-          from: "subjects",
-          localField: "subjectId",
-          foreignField: "_id",
-          as: "subjectData",
-        },
-      },
+      // 📘 Related lookups
+      { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
+      { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
+      { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
+      { $lookup: { from: "subjects", localField: "subjectId", foreignField: "_id", as: "subjectData" } },
       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-
-      {
-        $lookup: {
-          from: "themes", // 👈 new lookup
-          localField: "themeId",
-          foreignField: "_id",
-          as: "themeData",
-        },
-      },
+      { $lookup: { from: "themes", localField: "themeId", foreignField: "_id", as: "themeData" } },
       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "didyouknows",
-          localField: "_id",
-          foreignField: "comicId",
-          as: "facts",
-        },
-      },
-      {
-        $lookup: {
-          from: "comicpages",
-          localField: "_id",
-          foreignField: "comicId",
-          as: "pages",
-        },
-      },
+      { $lookup: { from: "comicpages", localField: "_id", foreignField: "comicId", as: "pages" } },
+
+      // 🔹 Derived flags
       {
         $addFields: {
           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
+          hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
           subjectId: "$subjectData._id",
           subject: "$subjectData.name",
-          themeId: "$themeData._id",        // 👈 already have themeId
-          hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
+          themeId: "$themeData._id",
           theme: "$themeData.name",
         },
       },
+
+      // 🧹 Clean output
       {
         $project: {
           faqs: 0,
           facts: 0,
+          hardcoreQuizData: 0,
           pages: 0,
           subjectData: 0,
-          prompt: 0,
           themeData: 0,
-          hardcoreQuizData: 0,
+          prompt: 0,
         },
       },
     ]);
 
-    // ✅ hasAttempted check
+    // 🧠 Step 2: hasAttempted & hasAttemptedHardcore
     if (userId) {
       const comicIds = comics.map((c) => c._id);
 
-      // quizzes nikal lo for these comics
-      const quizzes = await Quiz.find(
-        { comicId: { $in: comicIds } },
-        "_id comicId"
-      );
+      const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+      const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId");
 
-      const hardcoreQuizzes = await HardcoreQuiz.find(
-        { comicId: { $in: comicIds } },
-        "_id comicId"
-      );
-
+      // 🧩 Submissions
       const submissions = await QuizSubmission.find(
         {
           quizId: { $in: quizzes.map((q) => q._id) },
@@ -798,71 +568,55 @@ const getComicsByConcept = async (req, res) => {
         "quizId"
       );
 
-      const attemptedQuizIds = new Set(
-        submissions.map((s) => s.quizId.toString())
+      const hardcoreSubmissions = await HardcoreQuizSubmission.find(
+        {
+          quizId: { $in: hardcoreQuizzes.map((hq) => hq._id) },
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+        "quizId"
       );
 
-      const attemptedHardcoreIds = new Set(
-        hardcoreSubmissions.map((s) => s.quizId.toString())
-      );
+      const attemptedQuizIds = new Set(submissions.map((s) => s.quizId.toString()));
+      const attemptedHardcoreIds = new Set(hardcoreSubmissions.map((s) => s.quizId.toString()));
 
       comics.forEach((comic) => {
-        const quiz = quizzes.find(
-          (q) => q.comicId.toString() === comic._id.toString()
-        );
+        const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
+        const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
 
-        const hardcoreQuiz = hardcoreQuizzes.find(
-          (hq) => hq.comicId.toString() === comic._id.toString()
-        );
-
-
-        comic.hasAttempted = quiz
-          ? attemptedQuizIds.has(quiz._id.toString())
-          : false;
-
-        comic.hasAttemptedHardcore = hardcoreQuiz
-          ? attemptedHardcoreIds.has(hardcoreQuiz._id.toString())
-          : false;
+        comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
+        comic.hasAttemptedHardcore = hardcoreQuiz ? attemptedHardcoreIds.has(hardcoreQuiz._id.toString()) : false;
       });
     } else {
-       comics.forEach((comic) => {
+      // 👇 user not logged in
+      comics.forEach((comic) => {
         comic.hasAttempted = false;
         comic.hasAttemptedHardcore = false;
       });
     }
 
-    // ✅ isOpen logic series-wise
+    // ✅ Step 3: Series-wise open logic
     comics = comics.sort((a, b) => {
       const aSeries = a.seriesId ? a.seriesId.toString() : "";
       const bSeries = b.seriesId ? b.seriesId.toString() : "";
-
-      if (aSeries === bSeries) {
-        return a.partNumber - b.partNumber; // same series → part order
-      }
-      return aSeries.localeCompare(bSeries); // series wise group
+      if (aSeries === bSeries) return a.partNumber - b.partNumber;
+      return aSeries.localeCompare(bSeries);
     });
 
-    // series wise group banao
     const seriesGroups = {};
     comics.forEach((comic) => {
-      const seriesKey = comic.seriesId ? comic.seriesId.toString() : "no-series";
-      if (!seriesGroups[seriesKey]) {
-        seriesGroups[seriesKey] = [];
-      }
-      seriesGroups[seriesKey].push(comic);
+      const key = comic.seriesId ? comic.seriesId.toString() : "no-series";
+      if (!seriesGroups[key]) seriesGroups[key] = [];
+      seriesGroups[key].push(comic);
     });
 
-    // har series me sequential isOpen apply karo
     Object.values(seriesGroups).forEach((seriesComics) => {
       seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-
       if (seriesComics.length === 1) {
-        // 👈 only one comic in this series → always open
         seriesComics[0].isOpen = true;
       } else {
         seriesComics.forEach((comic) => {
           if (comic.partNumber === 1) {
-            comic.isOpen = true; // Part 1 hamesha open
+            comic.isOpen = true;
           } else {
             const prevComic = seriesComics.find(
               (c) => c.partNumber === comic.partNumber - 1
@@ -873,8 +627,7 @@ const getComicsByConcept = async (req, res) => {
       }
     });
 
-
-
+    // 📊 Count total
     const totalComics = await Comic.countDocuments({
       status: "approved",
       conceptId: new mongoose.Types.ObjectId(conceptId),
@@ -895,16 +648,6 @@ const getComicsByConcept = async (req, res) => {
 };
 
 
-
-
-
-
-
-
-
-
-
-// Save or update user subject priority
 const saveSubjectPriority = async (req, res) => {
   try {
     const userId = req.body.userId;
