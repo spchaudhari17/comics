@@ -8,6 +8,7 @@ const QuizSubmission = require("../../models/QuizSubmission");
 const UserSubjectPriority = require("../../models/UserSubjectPriority");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
+const ComicView = require("../../models/ComicView");
 
 const createSubject = async (req, res) => {
   try {
@@ -556,7 +557,7 @@ const getComicsByConcept = async (req, res) => {
     const skip = (page - 1) * limit;
     const userId = req.query.userId;
 
-    // 🧩 Fetch comics with all related data
+    //  Fetch comics with all related data
     let comics = await Comic.aggregate([
       {
         $match: {
@@ -568,7 +569,7 @@ const getComicsByConcept = async (req, res) => {
       { $skip: skip },
       { $limit: limit },
 
-      // 📘 Related lookups
+      //  Related lookups
       { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
       { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
       { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
@@ -578,7 +579,7 @@ const getComicsByConcept = async (req, res) => {
       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
       { $lookup: { from: "comicpages", localField: "_id", foreignField: "comicId", as: "pages" } },
 
-      // 🔹 Derived flags
+      //  Derived flags
       {
         $addFields: {
           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
@@ -606,14 +607,14 @@ const getComicsByConcept = async (req, res) => {
       },
     ]);
 
-    // 🧠 Step 2: hasAttempted & hasAttemptedHardcore
+    //  Step 2: hasAttempted & hasAttemptedHardcore
     if (userId) {
       const comicIds = comics.map((c) => c._id);
 
       const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId");
 
-      // 🧩 Submissions
+      //  Submissions
       const submissions = await QuizSubmission.find(
         {
           quizId: { $in: quizzes.map((q) => q._id) },
@@ -648,7 +649,7 @@ const getComicsByConcept = async (req, res) => {
       });
     }
 
-    // ✅ Step 3: Series-wise open logic
+    // Step 3: Series-wise open logic
     comics = comics.sort((a, b) => {
       const aSeries = a.seriesId ? a.seriesId.toString() : "";
       const bSeries = b.seriesId ? b.seriesId.toString() : "";
@@ -681,11 +682,50 @@ const getComicsByConcept = async (req, res) => {
       }
     });
 
-    // 📊 Count total
+    //  Count total
     const totalComics = await Comic.countDocuments({
       status: "approved",
       conceptId: new mongoose.Types.ObjectId(conceptId),
     });
+
+   
+    //  Increment total_view only for comics that are "isOpen" and user not viewed before
+     if (userId) {
+      const openComics = comics.filter((c) => c.isOpen);
+      const openComicIds = openComics.map((c) => c._id);
+
+      if (openComicIds.length > 0) {
+        const alreadyViewed = await ComicView.find({
+          userId: new mongoose.Types.ObjectId(userId),
+          comicId: { $in: openComicIds },
+        }).distinct("comicId");
+
+        const newViews = openComicIds.filter(
+          (id) => !alreadyViewed.includes(id.toString())
+        );
+
+        if (newViews.length > 0) {
+          const viewDocs = newViews.map((comicId) => ({
+            comicId,
+            userId: new mongoose.Types.ObjectId(userId),
+          }));
+
+          try {
+            await ComicView.insertMany(viewDocs, { ordered: false });
+            await Comic.updateMany(
+              { _id: { $in: newViews } },
+              { $inc: { total_view: 1 } }
+            );
+          } catch (err) {
+            if (err.code === 11000) {
+              console.warn("Duplicate view skipped (already exists)");
+            } else {
+              console.error("Error inserting comic views:", err);
+            }
+          }
+        }
+      }
+    }
 
     res.json({
       conceptId,

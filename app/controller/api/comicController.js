@@ -878,81 +878,81 @@ const listComics = async (req, res) => {
 
 
 const getComic = async (req, res) => {
-  try {
-    const comicId = req.params.id;
-    const userId = req.user?.login_data?._id; // Optional if logged in
+    try {
+        const comicId = req.params.id;
+        const userId = req.user?.login_data?._id; // Optional if logged in
 
-    // 🔹 Fetch the base comic
-    const comic = await Comic.findById(comicId).lean();
-    if (!comic) return res.status(404).json({ error: "Comic not found" });
+        // 🔹 Fetch the base comic
+        const comic = await Comic.findById(comicId).lean();
+        if (!comic) return res.status(404).json({ error: "Comic not found" });
 
-    // 🔹 Fetch related data in parallel
-    const [
-      pages,
-      theme,
-      subject,
-      style,
-      faqs,
-      facts,
-      hardcoreQuiz,
-    ] = await Promise.all([
-      ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean(),
-      Theme.findById(comic.themeId).lean(),
-      Subject.findById(comic.subjectId).lean(),
-      Style.findById(comic.styleId).lean(),
-      FAQ.find({ comicId }).lean(),
-      DidYouKnow.find({ comicId }).lean(),
-      HardcoreQuiz.findOne({ comicId }).lean(),
-    ]);
+        // 🔹 Fetch related data in parallel
+        const [
+            pages,
+            theme,
+            subject,
+            style,
+            faqs,
+            facts,
+            hardcoreQuiz,
+        ] = await Promise.all([
+            ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean(),
+            Theme.findById(comic.themeId).lean(),
+            Subject.findById(comic.subjectId).lean(),
+            Style.findById(comic.styleId).lean(),
+            FAQ.find({ comicId }).lean(),
+            DidYouKnow.find({ comicId }).lean(),
+            HardcoreQuiz.findOne({ comicId }).lean(),
+        ]);
 
-    // 🔹 Check user hardcore quiz attempts
-    let hasAttemptedHardcore = false;
-    if (hardcoreQuiz && userId) {
-      const attempt = await HardcoreQuizSubmission.findOne({
-        quizId: hardcoreQuiz._id,
-        userId: new mongoose.Types.ObjectId(userId),
-      });
-      hasAttemptedHardcore = !!attempt;
+        // 🔹 Check user hardcore quiz attempts
+        let hasAttemptedHardcore = false;
+        if (hardcoreQuiz && userId) {
+            const attempt = await HardcoreQuizSubmission.findOne({
+                quizId: hardcoreQuiz._id,
+                userId: new mongoose.Types.ObjectId(userId),
+            });
+            hasAttemptedHardcore = !!attempt;
+        }
+
+        // 🔹 Fetch series parts if multi-part
+        let parts = [];
+        if (comic.seriesId) {
+            parts = await Comic.find({ seriesId: comic.seriesId })
+                .select("_id partNumber title concept")
+                .sort({ partNumber: 1 })
+                .lean();
+        }
+
+        // 🔹 Combine all data
+        const enhancedComic = {
+            ...comic,
+            themeId: theme?._id || null,
+            theme: theme?.name || "N/A",
+            subjectId: subject?._id || null,
+            subject: subject?.name || "N/A",
+            styleId: style?._id || null,
+            style: style?.name || "N/A",
+            hasFAQ: faqs.length > 0,
+            hasDidYouKnow: facts.length > 0,
+            hasHardcoreQuiz: !!hardcoreQuiz,
+            hasAttemptedHardcore,
+            thumbnail: pages[0]?.imageUrl || null,
+            totalPages: pages.length,
+        };
+
+        // ✅ Final response
+        res.json({
+            comic: enhancedComic,
+            pages,
+            parts,
+            faqs,
+            facts,
+        });
+    } catch (err) {
+        console.error("❌ Error fetching comic:", err);
+        res.status(500).json({ error: "Failed to fetch comic" });
     }
-
-    // 🔹 Fetch series parts if multi-part
-    let parts = [];
-    if (comic.seriesId) {
-      parts = await Comic.find({ seriesId: comic.seriesId })
-        .select("_id partNumber title concept")
-        .sort({ partNumber: 1 })
-        .lean();
-    }
-
-    // 🔹 Combine all data
-    const enhancedComic = {
-      ...comic,
-      themeId: theme?._id || null,
-      theme: theme?.name || "N/A",
-      subjectId: subject?._id || null,
-      subject: subject?.name || "N/A",
-      styleId: style?._id || null,
-      style: style?.name || "N/A",
-      hasFAQ: faqs.length > 0,
-      hasDidYouKnow: facts.length > 0,
-      hasHardcoreQuiz: !!hardcoreQuiz,
-      hasAttemptedHardcore,
-      thumbnail: pages[0]?.imageUrl || null,
-      totalPages: pages.length,
-    };
-
-    // ✅ Final response
-    res.json({
-      comic: enhancedComic,
-      pages,
-      parts,
-      faqs,
-      facts,
-    });
-  } catch (err) {
-    console.error("❌ Error fetching comic:", err);
-    res.status(500).json({ error: "Failed to fetch comic" });
-  }
 };
 
 
