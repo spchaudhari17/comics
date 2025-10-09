@@ -11,7 +11,7 @@ const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
 
 const createSubject = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, ishowads } = req.body;
     const imageFile = req.files?.image;
 
     if (!name || !imageFile) {
@@ -44,6 +44,7 @@ const createSubject = async (req, res) => {
     const subject = await Subject.create({
       name,
       image: uploadedUrl,
+      ishowads: ishowads
     });
 
     res.json(subject);
@@ -367,6 +368,59 @@ const deleteSubject = async (req, res) => {
 };
 
 
+const updateSubject = async (req, res) => {
+  try {
+    const { id, name, ishowads } = req.body;
+    const imageFile = req.files?.image;
+
+    // Find subject
+    const subject = await Subject.findById(id);
+    if (!subject) {
+      return res.status(404).json({ error: "Subject not found" });
+    }
+
+    // ✅ Update fields if provided
+    if (name) subject.name = name;
+    if (ishowads !== undefined) subject.ishowads = JSON.parse(ishowads);
+
+    // ✅ If new image uploaded → replace in S3
+    if (imageFile) {
+      // Delete old one if exists
+      if (subject.image) {
+        try {
+          const fileName = subject.image.split("/").pop();
+          await deleteFiles("subjects", fileName);
+        } catch (err) {
+          console.warn("S3 delete failed:", err);
+        }
+      }
+
+      const buffer = Buffer.from(imageFile.data, "binary");
+      const optimizedBuffer = await sharp(buffer)
+        .resize({ width: 600 })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+
+      const optimizedFile = {
+        name: imageFile.name.replace(/\.[^/.]+$/, ".jpg"),
+        data: optimizedBuffer,
+        mimetype: "image/jpeg"
+      };
+
+      const uploadedUrl = await upload_files("subjects", optimizedFile);
+      if (uploadedUrl) subject.image = uploadedUrl;
+    }
+
+    await subject.save();
+
+    res.json({ success: true, message: "Subject updated successfully", subject });
+  } catch (error) {
+    console.error("Error updating subject:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+};
+
+
 
 // const getConceptsBySubject = async (req, res) => {
 //   try {
@@ -675,4 +729,4 @@ const saveSubjectPriority = async (req, res) => {
 
 
 
-module.exports = { createSubject, getAllSubjects, deleteSubject, getConceptsBySubject, getComicsByConcept, saveSubjectPriority };
+module.exports = { createSubject, updateSubject, getAllSubjects, deleteSubject, getConceptsBySubject, getComicsByConcept, saveSubjectPriority };

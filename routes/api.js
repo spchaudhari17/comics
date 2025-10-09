@@ -10,7 +10,7 @@ const { getAllUsers } = require('../app/controller/api/admin/userController');
 const { generateFAQs, listFAQs } = require('../app/controller/api/faqController');
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
-const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority } = require('../app/controller/api/subjectController');
+const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
 const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz } = require('../app/controller/api/hardcoreQuizController');
@@ -50,7 +50,7 @@ router.get("/user/getAllStyles", getAllStyles);
 router.post("/user/create-subject", createSubject);
 router.post("/user/delete-subject", deleteSubject);
 router.get("/user/getallSubject", getAllSubjects);
-
+router.post("/user/update-subject", updateSubject);
 router.post("/user/subject-priority", saveSubjectPriority);
 
 //******************************** Prompt routes started from here ***************************** */
