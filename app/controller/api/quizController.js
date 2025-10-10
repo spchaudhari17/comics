@@ -13,7 +13,7 @@ const { default: mongoose } = require("mongoose");
 
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 
@@ -167,7 +167,8 @@ Format:
     "question": "string",
     "options": ["opt1", "opt2", "opt3", "opt4"],
     "correctAnswer": "string",
-    "difficulty": "easy|medium|hard"
+    "difficulty": "easy|medium|hard",
+     "explanation": "string"
   }
 ]
 `;
@@ -226,6 +227,7 @@ Format:
         options: q.options,
         correctAnswer: q.correctAnswer,
         difficulty: q.difficulty || "medium",
+        explanation: q.explanation || "",
       });
 
       savedQuestions.push(newQ._id);
@@ -311,21 +313,21 @@ const getQuizByComic = async (req, res) => {
 
 
 const publishQuiz = async (req, res) => {
-    try {
-        const { quizId } = req.body;
+  try {
+    const { quizId } = req.body;
 
-        const quiz = await Quiz.findOneAndUpdate(
-            { _id: quizId, user_id: req.user.login_data._id },
-            { status: "published" },
-            { new: true }
-        );
+    const quiz = await Quiz.findOneAndUpdate(
+      { _id: quizId, user_id: req.user.login_data._id },
+      { status: "published" },
+      { new: true }
+    );
 
-        if (!quiz) return res.status(404).json({ error: "Quiz not found or unauthorized" });
+    if (!quiz) return res.status(404).json({ error: "Quiz not found or unauthorized" });
 
-        res.json({ message: "Quiz published successfully", quiz });
-    } catch (error) {
-        res.status(500).json({ error: "Failed to publish quiz" });
-    }
+    res.json({ message: "Quiz published successfully", quiz });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to publish quiz" });
+  }
 };
 
 

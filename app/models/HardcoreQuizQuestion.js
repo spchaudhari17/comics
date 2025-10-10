@@ -8,7 +8,8 @@ const HardcoreQuizQuestionSchema = new Schema({
   options: [{ type: String, required: true }],
   correctAnswer: { type: String, required: true },
   difficulty: { type: String, enum: ["hard", "extreme"], default: "hard" },
-  explanation: { type: String } // optional detailed answer explanation
+  explanation: { type: String }, //detailed answer explanation
+  hint: { type: String },
 });
 
 module.exports = mongoose.model("HardcoreQuizQuestion", HardcoreQuizQuestionSchema);

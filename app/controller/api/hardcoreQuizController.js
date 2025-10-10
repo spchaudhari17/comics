@@ -42,6 +42,7 @@ Instructions:
   • 1 correct answer
   • 3 difficult distractors
   • A brief explanation of the correct answer
+   • A short hint to guide the student (but without revealing the answer)
 - Difficulty: only "hard" or "extreme".
 - Return valid JSON only.
 
@@ -52,7 +53,8 @@ Format:
     "options": ["opt1", "opt2", "opt3", "opt4"],
     "correctAnswer": "string",
     "difficulty": "hard|extreme",
-    "explanation": "string"
+    "explanation": "string",
+     "hint": "string"
   }
 ]
 `;
@@ -99,6 +101,7 @@ Format:
                 correctAnswer: q.correctAnswer,
                 difficulty: q.difficulty,
                 explanation: q.explanation,
+                hint: q.hint,
             });
             savedQuestions.push(newQ._id);
         }
