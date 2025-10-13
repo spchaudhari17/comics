@@ -3,6 +3,7 @@ const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const HardcoreQuizQuestion = require("../../models/HardcoreQuizQuestion");
 const Comic = require("../../models/Comic");
 const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
+const { default: mongoose } = require("mongoose");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -150,36 +151,112 @@ Format:
 };
 
 
+// const getHardcoreQuizByComic = async (req, res) => {
+//     try {
+//         const { id, userId } = req.params; // comicId, userId (optional)
+
+//         // Find quiz
+//         const quiz = await HardcoreQuiz.findOne({ comicId: id })
+//             .populate("questions")
+//             .lean();
+
+//         if (!quiz) {
+//             return res.status(404).json({ error: "Hardcore Quiz not found" });
+//         }
+
+//         let hasAttempted = false;
+
+//         // Check if user attempted
+//         if (userId) {
+//             const submission = await HardcoreQuizSubmission.findOne({
+//                 quizId: quiz._id,
+//                 userId: new mongoose.Types.ObjectId(userId),
+//             });
+//             hasAttempted = !!submission;
+//         }
+
+//         res.json({ quiz, hasAttempted });
+//     } catch (error) {
+//         console.error("Error fetching Hardcore Quiz:", error);
+//         res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+//     }
+// };
+
+
 const getHardcoreQuizByComic = async (req, res) => {
-    try {
-        const { id, userId } = req.params; // comicId, userId (optional)
+  try {
+    const { id } = req.params; // comicId, userId (optional)
 
-        // Find quiz
-        const quiz = await HardcoreQuiz.findOne({ comicId: id })
-            .populate("questions")
-            .lean();
+    const userId = req.query.userId || req.params.userId;
 
-        if (!quiz) {
-            return res.status(404).json({ error: "Hardcore Quiz not found" });
-        }
+    // 🎯 Always fresh read from primary
+    const quiz = await HardcoreQuiz.findOne({ comicId: id })
+      .read("primary")
+      .populate({
+        path: "questions",
+        options: { lean: true },
+      })
+      .lean();
 
-        let hasAttempted = false;
-
-        // Check if user attempted
-        if (userId) {
-            const submission = await HardcoreQuizSubmission.findOne({
-                quizId: quiz._id,
-                userId: new mongoose.Types.ObjectId(userId),
-            });
-            hasAttempted = !!submission;
-        }
-
-        res.json({ quiz, hasAttempted });
-    } catch (error) {
-        console.error("Error fetching Hardcore Quiz:", error);
-        res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+    if (!quiz) {
+      return res.status(404).json({ error: "Hardcore Quiz not found" });
     }
+
+    let hasAttempted = false;
+    let attemptedQuestionIds = [];
+
+    // 🧩 Check submission
+    if (userId) {
+      // 🔸 Force async queue flush before reading
+      await new Promise((r) => setImmediate(r));
+
+      // 🔹 Step 1 — Read from primary only
+      let submission = await HardcoreQuizSubmission.findOne({
+        quizId: quiz._id,
+        userId: new mongoose.Types.ObjectId(userId),
+      })
+        .read("primary")
+        .lean();
+
+      // 🔹 Step 2 — Retry fallback if not found (replica delay)
+      if (!submission) {
+        await new Promise((r) => setTimeout(r, 150));
+        submission = await HardcoreQuizSubmission.findOne({
+          quizId: quiz._id,
+          userId: new mongoose.Types.ObjectId(userId),
+        })
+          .read("primary")
+          .lean();
+      }
+
+      if (submission) {
+        hasAttempted = true;
+        attemptedQuestionIds = submission.answers.map((a) =>
+          a.questionId.toString()
+        );
+      }
+    }
+
+    // 🧠 Add hasAttempted for each question
+    const questionsWithAttemptStatus = quiz.questions.map((q) => ({
+      ...q,
+      hasAttempted: attemptedQuestionIds.includes(q._id.toString()),
+    }));
+
+    // ✅ Return updated response
+    res.json({
+      quiz: {
+        ...quiz,
+        questions: questionsWithAttemptStatus,
+      },
+      hasAttempted,
+    });
+  } catch (error) {
+    console.error("Error fetching Hardcore Quiz:", error);
+    res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+  }
 };
+
 
 
 

@@ -4,7 +4,7 @@
 
   const HardcoreQuizSchema = new Schema({
     comicId: { type: ObjectId, ref: "Comic", required: true },
-    user_id: { type: ObjectId, ref: "users" },
+    // user_id: { type: ObjectId, ref: "users" },
     questions: [{ type: ObjectId, ref: "HardcoreQuizQuestion" }],
     status: { type: String, enum: ["draft", "published"], default: "draft" },
     mode: { type: String, default: "hardcore" }, // 👈 flag for identification
