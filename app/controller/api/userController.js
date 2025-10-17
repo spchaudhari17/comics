@@ -760,15 +760,19 @@ const deletePic = async (req, res) => {
 //             });
 //         }
 
-//         // Total quizzes taken
-//         const totalQuizzesTaken = await QuizSubmission.countDocuments({ userId });
+//         // ✅ Total unique quizzes attempted (not counting repeats)
+//         const quizzesTaken = await QuizSubmission.aggregate([
+//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+//             { $group: { _id: "$quizId" } }
+//         ]);
+//         const totalQuizzesTaken = quizzesTaken.length;
 
-//         // Comics completed (unique comicId from quizzes attempted)
+//         // ✅ Comics completed (unique comicId from attempted quizzes)
 //         const comicsCompleted = await QuizSubmission.aggregate([
 //             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
 //             {
 //                 $lookup: {
-//                     from: "quizzes", // collection name of Quiz
+//                     from: "quizzes", // Quiz collection name
 //                     localField: "quizId",
 //                     foreignField: "_id",
 //                     as: "quizData"
@@ -781,10 +785,9 @@ const deletePic = async (req, res) => {
 //                 }
 //             }
 //         ]);
-
 //         const numberOfComicsCompleted = comicsCompleted.length;
 
-
+//         // ✅ Total coins earned = total correct answers
 //         const submissions = await QuizSubmission.find({ userId });
 //         let correctAnswers = 0;
 //         submissions.forEach(sub => {
@@ -794,15 +797,13 @@ const deletePic = async (req, res) => {
 //         });
 //         const totalCoinsEarned = correctAnswers;
 
-
-
-
+//         // ✅ Final profile response
 //         const profile = {
 //             ...userDetails[0],
 //             number_of_comics_completed: numberOfComicsCompleted,
 //             total_quizzes_taken: totalQuizzesTaken,
 //             total_coins_earned: totalCoinsEarned,
-//             total_gems_earned: 0
+//             total_gems_earned: 0 // agar future me logic aayega to update karna
 //         };
 
 //         return res.send({
@@ -813,6 +814,7 @@ const deletePic = async (req, res) => {
 //             data: profile
 //         });
 //     } catch (e) {
+//         console.error("Profile Details Error:", e);
 //         return res.send({
 //             error: true,
 //             status: 500,
@@ -823,111 +825,101 @@ const deletePic = async (req, res) => {
 //     }
 // };
 
+const COINS_PER_GEM = 1800;
+const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
 
 const profileDetails = async (req, res) => {
     try {
-        let userId = req.user.login_data._id;
+        const userId = req.user.login_data._id;
 
-        // ✅ User profile basic info
-        const userDetails = await Users.aggregate([
-            {
-                $match: { _id: new mongoose.Types.ObjectId(userId) }
-            },
-            {
-                $project: {
-                    _id: 1,
-                    email: 1,
-                    username: 1,
-                    email_verified_at: 1,
-                    profile_pic: 1,
-                    created_at: "$createdAt",
-                    updated_at: "$updatedAt"
-                }
-            }
-        ]);
-
-        if (!userDetails || userDetails.length === 0) {
-            return res.send({
+        //  1. Get User Details (with wallet)
+        const user = await Users.findById(userId).lean();
+        if (!user) {
+            return res.status(404).json({
                 error: true,
-                status: 201,
+                status: 404,
                 message: "User not found",
-                message_desc: "No user found with this id",
-                data: {}
+                message_desc: "No user found with this ID",
+                data: {},
             });
         }
 
-        // ✅ Total unique quizzes attempted (not counting repeats)
+        //  2. Total unique quizzes attempted
         const quizzesTaken = await QuizSubmission.aggregate([
             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-            { $group: { _id: "$quizId" } }
+            { $group: { _id: "$quizId" } },
         ]);
         const totalQuizzesTaken = quizzesTaken.length;
 
-        // ✅ Comics completed (unique comicId from attempted quizzes)
+        //  3. Total unique comics completed
         const comicsCompleted = await QuizSubmission.aggregate([
             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
             {
                 $lookup: {
-                    from: "quizzes", // Quiz collection name
+                    from: "quizzes",
                     localField: "quizId",
                     foreignField: "_id",
-                    as: "quizData"
-                }
+                    as: "quizData",
+                },
             },
             { $unwind: "$quizData" },
-            {
-                $group: {
-                    _id: "$quizData.comicId"
-                }
-            }
+            { $group: { _id: "$quizData.comicId" } },
         ]);
         const numberOfComicsCompleted = comicsCompleted.length;
 
-        // ✅ Total coins earned = total correct answers
-        const submissions = await QuizSubmission.find({ userId });
-        let correctAnswers = 0;
-        submissions.forEach(sub => {
-            sub.answers.forEach(ans => {
-                if (ans.isCorrect) correctAnswers++;
-            });
-        });
-        const totalCoinsEarned = correctAnswers;
+        //  4. Calculate Live Gems (based on current coins)
+        const liveGems = getGemsFromCoins(user.coins);
 
-        // ✅ Final profile response
+        //  5. Final Profile Response (LIVE values)
         const profile = {
-            ...userDetails[0],
-            number_of_comics_completed: numberOfComicsCompleted,
+            _id: user._id,
+            username: user.username,
+            email: user.email,
+            email_verified_at: user.email_verified_at || null,
+            profile_pic: user.profile_pic || "",
+            created_at: user.createdAt,
+            updated_at: user.updatedAt,
+
+            // 📊 Stats
             total_quizzes_taken: totalQuizzesTaken,
-            total_coins_earned: totalCoinsEarned,
-            total_gems_earned: 0 // agar future me logic aayega to update karna
+            number_of_comics_completed: numberOfComicsCompleted,
+
+            // 🪙 Wallet (LIVE VALUES)
+            coins: user.coins,
+            exp: user.exp,
+            gems: liveGems,
+
+            // 🧾 Totals (LIVE WALLET VALUES)
+            total_coins_earned: user.coins,
+            total_exp_earned: user.exp,
+            total_gems_earned: liveGems,
         };
 
-        return res.send({
+        return res.status(200).json({
             error: false,
             status: 200,
-            message: "Success.",
-            message_desc: "Success",
-            data: profile
+            message: "Profile fetched successfully",
+            data: profile,
         });
-    } catch (e) {
-        console.error("Profile Details Error:", e);
-        return res.send({
+    } catch (error) {
+        console.error("❌ Profile Details Error:", error);
+        return res.status(500).json({
             error: true,
             status: 500,
             message: "Something went wrong.",
-            message_desc: "Unhandled exception: " + e,
-            data: {}
+            message_desc: "Unhandled exception: " + error.message,
+            data: {},
         });
     }
 };
 
 
 
-const deleteAccount =  async (req, res) => {
+const deleteAccount = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
 
-    
+
         const user = await Users.findOne(
             { _id: new mongoose.Types.ObjectId(userId) },
             { profile_pic: 1 }
@@ -942,7 +934,7 @@ const deleteAccount =  async (req, res) => {
             });
         }
 
-      
+
         if (user.profile_pic) {
             try {
                 const oldKey = user.profile_pic.split("/").pop();
@@ -952,7 +944,7 @@ const deleteAccount =  async (req, res) => {
             }
         }
 
-   
+
         await Users.deleteOne({ _id: new mongoose.Types.ObjectId(userId) });
 
         return res.send({

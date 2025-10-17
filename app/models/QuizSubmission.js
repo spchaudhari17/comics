@@ -10,7 +10,7 @@ const QuizSubmissionSchema = new Schema({
       questionId: { type: ObjectId, ref: "QuizQuestion", required: true },
       selectedAnswer: { type: String },
       isCorrect: { type: Boolean, required: true },
-
+      timeTaken: { type: Number, default: 0 },
       coins: { type: Number, default: 0 },  // reward per question
       exp: { type: Number, default: 0 }     // reward per question
     }

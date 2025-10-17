@@ -37,6 +37,11 @@ var UserSchema = new mongoose.Schema({
     email_verified_at: { type: Date, default: "" },
     is_verify: { type: String, default: '0' },
 
+    // Wallet System
+    coins: { type: Number, default: 0 },
+    exp: { type: Number, default: 0 },
+    gems: { type: Number, default: 0 },
+
     otp: { type: Number, default: 0 },
     otp_generated_at: { type: Date, default: 0 },
     resend_blocked_at: { type: Date, default: 0 },
