@@ -11,8 +11,8 @@ var UserSchema = new mongoose.Schema({
     country: { type: String },
     email: {
         type: String,
-        // unique: true,   // email unique rahe
-        // sparse: true,   // sirf non-null/non-empty values pe unique check hoga
+        // unique: true,   
+        // sparse: true,   
         trim: true,
         default: ''
     },

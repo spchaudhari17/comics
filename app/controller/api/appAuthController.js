@@ -14,126 +14,129 @@ const BASE_URL = process.env.BASE_URL;
 
 
 const signupWithUsername = async (req, res) => {
-    let { firstname = '', lastname = '', password = '', username = '', age = null, grade = '',  country = '' } = req.body;
+  let { firstname = '', lastname = '', password = '', username = '', age = null, grade = '', country = '' } = req.body;
 
-    if (username.trim() === '') {
-        return res.send({ error: true, status: 201, message: "Username is required." });
+  if (username.trim() === '') {
+    return res.send({ error: true, status: 201, message: "Username is required." });
+  }
+  if (password.trim() === '') {
+    return res.send({ error: true, status: 201, message: "Password is required." });
+  }
+
+  try {
+    const isExist = await Users.findOne({ username: username.trim().toLowerCase() });
+    if (isExist) {
+      return res.send({ error: true, status: 201, message: "Username already taken." });
     }
-    if (password.trim() === '') {
-        return res.send({ error: true, status: 201, message: "Password is required." });
-    }
 
-    try {
-        const isExist = await Users.findOne({ username: username.trim().toLowerCase() });
-        if (isExist) {
-            return res.send({ error: true, status: 201, message: "Username already taken." });
-        }
+    const passwordHash = await bcrypt.hash(password, 12);
 
-        const passwordHash = await bcrypt.hash(password, 12);
+    const userSignup = new Users({
+      firstname,
+      lastname,
+      username: username.trim().toLowerCase(),
+      password: passwordHash,
+      age,
+      grade,
+      country,
+      is_verify: 1  // ✅ App flow mein OTP skip
+    });
 
-        const userSignup = new Users({
-            firstname,
-            lastname,
-            username: username.trim().toLowerCase(),
-            password: passwordHash,
-            age,
-            grade,
-            country,
-            is_verify: 1  // ✅ App flow mein OTP skip
-        });
+    const savedUser = await userSignup.save();
 
-        const savedUser = await userSignup.save();
+    // ✅ Signup ke baad fresh user data fetch karo (password/otp exclude karke)
+    const login_data = await Users.findOne(
+      { _id: savedUser._id },
+      { password: 0, otp: 0, login_location: 0 }
+    );
 
-        // ✅ Signup ke baad fresh user data fetch karo (password/otp exclude karke)
-        const login_data = await Users.findOne(
-            { _id: savedUser._id },
-            { password: 0, otp: 0, login_location: 0 }
-        );
+    // ✅ JWT me pura login_data daalo (web jaisa)
+    const token = jwt.sign({ login_data }, process.env.JWTKEY, {
+      algorithm: "HS256",
+      expiresIn: '180d',
+    });
 
-        // ✅ JWT me pura login_data daalo (web jaisa)
-        const token = jwt.sign({ login_data }, process.env.JWTKEY, {
-            algorithm: "HS256",
-            expiresIn: '180d',
-        });
+    login_data._doc.token = token;
 
-        login_data._doc.token = token;
+    return res.send({
+      error: false,
+      status: 200,
+      message: "Signup successful (username based).",
+      data: login_data
+    });
 
-        return res.send({
-            error: false,
-            status: 200,
-            message: "Signup successful (username based).",
-            data: login_data
-        });
-
-    } catch (e) {
-        return res.send({ error: true, status: 500, message: "Something went wrong", details: e.message });
-    }
+  } catch (e) {
+    return res.send({ error: true, status: 500, message: "Something went wrong", details: e.message });
+  }
 };
 
 
 
 const loginWithUsername = async (req, res) => {
-    try {
-        let { username = '', password = '' } = req.body;
+  try {
+    let { username = '', password = '' } = req.body;
 
-        if (username.trim() === '') {
-            return res.send({ error: true, status: 201, message: "Username is required." });
-        }
-        if (password === '') {
-            return res.send({ error: true, status: 201, message: "Password is required." });
-        }
-
-        const user = await Users.findOne({ username: username.trim().toLowerCase() });
-        if (!user) {
-            return res.send({ error: true, status: 201, message: "Invalid username or password." });
-        }
-
-        const isPasswordMatched = bcrypt.compareSync(password, user.password);
-        if (!isPasswordMatched) {
-            return res.send({ error: true, status: 201, message: "Invalid username or password." });
-        }
-
-        // ✅ Web jaisa hi login_data banao (password/otp ko exclude karke)
-        const login_data = await Users.findOne(
-            { _id: user._id },
-            { password: 0, otp: 0, login_location: 0 }
-        );
-
-        // ✅ JWT me pura login_data daalo
-        const token = jwt.sign({ login_data }, process.env.JWTKEY, {
-            algorithm: "HS256",
-            expiresIn: '180d',
-        });
-
-        login_data._doc.token = token;
-
-        return res.send({
-            error: false,
-            status: 200,
-            message: "Login successful (username based).",
-            data: login_data
-        });
-
-    } catch (e) {
-        return res.send({ error: true, status: 500, message: "Something went wrong", details: e.message });
+    if (username.trim() === '') {
+      return res.send({ error: true, status: 201, message: "Username is required." });
     }
+    if (password === '') {
+      return res.send({ error: true, status: 201, message: "Password is required." });
+    }
+
+    const user = await Users.findOne({ username: username.trim().toLowerCase() });
+    if (!user) {
+      return res.send({ error: true, status: 201, message: "Invalid username or password." });
+    }
+
+    const isPasswordMatched = bcrypt.compareSync(password, user.password);
+    if (!isPasswordMatched) {
+      return res.send({ error: true, status: 201, message: "Invalid username or password." });
+    }
+
+    // ✅ Web jaisa hi login_data banao (password/otp ko exclude karke)
+    const login_data = await Users.findOne(
+      { _id: user._id },
+      { password: 0, otp: 0, login_location: 0 }
+    );
+
+    // ✅ JWT me pura login_data daalo
+    const token = jwt.sign({ login_data }, process.env.JWTKEY, {
+      algorithm: "HS256",
+      expiresIn: '180d',
+    });
+
+    login_data._doc.token = token;
+
+    return res.send({
+      error: false,
+      status: 200,
+      message: "Login successful (username based).",
+      data: login_data
+    });
+
+  } catch (e) {
+    return res.send({ error: true, status: 500, message: "Something went wrong", details: e.message });
+  }
 };
 
 // --------------
 
 const XLSX = require("xlsx");
-const fs = require("fs");
-const path = require("path");
 const { default: mongoose } = require("mongoose");
+
+const generateRandomPassword = () => {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+};
 
 const bulkRegister = async (req, res) => {
   try {
     const teacherId = req.user?.login_data?._id;
-    if (!teacherId) return res.status(403).send({ error: true, message: "Unauthorized" });
+    if (!teacherId)
+      return res.status(403).send({ error: true, message: "Unauthorized" });
 
-    if (!req.files || !req.files.file) {
+    if (!req.files || !req.files.file)
       return res.send({ error: true, message: "Excel file required" });
-    }
 
     const excelFile = req.files.file;
     const workbook = XLSX.read(excelFile.data, { type: "buffer" });
@@ -146,8 +149,16 @@ const bulkRegister = async (req, res) => {
       const { School, Year, Class, Section, ["Roll No."]: RollNo } = row;
       if (!School || !Year || !Class || !Section || !RollNo) continue;
 
-      const username = `${School}${Year}${Class}${Section}${RollNo}`;
-      const randomPassword = Math.random().toString(36).slice(-8);
+      // ✅ Follow institutional username rule
+      const schoolCode = School.trim().toUpperCase().slice(0, 3); // 3 letters
+      const yearCode = Year.toString().padStart(2, "0"); // 2 digits
+      const classCode = Class.toString().padStart(2, "0"); // 2 digits
+      const sectionCode = Section.trim().toUpperCase().slice(0, 1); // 1 letter
+      const rollCode = RollNo.toString().padStart(3, "0"); // 3 digits
+
+      const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`; // e.g. GGS2508A001
+
+      const randomPassword = generateRandomPassword();
       const passwordHash = await bcrypt.hash(randomPassword, 12);
 
       const exists = await Users.findOne({ username: username.toLowerCase() });
@@ -156,10 +167,15 @@ const bulkRegister = async (req, res) => {
       const newUser = new Users({
         username: username.toLowerCase(),
         password: passwordHash,
-        plain_password: randomPassword, // 👈 teacher can view this anytime
+        plain_password: randomPassword,
         userType: "student",
         createdBy: teacherId,
-        classInfo: { school: School, year: Year, class: Class, section: Section },
+        classInfo: {
+          school: schoolCode,
+          year: yearCode,
+          class: classCode,
+          section: sectionCode,
+        },
         is_verify: 1,
       });
 
@@ -168,10 +184,10 @@ const bulkRegister = async (req, res) => {
       createdUsers.push({
         username,
         password: randomPassword,
-        school: School,
-        year: Year,
-        class: Class,
-        section: Section,
+        school: schoolCode,
+        year: yearCode,
+        class: classCode,
+        section: sectionCode,
         id: saved._id,
       });
     }
@@ -190,11 +206,12 @@ const bulkRegister = async (req, res) => {
 const getStudentsList = async (req, res) => {
   try {
     const teacherId = req.user?.login_data?._id;
-    if (!teacherId) return res.status(403).send({ error: true, message: "Unauthorized" });
+    if (!teacherId)
+      return res.status(403).send({ error: true, message: "Unauthorized" });
 
     const students = await Users.find(
       { createdBy: teacherId, userType: "student" },
-      { password: 0 } // exclude the hashed password only
+      { password: 0 }
     ).sort({ createdAt: -1 });
 
     res.send({
@@ -209,10 +226,95 @@ const getStudentsList = async (req, res) => {
 };
 
 
+const resetStudentPassword = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    const teacherId = req.user?.login_data?._id;
+
+    if (!studentId)
+      return res.send({ error: true, message: "Student ID required" });
+
+    const student = await Users.findOne({
+      _id: studentId,
+      createdBy: teacherId,
+      userType: "student",
+    });
+
+    if (!student)
+      return res.send({ error: true, message: "Student not found or unauthorized" });
+
+    const newPassword = Math.random().toString(36).slice(-8);
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await Users.updateOne(
+      { _id: studentId },
+      { $set: { password: passwordHash, plain_password: newPassword } }
+    );
+
+    res.send({
+      error: false,
+      message: "Password reset successfully",
+      newPassword,
+      username: student.username,
+    });
+  } catch (e) {
+    res.send({ error: true, message: e.message });
+  }
+};
+
+const deleteStudent = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    const teacherId = req.user?.login_data?._id;
+
+    const deleted = await Users.findOneAndDelete({
+      _id: studentId,
+      createdBy: teacherId,
+      userType: "student",
+    });
+
+    if (!deleted)
+      return res.send({ error: true, message: "Student not found or unauthorized" });
+
+    res.send({ error: false, message: "Student deleted successfully" });
+  } catch (e) {
+    res.send({ error: true, message: e.message });
+  }
+};
+
+const deleteAllStudents = async (req, res) => {
+  try {
+    const { filter } = req.body;
+    const teacherId = req.user?.login_data?._id;
+
+    let query = { createdBy: teacherId, userType: "student" };
+
+    if (filter && filter !== "All") {
+      const [school, year, className, section] = filter.split("-");
+      query["classInfo.school"] = school;
+      query["classInfo.year"] = year;
+      query["classInfo.class"] = className;
+      query["classInfo.section"] = section;
+    }
+
+    const result = await Users.deleteMany(query);
+    res.send({
+      error: false,
+      message: `${result.deletedCount} students deleted successfully.`,
+    });
+  } catch (e) {
+    res.send({ error: true, message: e.message });
+  }
+};
 
 
 
 
 
 
-module.exports = { signupWithUsername, loginWithUsername, bulkRegister, getStudentsList, }
+module.exports = {
+  signupWithUsername, loginWithUsername, bulkRegister, getStudentsList,
+  resetStudentPassword,
+  deleteStudent,
+  deleteAllStudents
+}
