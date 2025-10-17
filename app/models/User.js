@@ -8,6 +8,7 @@ var UserSchema = new mongoose.Schema({
     username: { type: String },
     password: { type: String },
     grade: { type: String },
+    country: { type: String },
     email: {
         type: String,
         // unique: true,   // email unique rahe
