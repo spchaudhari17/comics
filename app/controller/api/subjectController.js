@@ -750,7 +750,8 @@ const getComicsByConcept = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
     const userId = req.query.userId;
-    const country = req.query.country; // 🆕 get country from query param
+    const country = req.query.country; // 🆕
+    const grade = req.query.grade; // 🆕 get grade from query param
 
     // 🧠 Build dynamic match query
     const matchQuery = {
@@ -763,9 +764,15 @@ const getComicsByConcept = async (req, res) => {
       matchQuery.country = country.trim().toUpperCase();
     }
 
+    // 🆕 If grade provided, add to match
+    if (grade && grade.trim() !== "") {
+      // case-insensitive match (exact string)
+      matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
+    }
+
     //  Fetch comics with all related data
     let comics = await Comic.aggregate([
-      { $match: matchQuery }, // 🆕 dynamic query
+      { $match: matchQuery },
       { $sort: { partNumber: 1 } },
       { $skip: skip },
       { $limit: limit },
@@ -881,8 +888,8 @@ const getComicsByConcept = async (req, res) => {
       }
     });
 
-    // 🧮 Total count with same match filter (includes country)
-    const totalComics = await Comic.countDocuments(matchQuery); // 🆕
+    // 🧮 Total count (with all filters)
+    const totalComics = await Comic.countDocuments(matchQuery);
 
     // Increment total_view only for comics that are open
     if (userId) {
@@ -924,7 +931,8 @@ const getComicsByConcept = async (req, res) => {
 
     res.json({
       conceptId,
-      country: country || "ALL", // 🆕 include country in response
+      country: country || "ALL", // 🆕 include filters
+      grade: grade || "ALL",     // 🆕 include filters
       page,
       limit,
       totalPages: Math.ceil(totalComics / limit),
@@ -936,6 +944,7 @@ const getComicsByConcept = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch comics" });
   }
 };
+
 
 
 
