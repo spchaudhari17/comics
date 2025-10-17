@@ -17,6 +17,16 @@ var UserSchema = new mongoose.Schema({
     },
     userType: { type: String, default: "user" },
     age: { type: Number, min: 0, max: 120 },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "users", default: null }, // Teacher who created student
+    classInfo: {
+        school: String,
+        year: String,
+        class: String,
+        section: String
+    },
+    plain_password: { type: String, default: "" }, // for teacher reference (students' visible password)
+
+
     profile_pic: { type: String, default: "" },
     device_type: { type: String, default: "" },
     device_udid: { type: String, default: "" },

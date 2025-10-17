@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
@@ -10,10 +12,11 @@ const { getAllUsers } = require('../app/controller/api/admin/userController');
 const { generateFAQs, listFAQs } = require('../app/controller/api/faqController');
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
-const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject } = require('../app/controller/api/subjectController');
-const { signupWithUsername, loginWithUsername } = require('../app/controller/api/appAuthController');
+const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject, getAllSubjectsForWeb } = require('../app/controller/api/subjectController');
+const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
 const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz } = require('../app/controller/api/hardcoreQuizController');
+const { getAllCountries } = require('../app/controller/api/countryController');
 
 
 //******************************** routes started from here ***************************** */
@@ -24,6 +27,14 @@ router.post('/user/login', loginWithEmail)
 // App routes (username based)
 router.post('/app/register', signupWithUsername)
 router.post('/app/login', loginWithUsername)
+
+
+
+
+
+router.post('/user/bulk-register', authentication, bulkRegister);
+router.get('/user/get-students', authentication, getStudentsList);
+
 
 router.post('/user/forgotPassword', forgotPassword)
 router.post('/user/resetPassword', resetPassword)
@@ -45,11 +56,11 @@ router.post("/user/update-style", updateStyle);
 router.get("/user/getAllThemes", getAllThemes);
 router.get("/user/getAllStyles", getAllStyles);
 
-
 //******************************** Subject routes started from here ***************************** */
 router.post("/user/create-subject", createSubject);
 router.post("/user/delete-subject", deleteSubject);
 router.get("/user/getallSubject", getAllSubjects);
+router.get("/user/getAllSubjectsForWeb", getAllSubjectsForWeb);
 router.post("/user/update-subject", updateSubject);
 router.post("/user/subject-priority", saveSubjectPriority);
 
@@ -101,6 +112,7 @@ router.post("/user/submit-hardcore-quiz", authentication, submitHardcoreQuiz);
 
 //******************************** quiz routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
+router.get("/user/countries", getAllCountries); 
 
 router.post("/user/contact", createContact);
 router.get("/user/contacts", getAllContacts);

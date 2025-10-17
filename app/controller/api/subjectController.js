@@ -55,8 +55,8 @@ const createSubject = async (req, res) => {
   }
 };
 
-// perfect working
-const getAllSubjects = async (req, res) => {
+// perfect working for web site
+const getAllSubjectsForWeb = async (req, res) => {
   try {
     const { search, grade, userId } = req.query;
 
@@ -196,140 +196,140 @@ const getAllSubjects = async (req, res) => {
   }
 };
 
+// perfect working for app site
+const getAllSubjects = async (req, res) => {
+  try {
+    const { search, grade, userId } = req.query;
 
-// const getAllSubjects = async (req, res) => {
-//   try {
-//     const { search, grade, userId } = req.query;
+    const pipeline = [];
 
-//     const pipeline = [];
+    // 🔎 Search filter
+    if (search) {
+      pipeline.push({
+        $match: {
+          name: { $regex: search, $options: "i" }
+        }
+      });
+    }
 
-//     // 🔎 Search filter
-//     if (search) {
-//       pipeline.push({
-//         $match: {
-//           name: { $regex: search, $options: "i" }
-//         }
-//       });
-//     }
+    pipeline.push(
+      {
+        $lookup: {
+          from: "concepts",
+          localField: "_id",
+          foreignField: "subjectId",
+          as: "concepts"
+        }
+      },
+      {
+        $addFields: {
+          conceptIds: {
+            $map: { input: "$concepts", as: "c", in: "$$c._id" }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: "comics",
+          let: { cids: "$conceptIds" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$conceptId", "$$cids"] },
+                    { $eq: ["$status", "approved"] }
+                  ]
+                }
+              }
+            },
+            { $group: { _id: "$conceptId" } }
+          ],
+          as: "approvedConcepts"
+        }
+      },
+      {
+        $addFields: {
+          conceptCount: { $size: "$approvedConcepts" }
+        }
+      },
+      {
+        $project: {
+          concepts: 0,
+          conceptIds: 0,
+          approvedConcepts: 0
+        }
+      }
+    );
 
-//     pipeline.push(
-//       {
-//         $lookup: {
-//           from: "concepts",
-//           localField: "_id",
-//           foreignField: "subjectId",
-//           as: "concepts"
-//         }
-//       },
-//       {
-//         $addFields: {
-//           conceptIds: {
-//             $map: { input: "$concepts", as: "c", in: "$$c._id" }
-//           }
-//         }
-//       },
-//       {
-//         $lookup: {
-//           from: "comics",
-//           let: { cids: "$conceptIds" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $and: [
-//                     { $in: ["$conceptId", "$$cids"] },
-//                     { $eq: ["$status", "approved"] }
-//                   ]
-//                 }
-//               }
-//             },
-//             { $group: { _id: "$conceptId" } }
-//           ],
-//           as: "approvedConcepts"
-//         }
-//       },
-//       {
-//         $addFields: {
-//           conceptCount: { $size: "$approvedConcepts" }
-//         }
-//       },
-//       {
-//         $project: {
-//           concepts: 0,
-//           conceptIds: 0,
-//           approvedConcepts: 0
-//         }
-//       }
-//     );
+    let subjects = await Subject.aggregate(pipeline);
 
-//     let subjects = await Subject.aggregate(pipeline);
+    // 🔥 Grade filter apply
+    if (grade) {
+      const gradeNum = parseInt(grade, 10);
 
-//     // 🔥 Grade filter apply
-//     if (grade) {
-//       const gradeNum = parseInt(grade, 10);
+      subjects = subjects.filter((s) => {
+        const match = s.name.match(/Grades?\s*(\d+)(?:–(\d+))?/);
 
-//       subjects = subjects.filter((s) => {
-//         const match = s.name.match(/Grades?\s*(\d+)(?:–(\d+))?/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : start;
 
-//         if (match) {
-//           const start = parseInt(match[1], 10);
-//           const end = match[2] ? parseInt(match[2], 10) : start;
+          return gradeNum >= start && gradeNum <= end;
+        }
 
-//           return gradeNum >= start && gradeNum <= end;
-//         }
+        return false;
+      });
+    }
 
-//         return false;
-//       });
-//     }
+    // 🔥 Global rule: Empty concept list wale subjects hatao
+    subjects = subjects.filter((s) => s.conceptCount >= 1);
 
-//     // 🔥 Global rule: Empty concept list wale subjects hatao
-//     subjects = subjects.filter((s) => s.conceptCount >= 1);
+    let prioritySubjects = [];
+    let remainingSubjects = subjects;
 
-//     let prioritySubjects = [];
-//     let remainingSubjects = subjects;
+    if (userId) {
+      const pref = await UserSubjectPriority.findOne({ userId });
 
-//     if (userId) {
-//       const pref = await UserSubjectPriority.findOne({ userId });
+      if (pref?.selectedSubjects?.length > 0) {
+        const selectedIds = pref.selectedSubjects.map((id) => id.toString());
 
-//       if (pref?.selectedSubjects?.length > 0) {
-//         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+        prioritySubjects = selectedIds
+          .map((id) => subjects.find((s) => s._id.toString() === id))
+          .filter(Boolean);
 
-//         prioritySubjects = selectedIds
-//           .map((id) => subjects.find((s) => s._id.toString() === id))
-//           .filter(Boolean);
+        remainingSubjects = subjects.filter(
+          (s) => !selectedIds.includes(s._id.toString())
+        );
+      }
+    }
 
-//         remainingSubjects = subjects.filter(
-//           (s) => !selectedIds.includes(s._id.toString())
-//         );
-//       }
-//     }
+    // ✅ Sabse latest subject nikal lo
+    let latest = null;
+    if (subjects.length > 0) {
+      latest = subjects.reduce((a, b) =>
+        new Date(a.createdAt) > new Date(b.createdAt) ? a : b
+      );
+    }
 
-//     // ✅ Sabse latest subject nikal lo
-//     let latest = null;
-//     if (subjects.length > 0) {
-//       latest = subjects.reduce((a, b) =>
-//         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
-//       );
-//     }
+    // ✅ Agar latest already priority me nahi hai, to usse priority ke niche insert karo
+    let finalSubjects = [...prioritySubjects];
+    if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
+      finalSubjects.push(latest);
+      remainingSubjects = remainingSubjects.filter(
+        (s) => s._id.toString() !== latest._id.toString()
+      );
+    }
 
-//     // ✅ Agar latest already priority me nahi hai, to usse priority ke niche insert karo
-//     let finalSubjects = [...prioritySubjects];
-//     if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
-//       finalSubjects.push(latest);
-//       remainingSubjects = remainingSubjects.filter(
-//         (s) => s._id.toString() !== latest._id.toString()
-//       );
-//     }
+    // ✅ Baaki subjects append kar do
+    finalSubjects = [...finalSubjects, ...remainingSubjects];
 
-//     // ✅ Baaki subjects append kar do
-//     finalSubjects = [...finalSubjects, ...remainingSubjects];
-
-//     res.json(finalSubjects);
-//   } catch (err) {
-//     console.error("Error fetching subjects with counts:", err);
-//     res.status(500).json({ error: "Failed to fetch subjects" });
-//   }
-// };
+    res.json(finalSubjects);
+  } catch (err) {
+    console.error("Error fetching subjects with counts:", err);
+    res.status(500).json({ error: "Failed to fetch subjects" });
+  }
+};
 
 
 
@@ -688,9 +688,9 @@ const getComicsByConcept = async (req, res) => {
       conceptId: new mongoose.Types.ObjectId(conceptId),
     });
 
-   
+
     //  Increment total_view only for comics that are "isOpen" and user not viewed before
-     if (userId) {
+    if (userId) {
       const openComics = comics.filter((c) => c.isOpen);
       const openComicIds = openComics.map((c) => c._id);
 
@@ -769,4 +769,4 @@ const saveSubjectPriority = async (req, res) => {
 
 
 
-module.exports = { createSubject, updateSubject, getAllSubjects, deleteSubject, getConceptsBySubject, getComicsByConcept, saveSubjectPriority };
+module.exports = { createSubject, updateSubject, getAllSubjects, getAllSubjectsForWeb, deleteSubject, getConceptsBySubject, getComicsByConcept, saveSubjectPriority };

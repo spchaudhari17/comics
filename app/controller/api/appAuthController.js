@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL;
 
 
 const signupWithUsername = async (req, res) => {
-    let { firstname = '', lastname = '', password = '', username = '', age = null, grade='' } = req.body;
+    let { firstname = '', lastname = '', password = '', username = '', age = null, grade = '' } = req.body;
 
     if (username.trim() === '') {
         return res.send({ error: true, status: 201, message: "Username is required." });
@@ -118,6 +118,100 @@ const loginWithUsername = async (req, res) => {
     }
 };
 
+// --------------
+
+const XLSX = require("xlsx");
+const fs = require("fs");
+const path = require("path");
+const { default: mongoose } = require("mongoose");
+
+const bulkRegister = async (req, res) => {
+  try {
+    const teacherId = req.user?.login_data?._id;
+    if (!teacherId) return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    if (!req.files || !req.files.file) {
+      return res.send({ error: true, message: "Excel file required" });
+    }
+
+    const excelFile = req.files.file;
+    const workbook = XLSX.read(excelFile.data, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet);
+
+    let createdUsers = [];
+
+    for (const row of data) {
+      const { School, Year, Class, Section, ["Roll No."]: RollNo } = row;
+      if (!School || !Year || !Class || !Section || !RollNo) continue;
+
+      const username = `${School}${Year}${Class}${Section}${RollNo}`;
+      const randomPassword = Math.random().toString(36).slice(-8);
+      const passwordHash = await bcrypt.hash(randomPassword, 12);
+
+      const exists = await Users.findOne({ username: username.toLowerCase() });
+      if (exists) continue;
+
+      const newUser = new Users({
+        username: username.toLowerCase(),
+        password: passwordHash,
+        plain_password: randomPassword, // 👈 teacher can view this anytime
+        userType: "student",
+        createdBy: teacherId,
+        classInfo: { school: School, year: Year, class: Class, section: Section },
+        is_verify: 1,
+      });
+
+      const saved = await newUser.save();
+
+      createdUsers.push({
+        username,
+        password: randomPassword,
+        school: School,
+        year: Year,
+        class: Class,
+        section: Section,
+        id: saved._id,
+      });
+    }
+
+    res.send({
+      error: false,
+      message: "✅ Students added successfully",
+      data: createdUsers,
+    });
+  } catch (e) {
+    console.error(e);
+    res.send({ error: true, message: e.message });
+  }
+};
+
+const getStudentsList = async (req, res) => {
+  try {
+    const teacherId = req.user?.login_data?._id;
+    if (!teacherId) return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    const students = await Users.find(
+      { createdBy: teacherId, userType: "student" },
+      { password: 0 } // exclude the hashed password only
+    ).sort({ createdAt: -1 });
+
+    res.send({
+      error: false,
+      message: "All students fetched successfully",
+      data: students,
+    });
+  } catch (e) {
+    console.error(e);
+    res.send({ error: true, message: e.message });
+  }
+};
 
 
-module.exports = { signupWithUsername, loginWithUsername }
+
+
+
+
+
+
+module.exports = { signupWithUsername, loginWithUsername, bulkRegister, getStudentsList, }
