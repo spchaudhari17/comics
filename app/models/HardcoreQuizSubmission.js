@@ -17,7 +17,8 @@ const HardcoreQuizSubmissionSchema = new Schema({
     score: { type: Number, default: 0 },
     coinsEarned: { type: Number, default: 0 },
     expEarned: { type: Number, default: 0 },
-    submittedAt: { type: Date, default: Date.now }
-});
+    submittedAt: { type: Date, default: Date.now },
+    currentMultiplier: { type: Number, default: 1 },
+}, { timestamps: true });
 
 module.exports = mongoose.model("HardcoreQuizSubmission", HardcoreQuizSubmissionSchema);

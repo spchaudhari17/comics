@@ -145,7 +145,7 @@ const submitQuiz = async (req, res) => {
     });
 
     // ✅ Update user wallet
-    const user = await Users.findById(userId);
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // Add earned rewards
