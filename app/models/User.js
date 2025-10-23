@@ -48,6 +48,15 @@ var UserSchema = new mongoose.Schema({
     otp_resend: { type: Number, default: 0 },
     otp_verify_at: { type: Date, default: "" },
     reset_key: { type: String, required: false, default: "" },
+
+
+    powerCards: {
+        hint: { type: Number, default: 0 },
+        timeExtend: { type: Number, default: 0 },
+        reduceOptions: { type: Number, default: 0 },
+        changeQuestion: { type: Number, default: 0 }
+    }
+
 }, { timestamps: true })
 
 const User = mongoose.model('users', UserSchema);

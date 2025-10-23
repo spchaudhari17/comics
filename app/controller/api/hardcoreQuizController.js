@@ -557,4 +557,144 @@ const submitHardcoreQuiz = async (req, res) => {
   }
 };
 
-module.exports = { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz };
+
+
+const POWER_CARD_COSTS = {
+  hint: 300,
+  time_extend: 250,
+  reduce_options: 400,
+  change_question: 600,
+};
+
+
+const buyPowerCard = async (req, res) => {
+  try {
+    const { powerType, quantity = 1 } = req.body;
+    const userId = req.user.login_data._id;
+
+    if (!POWER_CARD_COSTS[powerType]) {
+      return res.status(400).json({ error: true, message: "Invalid power card type." });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: true, message: "User not found" });
+
+    const cost = POWER_CARD_COSTS[powerType] * quantity;
+
+    if (user.coins < cost) {
+      return res.status(400).json({
+        error: true,
+        message: `Not enough coins. You need ${cost} coins.`,
+      });
+    }
+
+    // Deduct coins and add card(s)
+    user.coins -= cost;
+    user.gems = getGemsFromCoins(user.coins);
+    user.powerCards[powerType] = (user.powerCards[powerType] || 0) + quantity;
+    await user.save();
+
+    res.json({
+      message: `Purchased ${quantity} ${powerType} power card(s) successfully.`,
+      powerType,
+      quantity,
+      cost,
+      wallet: { coins: user.coins, gems: user.gems },
+      powerCards: user.powerCards,
+    });
+  } catch (error) {
+    console.error("Buy Power Card Error:", error);
+    res.status(500).json({ error: true, message: "Failed to buy power card", details: error.message });
+  }
+};
+
+
+
+const usePowerCard = async (req, res) => {
+  try {
+    const { quizId, questionId, powerType } = req.body;
+    const userId = req.user.login_data._id;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: true, message: "User not found" });
+
+    if (!POWER_CARD_COSTS[powerType]) {
+      return res.status(400).json({ error: true, message: "Invalid power card type" });
+    }
+
+    // 🔹 If user has none, auto-buy if enough coins
+    if ((user.powerCards[powerType] || 0) <= 0) {
+      const cost = POWER_CARD_COSTS[powerType];
+      if (user.coins < cost) {
+        return res.status(400).json({
+          error: true,
+          message: `You don’t have this power card and not enough coins (${cost} required).`,
+        });
+      }
+      user.coins -= cost;
+      user.gems = getGemsFromCoins(user.coins);
+    } else {
+      // 🔹 Consume one card
+      user.powerCards[powerType] -= 1;
+    }
+
+    await user.save();
+
+    // 🔹 Apply effect
+    let effect = {};
+    if (powerType === "hint") {
+      const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+      const question = quiz.questions.find((q) => q._id.toString() === questionId);
+      effect = { hint: question?.hint || "No hint available." };
+    } else if (powerType === "reduceOptions") {
+      const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+      const question = quiz.questions.find((q) => q._id.toString() === questionId);
+      const correct = question.correctAnswer;
+      const wrongs = question.options.filter((opt) => opt !== correct);
+      const reduced = [correct, wrongs[Math.floor(Math.random() * wrongs.length)]];
+      effect = { reducedOptions: reduced.sort(() => Math.random() - 0.5) };
+    } else if (powerType === "timeExtend") {
+      effect = { timeAdded: 10 };
+    } else if (powerType === "changeQuestion") {
+      effect = { message: "Question skipped, fetch new one." };
+    }
+
+    res.json({
+      message: `Used power card ${powerType} successfully.`,
+      powerUsed: powerType,
+      effect,
+      updatedWallet: { coins: user.coins, gems: user.gems },
+      remainingCards: user.powerCards,
+    });
+  } catch (error) {
+    console.error("Use Power Card Error:", error);
+    res.status(500).json({ error: true, message: "Failed to use power card" });
+  }
+};
+
+
+
+const getPowerCards = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.login_data._id).lean();
+    const powerCards = [
+      { type: "hint", name: "Hint", cost: 300, description: "Show hint for the current question" },
+      { type: "timeExtend", name: "Time Extend", cost: 250, description: "Add +10 seconds to timer" },
+      { type: "reduceOptions", name: "Reduce Options", cost: 400, description: "Remove two wrong answers" },
+      { type: "changeQuestion", name: "Change Question", cost: 600, description: "Skip current question" },
+    ];
+
+    res.json({
+      message: "Power cards fetched successfully.",
+      availablePowerCards: powerCards,
+      userPowerCards: user.powerCards,
+      wallet: { coins: user.coins, gems: user.gems },
+    });
+  } catch (error) {
+    console.error("Get Power Cards Error:", error);
+    res.status(500).json({ error: true, message: "Failed to fetch power cards" });
+  }
+};
+
+
+module.exports = { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, usePowerCard, getPowerCards };
