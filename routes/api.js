@@ -121,7 +121,7 @@ router.post("/user/usePowerCard", authentication, usePowerCard);
 
 //******************************** quiz routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
-router.get("/user/countries", getAllCountries); 
+router.get("/user/countries", getAllCountries);
 
 router.post("/user/contact", createContact);
 router.get("/user/contacts", getAllContacts);
