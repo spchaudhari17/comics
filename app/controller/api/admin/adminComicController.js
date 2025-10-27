@@ -19,40 +19,41 @@ const openai = new OpenAI({
 
 
 
+// const listAllComicsAdmin = async (req, res) => {
+//   try {
+//     const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
+//       .populate("user_id", "name email userType firstname")
+//       .sort({ createdAt: -1 });
+
+//     res.json({ comics });
+//   } catch (error) {
+//     console.error("Admin list comics error:", error);
+//     res.status(500).json({ error: "Failed to fetch comics" });
+//   }
+// };
+
+// Controller: listAllComicsAdmin
 const listAllComicsAdmin = async (req, res) => {
   try {
-    const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
-      .populate("user_id", "name email userType firstname")
+    const { country } = req.query;
+    const filter = {};
+
+    if (country) {
+      filter.country = country; // filter by country
+    }
+
+    const comics = await Comic.find(filter)
+      .populate("user_id", "firstname email userType")
+      .populate("subjectId", "name")
       .sort({ createdAt: -1 });
 
-    res.json({ comics });
-  } catch (error) {
-    console.error("Admin list comics error:", error);
-    res.status(500).json({ error: "Failed to fetch comics" });
+    res.json({ success: true, comics });
+  } catch (err) {
+    console.error("❌ Error fetching comics:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch comics" });
   }
 };
 
-// const getAdminComicDetails = async (req, res) => {
-//   try {
-//     const comicId = req.params.id;
-
-//     const comic = await Comic.findById(comicId)
-//       .populate("user_id", "firstname email userType")
-//       .populate("subjectId", "name")
-//       .populate("themeId", "name")
-//       .populate("styleId", "name")
-//       .lean();
-
-//     if (!comic) return res.status(404).json({ error: "Comic not found" });
-
-//     const pages = await ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean();
-
-//     res.json({ comic, pages });
-//   } catch (error) {
-//     console.error("Error fetching admin comic details:", error);
-//     res.status(500).json({ error: "Failed to fetch comic details" });
-//   }
-// };
 
 
 const getAdminComicDetails = async (req, res) => {
