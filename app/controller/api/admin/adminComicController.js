@@ -19,40 +19,40 @@ const openai = new OpenAI({
 
 
 
-// const listAllComicsAdmin = async (req, res) => {
-//   try {
-//     const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
-//       .populate("user_id", "name email userType firstname")
-//       .sort({ createdAt: -1 });
-
-//     res.json({ comics });
-//   } catch (error) {
-//     console.error("Admin list comics error:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
-
-// Controller: listAllComicsAdmin
 const listAllComicsAdmin = async (req, res) => {
   try {
-    const { country } = req.query;
-    const filter = {};
-
-    if (country) {
-      filter.country = country; // filter by country
-    }
-
-    const comics = await Comic.find(filter)
-      .populate("user_id", "firstname email userType")
-      .populate("subjectId", "name")
+    const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
+      .populate("user_id", "name email userType firstname")
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, comics });
-  } catch (err) {
-    console.error("❌ Error fetching comics:", err);
-    res.status(500).json({ success: false, message: "Failed to fetch comics" });
+    res.json({ comics });
+  } catch (error) {
+    console.error("Admin list comics error:", error);
+    res.status(500).json({ error: "Failed to fetch comics" });
   }
 };
+
+// Controller: listAllComicsAdmin
+// const listAllComicsAdmin = async (req, res) => {
+//   try {
+//     const { country } = req.query;
+//     const filter = {};
+
+//     if (country) {
+//       filter.country = country; // filter by country
+//     }
+
+//     const comics = await Comic.find(filter)
+//       .populate("user_id", "firstname email userType")
+//       .populate("subjectId", "name")
+//       .sort({ createdAt: -1 });
+
+//     res.json({ success: true, comics });
+//   } catch (err) {
+//     console.error("❌ Error fetching comics:", err);
+//     res.status(500).json({ success: false, message: "Failed to fetch comics" });
+//   }
+// };
 
 
 
