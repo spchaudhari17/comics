@@ -151,88 +151,90 @@ Format:
   }
 };
 
-
-
 // const getHardcoreQuizByComic = async (req, res) => {
-//     try {
-//         const { id } = req.params; // comicId
-//         const userId = req.query.userId || req.params.userId;
+//   try {
+//     const { id } = req.params; // comicId
+//     const userId = req.query.userId || req.params.userId;
 
-//         // 🎯 Always fresh read from primary
-//         const quiz = await HardcoreQuiz.findOne({ comicId: id })
-//             .read("primary")
-//             .populate({
-//                 path: "questions",
-//                 options: { lean: true },
-//             })
-//             .lean();
+//     // 🎯 Always read from primary to get fresh data
+//     const quiz = await HardcoreQuiz.findOne({ comicId: id })
+//       .read("primary")
+//       .populate({
+//         path: "questions",
+//         options: { lean: true },
+//       })
+//       .lean();
 
-//         if (!quiz) {
-//             return res.status(404).json({ error: "Hardcore Quiz not found" });
-//         }
-
-//         let hasAttempted = false;
-//         let attemptedAnswers = {}; // 👈 map of questionId → selectedAnswer
-
-//         // 🧩 Check submission
-//         if (userId) {
-//             await new Promise((r) => setImmediate(r));
-
-//             let submission = await HardcoreQuizSubmission.findOne({
-//                 quizId: quiz._id,
-//                 userId: new mongoose.Types.ObjectId(userId),
-//             })
-//                 .read("primary")
-//                 .lean();
-
-//             // Retry fallback (replica delay)
-//             if (!submission) {
-//                 await new Promise((r) => setTimeout(r, 150));
-//                 submission = await HardcoreQuizSubmission.findOne({
-//                     quizId: quiz._id,
-//                     userId: new mongoose.Types.ObjectId(userId),
-//                 })
-//                     .read("primary")
-//                     .lean();
-//             }
-
-//             if (submission) {
-//                 hasAttempted = true;
-
-//                 // 👇 Store answers in a map for quick lookup
-//                 for (const ans of submission.answers) {
-//                     attemptedAnswers[ans.questionId.toString()] = {
-//                         selectedAnswer: ans.selectedAnswer,
-//                         isCorrect: ans.isCorrect,
-//                     };
-//                 }
-//             }
-//         }
-
-//         // 🧠 Combine question data with attempt info
-//         const questionsWithAttemptStatus = quiz.questions.map((q) => {
-//             const attempt = attemptedAnswers[q._id.toString()];
-//             return {
-//                 ...q,
-//                 hasAttempted: !!attempt,
-//                 selectedAnswer: attempt ? attempt.selectedAnswer : null,
-//                 isCorrect: attempt ? attempt.isCorrect : null, // 👈 optional if you want
-//             };
-//         });
-
-//         // ✅ Return response
-//         res.json({
-//             quiz: {
-//                 ...quiz,
-//                 questions: questionsWithAttemptStatus,
-//             },
-//             hasAttempted,
-//         });
-//     } catch (error) {
-//         console.error("Error fetching Hardcore Quiz:", error);
-//         res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+//     if (!quiz) {
+//       return res.status(404).json({ error: "Hardcore Quiz not found" });
 //     }
+
+//     let hasAttempted = false;
+//     let attemptedAnswers = {}; // questionId -> { selectedAnswer, isCorrect, coins, exp }
+
+//     // 🧩 Check if user has a submission
+//     if (userId) {
+//       await new Promise((r) => setImmediate(r));
+
+//       let submission = await HardcoreQuizSubmission.findOne({
+//         quizId: quiz._id,
+//         userId: new mongoose.Types.ObjectId(userId),
+//       })
+//         .read("primary")
+//         .lean();
+
+//       // 🔄 Retry if Mongo replica not yet updated
+//       if (!submission) {
+//         await new Promise((r) => setTimeout(r, 150));
+//         submission = await HardcoreQuizSubmission.findOne({
+//           quizId: quiz._id,
+//           userId: new mongoose.Types.ObjectId(userId),
+//         })
+//           .read("primary")
+//           .lean();
+//       }
+
+//       if (submission) {
+//         hasAttempted = true;
+//         // 👇 Convert array of answers into an object map for O(1) lookup
+//         for (const ans of submission.answers) {
+//           attemptedAnswers[ans.questionId.toString()] = {
+//             selectedAnswer: ans.selectedAnswer,
+//             isCorrect: ans.isCorrect,
+//             coins: ans.coins,
+//             exp: ans.exp,
+//           };
+//         }
+//       }
+//     }
+
+//     // 🧠 Combine quiz questions with user attempt info
+//     const questionsWithAttemptStatus = quiz.questions.map((q) => {
+//       const attempt = attemptedAnswers[q._id.toString()];
+//       return {
+//         ...q,
+//         hasAttempted: !!attempt,
+//         selectedAnswer: attempt ? attempt.selectedAnswer : null,
+//         isCorrect: attempt ? attempt.isCorrect : null,
+//         coins: attempt ? attempt.coins : 0,
+//         exp: attempt ? attempt.exp : 0,
+//       };
+//     });
+
+//     // ✅ Final Response
+//     res.json({
+//       quiz: {
+//         ...quiz,
+//         questions: questionsWithAttemptStatus,
+//       },
+//       hasAttempted,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching Hardcore Quiz:", error);
+//     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+//   }
 // };
+
 
 const getHardcoreQuizByComic = async (req, res) => {
   try {
@@ -263,6 +265,7 @@ const getHardcoreQuizByComic = async (req, res) => {
         quizId: quiz._id,
         userId: new mongoose.Types.ObjectId(userId),
       })
+        .sort({ createdAt: -1 }) // ✅ get latest attempt
         .read("primary")
         .lean();
 
@@ -273,13 +276,15 @@ const getHardcoreQuizByComic = async (req, res) => {
           quizId: quiz._id,
           userId: new mongoose.Types.ObjectId(userId),
         })
+          .sort({ createdAt: -1 })
           .read("primary")
           .lean();
       }
 
-      if (submission) {
+      if (submission && submission.answers?.length > 0) {
         hasAttempted = true;
-        // 👇 Convert array of answers into an object map for O(1) lookup
+
+        // ✅ Convert array of answers into object map for O(1) lookup
         for (const ans of submission.answers) {
           attemptedAnswers[ans.questionId.toString()] = {
             selectedAnswer: ans.selectedAnswer,
