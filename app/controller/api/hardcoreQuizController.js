@@ -483,13 +483,13 @@ const submitHardcoreQuiz = async (req, res) => {
       createdAt: { $gte: todayStart, $lte: todayEnd },
     });
 
-    if (attemptsForComicToday >= 2) {
-      return res.status(403).json({
-        error: true,
-        message:
-          "You can only attempt this comic’s hardcore quiz 2 times per day.",
-      });
-    }
+    // if (attemptsForComicToday >= 2) {
+    //   return res.status(403).json({
+    //     error: true,
+    //     message:
+    //       "You can only attempt this comic’s hardcore quiz 2 times per day.",
+    //   });
+    // }
 
     // 🔹 Always create a new submission if user starts a new quiz attempt
     let submission = await HardcoreQuizSubmission.findOne({
