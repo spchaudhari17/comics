@@ -319,120 +319,147 @@ const getHardcoreQuizByComic = async (req, res) => {
 };
 
 
-// const submitHardcoreQuiz = async (req, res) => {
-//     try {
-//         const { quizId, questionId, selectedAnswer } = req.body;
-//         const userId = req.user.login_data._id;
-
-//         //  Find the quiz and question
-//         const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
-//         if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
-
-//         const question = quiz.questions.find(
-//             (q) => q._id.toString() === questionId
-//         );
-
-//         if (!question) {
-//             return res.status(404).json({ error: "Question not found in this quiz" });
-//         }
-
-//         //  Check if user has an existing submission for this quiz
-//         let submission = await HardcoreQuizSubmission.findOne({
-//             quizId,
-//             userId,
-//         });
-
-//         if (!submission) {
-//             // If no submission yet, create a new one
-//             submission = await HardcoreQuizSubmission.create({
-//                 quizId,
-//                 userId,
-//                 answers: [],
-//                 score: 0,
-//                 coinsEarned: 0,
-//                 expEarned: 0,
-//             });
-//         }
-
-//         //  Prevent double submission for the same question
-//         // const alreadyAnswered = submission.answers.some(
-//         //   (a) => a.questionId.toString() === questionId
-//         // );
-
-//         // if (alreadyAnswered) {
-//         //   return res.status(400).json({
-//         //     message: "You have already submitted this question.",
-//         //   });
-//         // }
-
-//         //  Evaluate this question
-//         const isCorrect = question.correctAnswer === selectedAnswer;
-
-//         //  Calculate reward points (you can adjust this logic)
-//         const coins = isCorrect
-//             ? question.difficulty === "extreme"
-//                 ? 20
-//                 : 10
-//             : 0;
-//         const exp = isCorrect
-//             ? question.difficulty === "extreme"
-//                 ? 15
-//                 : 8
-//             : 0;
-
-//         // Update submission totals
-//         if (isCorrect) submission.score += 1;
-//         submission.coinsEarned += coins;
-//         submission.expEarned += exp;
-
-//         // Add this question's answer
-//         submission.answers.push({
-//             questionId,
-//             selectedAnswer,
-//             isCorrect,
-//             coins,
-//             exp,
-//         });
-
-//         await submission.save();
-
-//         // ✅ Return only current question result (no next question)
-//         res.json({
-//             message: "Question submitted successfully.",
-//             result: {
-//                 questionId,
-//                 isCorrect,
-//                 correctAnswer: question.correctAnswer,
-//                 explanation: question.explanation,
-//                 hint: question.hint,
-//                 coins,
-//                 exp,
-//             },
-//             currentScore: submission.score,
-//             totalQuestions: quiz.questions.length,
-//             coinsEarned: submission.coinsEarned,
-//             expEarned: submission.expEarned,
-//         });
-//     } catch (error) {
-//         console.error("Submit Hardcore Question Error:", error);
-//         res.status(500).json({
-//             error: "Failed to submit hardcore question",
-//             details: error.message,
-//         });
-//     }
-// };
-
-
 
 const COINS_PER_GEM = 1800;
 const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
+
+// const submitHardcoreQuiz = async (req, res) => {
+//   try {
+//     const { quizId, questionId, selectedAnswer, doubleChoice } = req.body;
+//     const userId = req.user.login_data._id;
+
+//     //  Fetch quiz & question
+//     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+//     if (!quiz)
+//       return res.status(404).json({ error: "Hardcore Quiz not found" });
+
+//     const question = quiz.questions.find(
+//       (q) => q._id.toString() === questionId
+//     );
+//     if (!question)
+//       return res.status(404).json({ error: "Question not found in this quiz" });
+
+//     //  Daily limit: 2 hardcore attempts per day
+//     const todayStart = new Date();
+//     todayStart.setHours(0, 0, 0, 0);
+//     const todayEnd = new Date();
+//     todayEnd.setHours(23, 59, 59, 999);
+
+//     const attemptsToday = await HardcoreQuizSubmission.countDocuments({
+//       userId,
+//       createdAt: { $gte: todayStart, $lte: todayEnd },
+//     });
+
+//     if (attemptsToday >= 2) {
+//       return res.status(403).json({
+//         error: true,
+//         message: "You can only attempt 2 hardcore quizzes per day.",
+//       });
+//     }
+
+//     // 🔹 Find or create submission
+//     let submission = await HardcoreQuizSubmission.findOne({ quizId, userId });
+//     if (!submission) {
+//       submission = await HardcoreQuizSubmission.create({
+//         quizId,
+//         userId,
+//         answers: [],
+//         score: 0,
+//         coinsEarned: 0,
+//         expEarned: 0,
+//         currentMultiplier: 1, // start with base 1×
+//       });
+//     }
+
+//     const isCorrect = question.correctAnswer === selectedAnswer;
+
+//     // 🧠 Hardcore Reward Logic
+//     let coins = 0;
+//     let exp = 0;
+
+//     if (isCorrect) {
+//       if (submission.answers.length === 0) {
+//         // 🟢 First correct → base reward
+//         coins = 40;
+//         exp = 20;
+//         submission.currentMultiplier = 1;
+//       } else {
+//         if (doubleChoice === true) {
+//           // 🟢 User risked double → multiply rewards
+//           submission.currentMultiplier *= 2;
+//           coins = 40 * submission.currentMultiplier;
+//           exp = 20 * submission.currentMultiplier;
+//         } else {
+//           // 🟢 Safe choice → keep same multiplier
+//           coins = 40 * submission.currentMultiplier;
+//           exp = 20 * submission.currentMultiplier;
+//         }
+//       }
+
+//       submission.score += 1;
+//       submission.coinsEarned = coins;
+//       submission.expEarned = exp;
+//     } else {
+//       // 🔴 Wrong → lose all session rewards
+//       coins = 0;
+//       exp = 0;
+//       submission.coinsEarned = 0;
+//       submission.expEarned = 0;
+//       submission.currentMultiplier = 1;
+//     }
+
+//     // 🔹 Save answer record
+//     submission.answers.push({
+//       questionId,
+//       selectedAnswer,
+//       isCorrect,
+//       coins,
+//       exp,
+//     });
+//     await submission.save();
+
+//     // 🔹 Update user wallet if correct
+//     if (isCorrect) {
+//       const user = await User.findById(userId);
+//       user.coins += coins;
+//       user.exp += exp;
+//       user.gems = getGemsFromCoins(user.coins);
+//       await user.save();
+//     }
+
+//     // ✅ Final response (matching your structure)
+//     return res.json({
+//       message: "Question submitted successfully.",
+//       result: {
+//         questionId,
+//         isCorrect,
+//         correctAnswer: question.correctAnswer,
+//         explanation: question.explanation,
+//         hint: question.hint,
+//         coins,
+//         exp,
+//       },
+//       currentScore: submission.score,
+//       totalQuestions: quiz.questions.length,
+//       coinsEarned: submission.coinsEarned,
+//       expEarned: submission.expEarned,
+//     });
+//   } catch (error) {
+//     console.error("❌ Submit Hardcore Quiz Error:", error);
+//     return res.status(500).json({
+//       error: "Failed to submit hardcore question",
+//       details: error.message,
+//     });
+//   }
+// };
+
 
 const submitHardcoreQuiz = async (req, res) => {
   try {
     const { quizId, questionId, selectedAnswer, doubleChoice } = req.body;
     const userId = req.user.login_data._id;
 
-    //  Fetch quiz & question
+    // 🎯 Fetch quiz & question
     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
     if (!quiz)
       return res.status(404).json({ error: "Hardcore Quiz not found" });
@@ -443,27 +470,36 @@ const submitHardcoreQuiz = async (req, res) => {
     if (!question)
       return res.status(404).json({ error: "Question not found in this quiz" });
 
-    //  Daily limit: 2 hardcore attempts per day
+    // 🧠 Limit: Only 2 attempts per comic per day
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const attemptsToday = await HardcoreQuizSubmission.countDocuments({
+    // Count full quiz attempts (submissions) today
+    const attemptsForComicToday = await HardcoreQuizSubmission.countDocuments({
       userId,
+      quizId,
       createdAt: { $gte: todayStart, $lte: todayEnd },
     });
 
-    if (attemptsToday >= 2) {
+    if (attemptsForComicToday >= 2) {
       return res.status(403).json({
         error: true,
-        message: "You can only attempt 2 hardcore quizzes per day.",
+        message:
+          "You can only attempt this comic’s hardcore quiz 2 times per day.",
       });
     }
 
-    // 🔹 Find or create submission
-    let submission = await HardcoreQuizSubmission.findOne({ quizId, userId });
-    if (!submission) {
+    // 🔹 Always create a new submission if user starts a new quiz attempt
+    let submission = await HardcoreQuizSubmission.findOne({
+      quizId,
+      userId,
+      isActive: true, // current ongoing attempt
+    });
+
+    // If no active submission or user finished all questions, start new attempt
+    if (!submission || submission.isFinished) {
       submission = await HardcoreQuizSubmission.create({
         quizId,
         userId,
@@ -471,48 +507,42 @@ const submitHardcoreQuiz = async (req, res) => {
         score: 0,
         coinsEarned: 0,
         expEarned: 0,
-        currentMultiplier: 1, // start with base 1×
+        currentMultiplier: 1,
+        isActive: true,
       });
     }
 
     const isCorrect = question.correctAnswer === selectedAnswer;
 
-    // 🧠 Hardcore Reward Logic
+    // 🧮 Reward Logic
     let coins = 0;
     let exp = 0;
 
     if (isCorrect) {
       if (submission.answers.length === 0) {
-        // 🟢 First correct → base reward
         coins = 40;
         exp = 20;
         submission.currentMultiplier = 1;
       } else {
         if (doubleChoice === true) {
-          // 🟢 User risked double → multiply rewards
           submission.currentMultiplier *= 2;
           coins = 40 * submission.currentMultiplier;
           exp = 20 * submission.currentMultiplier;
         } else {
-          // 🟢 Safe choice → keep same multiplier
           coins = 40 * submission.currentMultiplier;
           exp = 20 * submission.currentMultiplier;
         }
       }
 
       submission.score += 1;
-      submission.coinsEarned = coins;
-      submission.expEarned = exp;
+      submission.coinsEarned += coins;
+      submission.expEarned += exp;
     } else {
-      // 🔴 Wrong → lose all session rewards
       coins = 0;
       exp = 0;
-      submission.coinsEarned = 0;
-      submission.expEarned = 0;
       submission.currentMultiplier = 1;
     }
 
-    // 🔹 Save answer record
     submission.answers.push({
       questionId,
       selectedAnswer,
@@ -520,6 +550,13 @@ const submitHardcoreQuiz = async (req, res) => {
       coins,
       exp,
     });
+
+    // Mark finished if all questions answered
+    if (submission.answers.length >= quiz.questions.length) {
+      submission.isFinished = true;
+      submission.isActive = false;
+    }
+
     await submission.save();
 
     // 🔹 Update user wallet if correct
@@ -531,7 +568,6 @@ const submitHardcoreQuiz = async (req, res) => {
       await user.save();
     }
 
-    // ✅ Final response (matching your structure)
     return res.json({
       message: "Question submitted successfully.",
       result: {
@@ -547,6 +583,7 @@ const submitHardcoreQuiz = async (req, res) => {
       totalQuestions: quiz.questions.length,
       coinsEarned: submission.coinsEarned,
       expEarned: submission.expEarned,
+      attemptCountToday: attemptsForComicToday + 1,
     });
   } catch (error) {
     console.error("❌ Submit Hardcore Quiz Error:", error);
@@ -556,6 +593,8 @@ const submitHardcoreQuiz = async (req, res) => {
     });
   }
 };
+
+
 
 
 
