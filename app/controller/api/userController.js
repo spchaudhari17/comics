@@ -1147,10 +1147,43 @@ const deleteAccount = async (req, res) => {
 
 
 
+const addCoins = async (req, res) => {
+    try {
+        const userId = req.user?.login_data?._id; // safely extract user ID
 
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+
+        // Increment coins atomically by 10
+        const updatedUser = await Users.findByIdAndUpdate(
+            userId,
+            { $inc: { coins: 10 } },
+            { new: true, runValidators: true }
+        ).select('-password -plain_password');
+
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        return res.json({
+            success: true,
+            message: 'Coins increased by 10',
+            user: updatedUser
+        });
+
+    } catch (err) {
+        console.error('Error increasing coins:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: err.message
+        });
+    }
+};
 
 
 module.exports = {
     signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys,
-    updatePic, profileDetails, deletePic, deleteAccount
+    updatePic, profileDetails, deletePic, deleteAccount, addCoins
 }
