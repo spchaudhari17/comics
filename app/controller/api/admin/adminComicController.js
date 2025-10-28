@@ -19,40 +19,49 @@ const openai = new OpenAI({
 
 
 
+// const listAllComicsAdmin = async (req, res) => {
+//   try {
+//     const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
+//       .populate("user_id", "name email userType firstname")
+//       .sort({ createdAt: -1 });
+
+//     res.json({ comics });
+//   } catch (error) {
+//     console.error("Admin list comics error:", error);
+//     res.status(500).json({ error: "Failed to fetch comics" });
+//   }
+// };
+
 const listAllComicsAdmin = async (req, res) => {
   try {
-    const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
+    const { country } = req.query; // 👈 optional country filter
+    const filter = { comicStatus: "published" };
+
+    // ✅ If country query is present, add to filter
+    if (country && country.trim() !== "") {
+      filter.country = country.toUpperCase(); // e.g. "IN", "US"
+    }
+
+    const comics = await Comic.find(filter, "-prompt")
       .populate("user_id", "name email userType firstname")
       .sort({ createdAt: -1 });
 
-    res.json({ comics });
+    res.json({
+      success: true,
+      total: comics.length,
+      country: country || "ALL",
+      comics,
+    });
   } catch (error) {
-    console.error("Admin list comics error:", error);
-    res.status(500).json({ error: "Failed to fetch comics" });
+    console.error("❌ Admin list comics error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch comics",
+      error: error.message,
+    });
   }
 };
 
-// Controller: listAllComicsAdmin
-// const listAllComicsAdmin = async (req, res) => {
-//   try {
-//     const { country } = req.query;
-//     const filter = {};
-
-//     if (country) {
-//       filter.country = country; // filter by country
-//     }
-
-//     const comics = await Comic.find(filter)
-//       .populate("user_id", "firstname email userType")
-//       .populate("subjectId", "name")
-//       .sort({ createdAt: -1 });
-
-//     res.json({ success: true, comics });
-//   } catch (err) {
-//     console.error("❌ Error fetching comics:", err);
-//     res.status(500).json({ success: false, message: "Failed to fetch comics" });
-//   }
-// };
 
 
 

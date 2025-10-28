@@ -129,7 +129,7 @@ router.delete("/user/contact/:id", deleteContact);
 
 
 router.get("/users", async (req, res) => {
-    res.send("just for test")
+    res.send("just for test today 28-10-2025")
 });
 
 
