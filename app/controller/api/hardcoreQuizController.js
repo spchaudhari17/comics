@@ -257,46 +257,33 @@ const getHardcoreQuizByComic = async (req, res) => {
     let hasAttempted = false;
     let attemptedAnswers = {}; // questionId -> { selectedAnswer, isCorrect, coins, exp }
 
-    // 🧩 Check if user has a submission
     if (userId) {
-      await new Promise((r) => setImmediate(r));
-
-      let submission = await HardcoreQuizSubmission.findOne({
+      // 🧩 Fetch *all* submissions ever made by this user for this quiz
+      const submissions = await HardcoreQuizSubmission.find({
         quizId: quiz._id,
         userId: new mongoose.Types.ObjectId(userId),
       })
-        .sort({ createdAt: -1 }) // ✅ get latest attempt
-        .read("primary")
+        .sort({ createdAt: -1 })
         .lean();
 
-      // 🔄 Retry if Mongo replica not yet updated
-      if (!submission) {
-        await new Promise((r) => setTimeout(r, 150));
-        submission = await HardcoreQuizSubmission.findOne({
-          quizId: quiz._id,
-          userId: new mongoose.Types.ObjectId(userId),
-        })
-          .sort({ createdAt: -1 })
-          .read("primary")
-          .lean();
-      }
-
-      if (submission && submission.answers?.length > 0) {
+      // 🔹 Merge all answers from all submissions
+      if (submissions.length > 0) {
         hasAttempted = true;
-
-        // ✅ Convert array of answers into object map for O(1) lookup
-        for (const ans of submission.answers) {
-          attemptedAnswers[ans.questionId.toString()] = {
-            selectedAnswer: ans.selectedAnswer,
-            isCorrect: ans.isCorrect,
-            coins: ans.coins,
-            exp: ans.exp,
-          };
+        for (const submission of submissions) {
+          for (const ans of submission.answers || []) {
+            // ensure latest submission overwrites older ones
+            attemptedAnswers[ans.questionId.toString()] = {
+              selectedAnswer: ans.selectedAnswer,
+              isCorrect: ans.isCorrect,
+              coins: ans.coins,
+              exp: ans.exp,
+            };
+          }
         }
       }
     }
 
-    // 🧠 Combine quiz questions with user attempt info
+    // 🧠 Merge question data with attempt info
     const questionsWithAttemptStatus = quiz.questions.map((q) => {
       const attempt = attemptedAnswers[q._id.toString()];
       return {
@@ -309,7 +296,7 @@ const getHardcoreQuizByComic = async (req, res) => {
       };
     });
 
-    // ✅ Final Response
+    // ✅ Response
     res.json({
       quiz: {
         ...quiz,
@@ -322,6 +309,7 @@ const getHardcoreQuizByComic = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
   }
 };
+
 
 
 
