@@ -11,6 +11,147 @@ const openai = new OpenAI({
 });
 
 
+// old
+// const generateHardcoreQuiz = async (req, res) => {
+//   const { comicId, script, subject, concept, grade } = req.body;
+
+//   try {
+//     // 🧠 Step 1: Check if quiz already exists
+//     const existingQuiz = await HardcoreQuiz.findOne({ comicId })
+//       .populate({
+//         path: "questions",
+//         select: "question options correctAnswer difficulty explanation hint",
+//       })
+//       .lean();
+
+//     if (existingQuiz) {
+//       return res.status(200).json({
+//         message: "Hardcore quiz already exists for this comic.",
+//         quizId: existingQuiz._id,
+//         quiz: existingQuiz,
+//         alreadyExists: true,
+//       });
+//     }
+
+//     // 🧩 Step 2: Prepare story text
+//     let storyText = "";
+//     if (Array.isArray(script)) {
+//       storyText = script
+//         .map((page) =>
+//           page.panels
+//             .map((p) => `Scene: ${p.scene || ""}. Caption: ${p.caption || ""}`)
+//             .join("\n")
+//         )
+//         .join("\n\n");
+//     } else {
+//       storyText = script || "";
+//     }
+
+//     // 🧠 Step 3: Prompt for OpenAI
+//     const prompt = `
+// You are an expert educational AI. Create a **hardcore-level quiz**.
+
+// Context:
+// - Subject: ${subject}
+// - Concept: ${concept}
+// - Grade: ${grade}
+// - Reference Story (ignore dialogues):
+// ${storyText}
+
+// Instructions:
+// - Create 5 very challenging MCQs.
+// - Questions should require deep conceptual reasoning, analysis, and problem-solving.
+// - Each question must have:
+//   • 1 correct answer
+//   • 3 difficult distractors
+//   • A brief explanation of the correct answer
+//   • A short hint to guide the student (but without revealing the answer)
+// - Difficulty: only "hard" or "extreme".
+// - Return valid JSON only.
+
+// Format:
+// [
+//   {
+//     "question": "string",
+//     "options": ["opt1", "opt2", "opt3", "opt4"],
+//     "correctAnswer": "string",
+//     "difficulty": "hard|extreme",
+//     "explanation": "string",
+//     "hint": "string"
+//   }
+// ]
+// `;
+
+//     // 🧩 Step 4: Generate quiz from OpenAI
+//     const response = await openai.chat.completions.create({
+//       model: "gpt-4o",
+//       messages: [
+//         { role: "system", content: "Return valid JSON only, no markdown." },
+//         { role: "user", content: prompt },
+//       ],
+//       temperature: 0.7,
+//       max_tokens: 900,
+//     });
+
+//     let raw = response.choices[0].message.content.trim();
+//     if (raw.startsWith("```")) raw = raw.replace(/```json|```/g, "").trim();
+
+//     let questions;
+//     try {
+//       questions = JSON.parse(raw);
+//       if (!Array.isArray(questions)) throw new Error("Invalid JSON array");
+//     } catch (err) {
+//       return res.status(500).json({
+//         error: "Invalid JSON from OpenAI",
+//         details: err.message,
+//         raw,
+//       });
+//     }
+
+//     // 🧩 Step 5: Create new quiz
+//     const quiz = await HardcoreQuiz.create({
+//       comicId,
+//       user_id: req.user.login_data._id,
+//       status: "draft",
+//       mode: "hardcore",
+//     });
+
+//     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
+
+//     // 🧩 Step 6: Save questions
+//     const savedQuestions = [];
+//     for (const q of questions) {
+//       const newQ = await HardcoreQuizQuestion.create({
+//         quizId: quiz._id,
+//         question: q.question,
+//         options: q.options,
+//         correctAnswer: q.correctAnswer,
+//         difficulty: q.difficulty,
+//         explanation: q.explanation,
+//         hint: q.hint,
+//       });
+//       savedQuestions.push(newQ._id);
+//     }
+
+//     quiz.questions = savedQuestions;
+//     await quiz.save();
+
+//     // 🧩 Step 7: Return response
+//     res.json({
+//       message: "Hardcore quiz successfully created.",
+//       quizId: quiz._id,
+//       questions,
+//       alreadyExists: false,
+//     });
+//   } catch (error) {
+//     console.error("Hardcore Quiz Generation Error:", error);
+//     res.status(500).json({
+//       error: "Failed to generate hardcore quiz",
+//       details: error.message,
+//     });
+//   }
+// };
+
 const generateHardcoreQuiz = async (req, res) => {
   const { comicId, script, subject, concept, grade } = req.body;
 
@@ -25,20 +166,22 @@ const generateHardcoreQuiz = async (req, res) => {
 
     if (existingQuiz) {
       return res.status(200).json({
-        message: "Hardcore quiz already exists for this comic.",
+        message: "Adaptive quiz already exists for this comic.",
         quizId: existingQuiz._id,
         quiz: existingQuiz,
         alreadyExists: true,
       });
     }
 
-    // 🧩 Step 2: Prepare story text
+    // 🧩 Step 2: Extract text from comic script
     let storyText = "";
     if (Array.isArray(script)) {
       storyText = script
         .map((page) =>
           page.panels
-            .map((p) => `Scene: ${p.scene || ""}. Caption: ${p.caption || ""}`)
+            .map(
+              (p) => `Scene: ${p.scene || ""}. Caption: ${p.caption || ""}`
+            )
             .join("\n")
         )
         .join("\n\n");
@@ -48,7 +191,7 @@ const generateHardcoreQuiz = async (req, res) => {
 
     // 🧠 Step 3: Prompt for OpenAI
     const prompt = `
-You are an expert educational AI. Create a **hardcore-level quiz**.
+You are an expert educational AI quiz generator.
 
 Context:
 - Subject: ${subject}
@@ -57,24 +200,31 @@ Context:
 - Reference Story (ignore dialogues):
 ${storyText}
 
-Instructions:
-- Create 5 very challenging MCQs.
-- Questions should require deep conceptual reasoning, analysis, and problem-solving.
-- Each question must have:
-  • 1 correct answer
-  • 3 difficult distractors
-  • A brief explanation of the correct answer
-  • A short hint to guide the student (but without revealing the answer)
-- Difficulty: only "hard" or "extreme".
-- Return valid JSON only.
+Task:
+Create **6–8 adaptive multiple-choice questions (MCQs)** that gradually increase in difficulty:
+1. 2 easy
+2. 2 medium
+3. 2 hard
+4. 1–2 extreme
+
+Rules:
+- Each question must have **6–7 options**.
+- Only **one correct answer**.
+- Include:
+  - "difficulty": one of ["easy", "medium", "hard", "extreme"]
+  - "explanation": short conceptual reasoning
+  - "hint": small tip without giving answer
+- Each question should test progressively deeper understanding.
+
+Return **strict JSON array**, sorted from easy → extreme.
 
 Format:
 [
   {
     "question": "string",
-    "options": ["opt1", "opt2", "opt3", "opt4"],
+    "options": ["opt1", "opt2", "opt3", "opt4", "opt5", "opt6", "opt7"],
     "correctAnswer": "string",
-    "difficulty": "hard|extreme",
+    "difficulty": "easy|medium|hard|extreme",
     "explanation": "string",
     "hint": "string"
   }
@@ -89,7 +239,7 @@ Format:
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
-      max_tokens: 900,
+      max_tokens: 1300,
     });
 
     let raw = response.choices[0].message.content.trim();
@@ -112,12 +262,12 @@ Format:
       comicId,
       user_id: req.user.login_data._id,
       status: "draft",
-      mode: "hardcore",
+      mode: "adaptive", // changed mode name to reflect all levels
     });
 
     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
 
-    // 🧩 Step 6: Save questions
+    // 🧩 Step 6: Save questions in DB
     const savedQuestions = [];
     for (const q of questions) {
       const newQ = await HardcoreQuizQuestion.create({
@@ -137,103 +287,20 @@ Format:
 
     // 🧩 Step 7: Return response
     res.json({
-      message: "Hardcore quiz successfully created.",
+      message: "Adaptive quiz successfully created (easy → extreme).",
       quizId: quiz._id,
       questions,
       alreadyExists: false,
     });
   } catch (error) {
-    console.error("Hardcore Quiz Generation Error:", error);
+    console.error("Adaptive Quiz Generation Error:", error);
     res.status(500).json({
-      error: "Failed to generate hardcore quiz",
+      error: "Failed to generate adaptive quiz",
       details: error.message,
     });
   }
 };
 
-// const getHardcoreQuizByComic = async (req, res) => {
-//   try {
-//     const { id } = req.params; // comicId
-//     const userId = req.query.userId || req.params.userId;
-
-//     // 🎯 Always read from primary to get fresh data
-//     const quiz = await HardcoreQuiz.findOne({ comicId: id })
-//       .read("primary")
-//       .populate({
-//         path: "questions",
-//         options: { lean: true },
-//       })
-//       .lean();
-
-//     if (!quiz) {
-//       return res.status(404).json({ error: "Hardcore Quiz not found" });
-//     }
-
-//     let hasAttempted = false;
-//     let attemptedAnswers = {}; // questionId -> { selectedAnswer, isCorrect, coins, exp }
-
-//     // 🧩 Check if user has a submission
-//     if (userId) {
-//       await new Promise((r) => setImmediate(r));
-
-//       let submission = await HardcoreQuizSubmission.findOne({
-//         quizId: quiz._id,
-//         userId: new mongoose.Types.ObjectId(userId),
-//       })
-//         .read("primary")
-//         .lean();
-
-//       // 🔄 Retry if Mongo replica not yet updated
-//       if (!submission) {
-//         await new Promise((r) => setTimeout(r, 150));
-//         submission = await HardcoreQuizSubmission.findOne({
-//           quizId: quiz._id,
-//           userId: new mongoose.Types.ObjectId(userId),
-//         })
-//           .read("primary")
-//           .lean();
-//       }
-
-//       if (submission) {
-//         hasAttempted = true;
-//         // 👇 Convert array of answers into an object map for O(1) lookup
-//         for (const ans of submission.answers) {
-//           attemptedAnswers[ans.questionId.toString()] = {
-//             selectedAnswer: ans.selectedAnswer,
-//             isCorrect: ans.isCorrect,
-//             coins: ans.coins,
-//             exp: ans.exp,
-//           };
-//         }
-//       }
-//     }
-
-//     // 🧠 Combine quiz questions with user attempt info
-//     const questionsWithAttemptStatus = quiz.questions.map((q) => {
-//       const attempt = attemptedAnswers[q._id.toString()];
-//       return {
-//         ...q,
-//         hasAttempted: !!attempt,
-//         selectedAnswer: attempt ? attempt.selectedAnswer : null,
-//         isCorrect: attempt ? attempt.isCorrect : null,
-//         coins: attempt ? attempt.coins : 0,
-//         exp: attempt ? attempt.exp : 0,
-//       };
-//     });
-
-//     // ✅ Final Response
-//     res.json({
-//       quiz: {
-//         ...quiz,
-//         questions: questionsWithAttemptStatus,
-//       },
-//       hasAttempted,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching Hardcore Quiz:", error);
-//     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
-//   }
-// };
 
 
 const getHardcoreQuizByComic = async (req, res) => {

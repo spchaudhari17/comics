@@ -7,7 +7,11 @@ const HardcoreQuizQuestionSchema = new Schema({
   question: { type: String, required: true },
   options: [{ type: String, required: true }],
   correctAnswer: { type: String, required: true },
-  difficulty: { type: String, enum: ["hard", "extreme"], default: "hard" },
+  difficulty: {
+    type: String,
+    enum: ["easy", "medium", "hard", "extreme"],
+    default: "easy"
+  },
   explanation: { type: String }, //detailed answer explanation
   hint: { type: String },
 });

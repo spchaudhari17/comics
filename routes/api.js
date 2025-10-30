@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails } = require('../app/controller/api/admin/adminComicController');
@@ -97,6 +97,7 @@ router.get("/admin/comics", authentication, listAllComicsAdmin);
 router.post("/admin/comics/status", authentication, approveComicStatusAdmin);
 router.get("/admin/getAllUsers", getAllUsers);
 router.get("/admin/comics/:id", getAdminComicDetails);
+router.put("/admin/update-country", updateCountryForSeries);
 
 //******************************** quiz routes routes started from here ***************************** */
 
@@ -130,7 +131,7 @@ router.delete("/user/contact/:id", deleteContact);
 
 
 router.get("/users", async (req, res) => {
-    res.send("just for test today 28-10-2025")
+    res.send("just for test today 30-10-2025")
 });
 
 
