@@ -829,90 +829,6 @@ const deletePic = async (req, res) => {
 const COINS_PER_GEM = 1800;
 const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
 
-// const profileDetails = async (req, res) => {
-//     try {
-//         const userId = req.user.login_data._id;
-
-//         //  1. Get User Details (with wallet)
-//         const user = await Users.findById(userId).lean();
-//         if (!user) {
-//             return res.status(404).json({
-//                 error: true,
-//                 status: 404,
-//                 message: "User not found",
-//                 message_desc: "No user found with this ID",
-//                 data: {},
-//             });
-//         }
-
-//         //  2. Total unique quizzes attempted
-//         const quizzesTaken = await QuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             { $group: { _id: "$quizId" } },
-//         ]);
-//         const totalQuizzesTaken = quizzesTaken.length;
-
-//         //  3. Total unique comics completed
-//         const comicsCompleted = await QuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             {
-//                 $lookup: {
-//                     from: "quizzes",
-//                     localField: "quizId",
-//                     foreignField: "_id",
-//                     as: "quizData",
-//                 },
-//             },
-//             { $unwind: "$quizData" },
-//             { $group: { _id: "$quizData.comicId" } },
-//         ]);
-//         const numberOfComicsCompleted = comicsCompleted.length;
-
-//         //  4. Calculate Live Gems (based on current coins)
-//         const liveGems = getGemsFromCoins(user.coins);
-
-//         //  5. Final Profile Response (LIVE values)
-//         const profile = {
-//             _id: user._id,
-//             username: user.username,
-//             email: user.email,
-//             email_verified_at: user.email_verified_at || null,
-//             profile_pic: user.profile_pic || "",
-//             created_at: user.createdAt,
-//             updated_at: user.updatedAt,
-
-//             // 📊 Stats
-//             total_quizzes_taken: totalQuizzesTaken,
-//             number_of_comics_completed: numberOfComicsCompleted,
-
-//             // 🪙 Wallet (LIVE VALUES)
-//             coins: user.coins,
-//             exp: user.exp,
-//             gems: liveGems,
-
-//             // 🧾 Totals (LIVE WALLET VALUES)
-//             total_coins_earned: user.coins,
-//             total_exp_earned: user.exp,
-//             total_gems_earned: liveGems,
-//         };
-
-//         return res.status(200).json({
-//             error: false,
-//             status: 200,
-//             message: "Profile fetched successfully",
-//             data: profile,
-//         });
-//     } catch (error) {
-//         console.error("❌ Profile Details Error:", error);
-//         return res.status(500).json({
-//             error: true,
-//             status: 500,
-//             message: "Something went wrong.",
-//             message_desc: "Unhandled exception: " + error.message,
-//             data: {},
-//         });
-//     }
-// };
 
 
 
@@ -1021,7 +937,7 @@ const profileDetails = async (req, res) => {
             toughest.length > 0 ? toughest[0].questionData.difficulty : "N/A";
 
         // 7️⃣ Calculate live gems
-        const liveGems = getGemsFromCoins(user.coins);
+        const liveGems = user.gems
 
         // 8️⃣ Prepare myStats object
         const myStats = {
