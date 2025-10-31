@@ -856,9 +856,83 @@ const getBoughtQuestions = async (req, res) => {
 };
 
 
+const getAllBoughtQuestions = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+
+    // 1️⃣ Fetch all submissions with unlocked questions
+    const submissions = await HardcoreQuizSubmission.find({
+      userId,
+      unlockedQuestions: { $exists: true, $ne: [] },
+    })
+      .populate({
+        path: "quizId",
+        select: "_id comicId",
+        populate: {
+          path: "comicId",
+          select: "_id title subject grade",
+        },
+      })
+      .lean();
+
+    if (!submissions || submissions.length === 0) {
+      return res.json({
+        message: "No purchased questions found.",
+        totalBought: 0,
+        boughtQuestions: [],
+      });
+    }
+
+    // 2️⃣ Collect all purchased questions with quiz & comic info
+    const allBought = [];
+    for (const sub of submissions) {
+      const quiz = await HardcoreQuiz.findById(sub.quizId._id)
+        .populate("questions", "_id question options difficulty correctAnswer")
+        .lean();
+
+      const unlockedQuestions = quiz.questions.filter((q) =>
+        sub.unlockedQuestions.some((u) => u.toString() === q._id.toString())
+      );
+
+      unlockedQuestions.forEach((q) => {
+        allBought.push({
+          quizId: sub.quizId._id,
+          // comic: {
+          //   id: sub.quizId.comicId?._id,
+          //   title: sub.quizId.comicId?.title || "Untitled Comic",
+          //   subject: sub.quizId.comicId?.subject || "Unknown",
+          //   grade: sub.quizId.comicId?.grade || "N/A",
+          // },
+          questionId: q._id,
+          question: q.question,
+          options: q.options, // ✅ added full options array
+          difficulty: q.difficulty,
+          correctAnswer: q.correctAnswer,
+        });
+      });
+    }
+
+    // 3️⃣ Response
+    res.json({
+      success: true,
+      message: "All purchased questions fetched successfully.",
+      totalBought: allBought.length,
+      boughtQuestions: allBought,
+    });
+  } catch (error) {
+    console.error("❌ Get All Bought Questions Error:", error);
+    res.status(500).json({
+      error: true,
+      message: "Failed to fetch all purchased questions",
+      details: error.message,
+    });
+  }
+};
+
+
 
 
 module.exports = {
   generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz,
-  buyPowerCard, usePowerCard, getPowerCards, buyGems, buyHardcoreQuestion, getBoughtQuestions
+  buyPowerCard, usePowerCard, getPowerCards, buyGems, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions
 };
