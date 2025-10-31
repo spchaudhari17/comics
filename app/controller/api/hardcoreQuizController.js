@@ -713,6 +713,20 @@ const buyHardcoreQuestion = async (req, res) => {
     if (!quiz)
       return res.status(404).json({ error: true, message: "Quiz not found" });
 
+    // 2️⃣ Check across all submissions (not just active)
+    const previousUnlock = await HardcoreQuizSubmission.findOne({
+      userId,
+      quizId,
+      unlockedQuestions: { $in: [questionId] },
+    });
+
+    if (previousUnlock) {
+      return res.status(400).json({
+        error: true,
+        message: "This question is already purchased.",
+      });
+    }
+
     // 2️⃣ Get or create submission
     let submission = await HardcoreQuizSubmission.findOne({
       userId,
