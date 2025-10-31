@@ -54,8 +54,10 @@ var UserSchema = new mongoose.Schema({
         hint: { type: Number, default: 0 },
         timeExtend: { type: Number, default: 0 },
         reduceOptions: { type: Number, default: 0 },
-        changeQuestion: { type: Number, default: 0 }
-    }
+        changeQuestion: { type: Number, default: 0 },
+    },
+
+
 
 }, { timestamps: true })
 

@@ -1090,90 +1090,90 @@ const listComics = async (req, res) => {
 // };
 
 const getComic = async (req, res) => {
-  try {
-    const comicId = req.params.id;
-    const userId = req.user?.login_data?._id;
+    try {
+        const comicId = req.params.id;
+        const userId = req.user?.login_data?._id;
 
-    // 🔹 Fetch main comic
-    const comic = await Comic.findById(comicId).lean();
-    if (!comic) return res.status(404).json({ error: "Comic not found" });
+        // 🔹 Fetch main comic
+        const comic = await Comic.findById(comicId).lean();
+        if (!comic) return res.status(404).json({ error: "Comic not found" });
 
-    // 🔹 Fetch related data in parallel
-    const [
-      pages,
-      theme,
-      subject,
-      style,
-      faqs,
-      facts,
-      hardcoreQuiz,
-      quiz
-    ] = await Promise.all([
-      ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean(),
-      Theme.findById(comic.themeId).lean(),
-      Subject.findById(comic.subjectId).lean(),
-      Style.findById(comic.styleId).lean(),
-      FAQ.find({ comicId }).lean(),
-      DidYouKnow.find({ comicId }).lean(),
-      HardcoreQuiz.findOne({ comicId })
-        .populate("questions") // populate embedded question docs if referenced
-        .lean(),
-      Quiz.findOne({ comicId })
-        .populate("questions")
-        .lean(),
-    ]);
+        // 🔹 Fetch related data in parallel
+        const [
+            pages,
+            theme,
+            subject,
+            style,
+            faqs,
+            facts,
+            hardcoreQuiz,
+            quiz
+        ] = await Promise.all([
+            ComicPage.find({ comicId }).sort({ pageNumber: 1 }).lean(),
+            Theme.findById(comic.themeId).lean(),
+            Subject.findById(comic.subjectId).lean(),
+            Style.findById(comic.styleId).lean(),
+            FAQ.find({ comicId }).lean(),
+            DidYouKnow.find({ comicId }).lean(),
+            HardcoreQuiz.findOne({ comicId })
+                .populate("questions") // populate embedded question docs if referenced
+                .lean(),
+            Quiz.findOne({ comicId })
+                .populate("questions")
+                .lean(),
+        ]);
 
-    // 🔹 Check if user attempted Hardcore Quiz
-    let hasAttemptedHardcore = false;
-    if (hardcoreQuiz && userId) {
-      const attempt = await HardcoreQuizSubmission.findOne({
-        quizId: hardcoreQuiz._id,
-        userId: new mongoose.Types.ObjectId(userId),
-      }).lean();
-      hasAttemptedHardcore = !!attempt;
+        // 🔹 Check if user attempted Hardcore Quiz
+        let hasAttemptedHardcore = false;
+        if (hardcoreQuiz && userId) {
+            const attempt = await HardcoreQuizSubmission.findOne({
+                quizId: hardcoreQuiz._id,
+                userId: new mongoose.Types.ObjectId(userId),
+            }).lean();
+            hasAttemptedHardcore = !!attempt;
+        }
+
+        // 🔹 Fetch parts if part of a series
+        let parts = [];
+        if (comic.seriesId) {
+            parts = await Comic.find({ seriesId: comic.seriesId })
+                .select("_id partNumber title concept")
+                .sort({ partNumber: 1 })
+                .lean();
+        }
+
+        // 🔹 Enhanced comic info
+        const enhancedComic = {
+            ...comic,
+            themeId: theme?._id || null,
+            theme: theme?.name || "N/A",
+            subjectId: subject?._id || null,
+            subject: subject?.name || "N/A",
+            styleId: style?._id || null,
+            style: style?.name || "N/A",
+            hasFAQ: faqs.length > 0,
+            hasDidYouKnow: facts.length > 0,
+            hasHardcoreQuiz: !!hardcoreQuiz,
+            hasQuiz: !!quiz,
+            hasAttemptedHardcore,
+            thumbnail: pages[0]?.imageUrl || null,
+            totalPages: pages.length,
+        };
+
+        // ✅ Final API response (frontend-friendly keys)
+        res.json({
+            comic: enhancedComic,
+            pages,
+            parts,
+            faqs,
+            didYouKnow: facts,
+            quiz,
+            hardcoreQuiz,
+        });
+    } catch (err) {
+        console.error("❌ Error fetching comic:", err);
+        res.status(500).json({ error: "Failed to fetch comic" });
     }
-
-    // 🔹 Fetch parts if part of a series
-    let parts = [];
-    if (comic.seriesId) {
-      parts = await Comic.find({ seriesId: comic.seriesId })
-        .select("_id partNumber title concept")
-        .sort({ partNumber: 1 })
-        .lean();
-    }
-
-    // 🔹 Enhanced comic info
-    const enhancedComic = {
-      ...comic,
-      themeId: theme?._id || null,
-      theme: theme?.name || "N/A",
-      subjectId: subject?._id || null,
-      subject: subject?.name || "N/A",
-      styleId: style?._id || null,
-      style: style?.name || "N/A",
-      hasFAQ: faqs.length > 0,
-      hasDidYouKnow: facts.length > 0,
-      hasHardcoreQuiz: !!hardcoreQuiz,
-      hasQuiz: !!quiz,
-      hasAttemptedHardcore,
-      thumbnail: pages[0]?.imageUrl || null,
-      totalPages: pages.length,
-    };
-
-    // ✅ Final API response (frontend-friendly keys)
-    res.json({
-      comic: enhancedComic,
-      pages,
-      parts,
-      faqs,
-      didYouKnow: facts,
-      quiz,
-      hardcoreQuiz,
-    });
-  } catch (err) {
-    console.error("❌ Error fetching comic:", err);
-    res.status(500).json({ error: "Failed to fetch comic" });
-  }
 };
 
 

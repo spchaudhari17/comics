@@ -15,7 +15,7 @@ const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = re
 const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject, getAllSubjectsForWeb } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList, resetStudentPassword, deleteStudent, deleteAllStudents } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
-const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard } = require('../app/controller/api/hardcoreQuizController');
+const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard, buyGems } = require('../app/controller/api/hardcoreQuizController');
 const { getAllCountries } = require('../app/controller/api/countryController');
 
 
@@ -118,7 +118,7 @@ router.post("/user/submit-hardcore-quiz", authentication, submitHardcoreQuiz);
 router.post("/user/buyPowerCard", authentication, buyPowerCard);
 router.get("/user/getPowerCards", authentication, getPowerCards);
 router.post("/user/usePowerCard", authentication, usePowerCard);
-
+router.post("/user/buy-gems", authentication, buyGems);
 
 
 //******************************** quiz routes routes started from here ***************************** */
