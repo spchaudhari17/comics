@@ -95,22 +95,109 @@ const calculateGemReward = (previousCoins, newTotalCoins) => {
 
 
 
+// old working magar har attempt ko coins badenge
+// const submitQuiz = async (req, res) => {
+//   try {
+//     const { quizId, answers } = req.body;
+//     const userId = req.user.login_data._id;
+
+//     const quiz = await Quiz.findById(quizId).populate("questions");
+//     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+
+//     let score = 0;
+//     let totalCoins = 0;
+//     let totalExp = 0;
+
+//     // ✅ Evaluate answers
+//     const evaluatedAnswers = answers.map(ans => {
+//       const q = quiz.questions.find(q => q._id.toString() === ans.questionId);
+//       if (!q) return null;
+
+//       const isCorrect = q.correctAnswer === ans.selectedAnswer;
+//       const timeTaken = Math.round(ans.timeTaken || 0);
+
+//       const { coins, exp } = calculateReward(q.difficulty, timeTaken, isCorrect);
+
+//       if (isCorrect) {
+//         score++;
+//         totalCoins += coins;
+//         totalExp += exp;
+//       }
+
+//       return {
+//         questionId: ans.questionId,
+//         selectedAnswer: ans.selectedAnswer,
+//         isCorrect,
+//         timeTaken,
+//         coins,
+//         exp
+//       };
+//     }).filter(Boolean);
+
+//     // ✅ Save submission
+//     const submission = await QuizSubmission.create({
+//       quizId,
+//       userId,
+//       answers: evaluatedAnswers,
+//       score,
+//       coinsEarned: totalCoins,
+//       expEarned: totalExp,
+//     });
+
+//     // ✅ Update user wallet
+//     const user = await User.findById(userId);
+//     if (!user) return res.status(404).json({ error: "User not found" });
+
+//     // Add earned rewards
+//     user.coins += totalCoins;
+//     user.exp += totalExp;
+
+//     // ✅ Gems = coins / 1800 (live recalculation)
+//     user.gems = getGemsFromCoins(user.coins);
+
+//     await user.save();
+
+//     res.json({
+//       message: "Quiz submitted successfully",
+//       score,
+//       total: quiz.questions.length,
+//       coinsEarned: totalCoins,
+//       expEarned: totalExp,
+//       currentWallet: {
+//         coins: user.coins,
+//         exp: user.exp,
+//         gems: user.gems
+//       },
+//       submission
+//     });
+
+//   } catch (error) {
+//     console.error("❌ Submit Quiz Error:", error);
+//     res.status(500).json({ error: "Failed to submit quiz" });
+//   }
+// };
+
 
 const submitQuiz = async (req, res) => {
   try {
     const { quizId, answers } = req.body;
     const userId = req.user.login_data._id;
 
+    // 🔍 1. Validate quiz
     const quiz = await Quiz.findById(quizId).populate("questions");
     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+
+    // 🧩 2. Check if already attempted
+    const existingSubmission = await QuizSubmission.findOne({ quizId, userId });
+    const isFirstAttempt = !existingSubmission;
 
     let score = 0;
     let totalCoins = 0;
     let totalExp = 0;
 
-    // ✅ Evaluate answers
-    const evaluatedAnswers = answers.map(ans => {
-      const q = quiz.questions.find(q => q._id.toString() === ans.questionId);
+    // 🧠 3. Evaluate answers
+    const evaluatedAnswers = answers.map((ans) => {
+      const q = quiz.questions.find((q) => q._id.toString() === ans.questionId);
       if (!q) return null;
 
       const isCorrect = q.correctAnswer === ans.selectedAnswer;
@@ -130,52 +217,85 @@ const submitQuiz = async (req, res) => {
         isCorrect,
         timeTaken,
         coins,
-        exp
+        exp,
       };
     }).filter(Boolean);
 
-    // ✅ Save submission
-    const submission = await QuizSubmission.create({
-      quizId,
-      userId,
-      answers: evaluatedAnswers,
-      score,
-      coinsEarned: totalCoins,
-      expEarned: totalExp,
-    });
+    // 💾 4. Save or update submission
+    let submission;
+    if (existingSubmission) {
+      // Already attempted → update existing submission (but no rewards)
+      submission = await QuizSubmission.findByIdAndUpdate(
+        existingSubmission._id,
+        {
+          $set: {
+            answers: evaluatedAnswers,
+            score,
+            updatedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+    } else {
+      // First attempt → create new submission
+      submission = await QuizSubmission.create({
+        quizId,
+        userId,
+        answers: evaluatedAnswers,
+        score,
+        coinsEarned: totalCoins,
+        expEarned: totalExp,
+      });
+    }
 
-    // ✅ Update user wallet
+    // 👛 5. Reward user only for first attempt
+    let coinsEarned = 0;
+    let expEarned = 0;
+
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Add earned rewards
-    user.coins += totalCoins;
-    user.exp += totalExp;
+    if (isFirstAttempt) {
+      coinsEarned = totalCoins;
+      expEarned = totalExp;
 
-    // ✅ Gems = coins / 1800 (live recalculation)
-    user.gems = getGemsFromCoins(user.coins);
+      user.coins += totalCoins;
+      user.exp += totalExp;
+      user.gems = getGemsFromCoins(user.coins);
 
-    await user.save();
+      await user.save();
+    }
 
+    // 🎯 6. Response (same format)
     res.json({
       message: "Quiz submitted successfully",
       score,
       total: quiz.questions.length,
-      coinsEarned: totalCoins,
-      expEarned: totalExp,
+      coinsEarned,
+      expEarned,
       currentWallet: {
         coins: user.coins,
         exp: user.exp,
-        gems: user.gems
+        gems: user.gems,
       },
-      submission
+      submission: {
+        _id: submission._id,
+        quizId: submission.quizId,
+        userId: submission.userId,
+        answers: submission.answers,
+        score: submission.score,
+        coinsEarned: submission.coinsEarned,
+        expEarned: submission.expEarned,
+        submittedAt: submission.createdAt || submission.submittedAt || new Date(),
+        __v: submission.__v || 0,
+      },
     });
-
   } catch (error) {
     console.error("❌ Submit Quiz Error:", error);
     res.status(500).json({ error: "Failed to submit quiz" });
   }
 };
+
 
 
 module.exports = { submitQuiz }
