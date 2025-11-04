@@ -22,7 +22,8 @@ const comicSchema = new mongoose.Schema({
   thumbnailUrl: { type: String },
   prompt: { type: String, required: true },
   pdfUrl: { type: String },
-  country: { type: String },
+  // country: { type: String },
+  country: [{ type: String }],
   grade: { type: String },
   status: {
     type: String,
@@ -36,7 +37,7 @@ const comicSchema = new mongoose.Schema({
   },
 
   hasQuiz: { type: Boolean, default: false },
-  total_view: { type: Number, default :0},
+  total_view: { type: Number, default: 0 },
 
   createdAt: { type: Date, default: Date.now }
 });

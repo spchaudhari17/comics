@@ -199,7 +199,7 @@ function safeJsonParse(str) {
 }
 
 const refinePrompt = async (req, res) => {
-    const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
+    const { title, author, subject, story, themeId, styleId, country, countries, grade, subjectId, concept } = req.body;
 
     try {
         const userId = req.user.login_data._id;
@@ -242,7 +242,9 @@ const refinePrompt = async (req, res) => {
             themeId, styleId, subjectId,
             concept: cleanConcept,
             conceptId: conceptDoc._id,
-            grade, title, author, country,
+            grade, title, author,
+            country: country,
+            countries: countries,
             parts: []
         });
 
@@ -351,7 +353,8 @@ Output only valid JSON array.
                 story: partStory,       // part story
                 userStory: story,       // full original story
                 grade,
-                country,
+                country: country,
+                countries: countries || [],
                 prompt: JSON.stringify(pages),
                 comicStatus: "draft"
             });

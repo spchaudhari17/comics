@@ -17,6 +17,7 @@ const comicSeriesSchema = new Schema({
   title: { type: String, required: true, trim: true }, // e.g. "Life Cycle of a Star"
   author: { type: String, trim: true },
   country: { type: String },
+  countries: [{ type: String }], 
 
   // Relation with child comics
   parts: [{ type: ObjectId, ref: "Comic" }],
