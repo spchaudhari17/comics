@@ -22,8 +22,8 @@ const comicSchema = new mongoose.Schema({
   thumbnailUrl: { type: String },
   prompt: { type: String, required: true },
   pdfUrl: { type: String },
-  // country: { type: String },
-  country: [{ type: String }],
+  country: { type: String },
+  countries: [{ type: String }],
   grade: { type: String },
   status: {
     type: String,

@@ -193,13 +193,13 @@ function safeJsonParse(str) {
         if (str.startsWith("```")) str = str.replace(/```json|```/g, "").trim();
         return JSON.parse(str);
     } catch (err) {
-        console.error("❌ JSON Parse Error:", err.message, "\nRaw Output:", str);
+        console.error("JSON Parse Error:", err.message, "\nRaw Output:", str);
         throw new Error("AI returned invalid JSON");
     }
 }
 
 const refinePrompt = async (req, res) => {
-    const { title, author, subject, story, themeId, styleId, country, countries, grade, subjectId, concept } = req.body;
+    const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
 
     try {
         const userId = req.user.login_data._id;
@@ -236,6 +236,32 @@ const refinePrompt = async (req, res) => {
             conceptDoc = await Concept.create({ name: cleanConcept, subjectId });
         }
 
+
+        // ✅ Normalize country / countries input (handles string or array)
+        let finalCountry = "ALL";
+        let finalCountries = ["ALL"];
+
+        if (Array.isArray(country) && country.length > 0) {
+            // 🟢 Multi-country selection
+            if (country.includes("ALL")) {
+                finalCountry = "ALL";
+                finalCountries = ["ALL"];
+            } else {
+                finalCountry = country[0];
+                finalCountries = country.map((c) => c.trim().toUpperCase());
+            }
+        } else if (typeof country === "string" && country.trim() !== "") {
+            // 🟢 Single country string
+            const upper = country.trim().toUpperCase();
+            if (upper === "ALL") {
+                finalCountry = "ALL";
+                finalCountries = ["ALL"];
+            } else {
+                finalCountry = upper;
+                finalCountries = [upper];
+            }
+        }
+
         // 🧠 Create new series
         const series = await ComicSeries.create({
             user_id: userId,
@@ -243,8 +269,8 @@ const refinePrompt = async (req, res) => {
             concept: cleanConcept,
             conceptId: conceptDoc._id,
             grade, title, author,
-            country: country,
-            countries: countries,
+            country: finalCountry,
+            countries: finalCountries,
             parts: []
         });
 
@@ -344,7 +370,7 @@ Output only valid JSON array.
                 themeId,
                 styleId,
                 subjectId,
-                subject,               // ✅ store readable subject
+                subject,               // store readable subject
                 concept: cleanConcept,
                 conceptId: conceptDoc._id,
                 partNumber: part.part,
@@ -353,8 +379,8 @@ Output only valid JSON array.
                 story: partStory,       // part story
                 userStory: story,       // full original story
                 grade,
-                country: country,
-                countries: countries || [],
+                country: finalCountry,
+                countries: finalCountries,
                 prompt: JSON.stringify(pages),
                 comicStatus: "draft"
             });
@@ -375,7 +401,7 @@ Output only valid JSON array.
 
         res.json({ success: true, series, parts: comicsCreated });
     } catch (error) {
-        console.error("❌ Error in refinePrompt:", error);
+        console.error("Error in refinePrompt:", error);
         res.status(500).json({ error: "Prompt generation failed", details: error.message });
     }
 };
@@ -395,12 +421,12 @@ const checkPromptSafety = async (prompt) => {
 
         const results = moderation.results[0];
         if (results.flagged) {
-            console.log("🚫 Prompt flagged for:", results.categories);
+            console.log("Prompt flagged for:", results.categories);
             return false;
         }
         return true;
     } catch (error) {
-        console.error("❌ Moderation check failed:", error.message);
+        console.error("Moderation check failed:", error.message);
         return false;
     }
 };
@@ -483,10 +509,10 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
                 n: 1,
             });
 
-            console.log(`✅ Image generated successfully (attempt ${attempt})`);
+            console.log(`Image generated successfully (attempt ${attempt})`);
             return imageResponse;
         } catch (error) {
-            console.error(`❌ Error on attempt ${attempt}:`, error.message);
+            console.error(`Error on attempt ${attempt}:`, error.message);
             if (error.response?.data) {
                 console.error("🔍 OpenAI Response:", JSON.stringify(error.response.data, null, 2));
             }
@@ -542,7 +568,7 @@ const generateComicImage = async (req, res) => {
         const stylePrompt = comic.styleId.prompt;
         const characterReferences = {};
 
-        // ✅ Generate images one by one (safer)
+        // Generate images one by one (safer)
         const imageUrls = [];
 
         for (const page of pages) {
@@ -632,7 +658,7 @@ Generate safe, child-appropriate imagery only.
                 const imageUrl = s3Upload;
                 const s3Key = `comics/${fileName}`;
 
-                // ✅ Safe character reference update
+                // Safe character reference update
                 if (Array.isArray(page.panels)) {
                     page.panels.forEach((panel) => {
                         const dialogues = Array.isArray(panel.dialogue)
@@ -662,7 +688,7 @@ Generate safe, child-appropriate imagery only.
 
                 imageUrls.push({ page: page.page, imageUrl });
             } catch (error) {
-                console.error(`❌ Error generating image for page ${page.page}:`, error);
+                console.error(`Error generating image for page ${page.page}:`, error);
                 imageUrls.push({
                     page: page.page,
                     error: true,
@@ -702,7 +728,7 @@ Generate safe, child-appropriate imagery only.
 //     try {
 //         const userId = req.user.login_data._id;
 
-//         // ✅ 1️⃣ Fetch existing comic pages to avoid regenerating them
+//         // 1️⃣ Fetch existing comic pages to avoid regenerating them
 //         const existingPages = await ComicPage.find({ comicId });
 //         const existingPageMap = new Map(
 //             existingPages.map(p => [p.pageNumber, p.imageUrl])
@@ -712,9 +738,9 @@ Generate safe, child-appropriate imagery only.
 //         const characterReferences = {};
 
 //         for (const page of pages) {
-//             // ✅ 2️⃣ Skip if image already exists
+//             // 2️⃣ Skip if image already exists
 //             if (existingPageMap.has(page.page)) {
-//                 console.log(`✅ Skipping page ${page.page} (already generated)`);
+//                 console.log(` Skipping page ${page.page} (already generated)`);
 //                 imageUrls.push({
 //                     page: page.page,
 //                     imageUrl: existingPageMap.get(page.page),
@@ -724,9 +750,9 @@ Generate safe, child-appropriate imagery only.
 //             }
 
 //             try {
-//                 // ✅ 3️⃣ Normal generation flow (same as before)
+//                 // 3️⃣ Normal generation flow (same as before)
 //                 if (!Array.isArray(page.panels) || page.panels.length === 0) {
-//                     console.warn(`⚠️ Page ${page.page} has no panels — skipping.`);
+//                     console.warn(`Page ${page.page} has no panels — skipping.`);
 //                     imageUrls.push({ page: page.page, skipped: true });
 //                     continue;
 //                 }
@@ -809,9 +835,9 @@ Generate safe, child-appropriate imagery only.
 
 //                 imageUrls.push({ page: page.page, imageUrl });
 
-//                 console.log(`✅ Page ${page.page} generated successfully.`);
+//                 console.log(` Page ${page.page} generated successfully.`);
 //             } catch (error) {
-//                 console.error(`❌ Error generating image for page ${page.page}:`, error);
+//                 console.error(`Error generating image for page ${page.page}:`, error);
 //                 imageUrls.push({
 //                     page: page.page,
 //                     error: true,
@@ -823,7 +849,7 @@ Generate safe, child-appropriate imagery only.
 //             await new Promise((r) => setTimeout(r, 1000));
 //         }
 
-//         // ✅ 4️⃣ Include both skipped and newly generated pages in response
+//         //  4️⃣ Include both skipped and newly generated pages in response
 //         const successCount = imageUrls.filter((r) => r.imageUrl && !r.error).length;
 //         const failedPages = imageUrls.filter((r) => r.error);
 
@@ -1078,7 +1104,7 @@ const listComics = async (req, res) => {
 //             totalPages: pages.length,
 //         };
 
-//         // ✅ Final response
+//         //  Final response
 //         res.json({
 //             comic: enhancedComic,
 //             pages,
@@ -1087,7 +1113,7 @@ const listComics = async (req, res) => {
 //             facts,
 //         });
 //     } catch (err) {
-//         console.error("❌ Error fetching comic:", err);
+//         console.error("Error fetching comic:", err);
 //         res.status(500).json({ error: "Failed to fetch comic" });
 //     }
 // };
@@ -1163,7 +1189,7 @@ const getComic = async (req, res) => {
             totalPages: pages.length,
         };
 
-        // ✅ Final API response (frontend-friendly keys)
+        //  Final API response (frontend-friendly keys)
         res.json({
             comic: enhancedComic,
             pages,
@@ -1174,7 +1200,7 @@ const getComic = async (req, res) => {
             hardcoreQuiz,
         });
     } catch (err) {
-        console.error("❌ Error fetching comic:", err);
+        console.error("Error fetching comic:", err);
         res.status(500).json({ error: "Failed to fetch comic" });
     }
 };
@@ -1289,43 +1315,132 @@ const listUserComics = async (req, res) => {
 
 
 
+// const updateCountryForSeries = async (req, res) => {
+//     try {
+//         const { seriesId, newCountry } = req.body;
+
+//         //  Validation
+//         if (!seriesId || !newCountry) {
+//             return res.status(400).json({ error: "seriesId and newCountry are required." });
+//         }
+
+//         //  Find the series
+//         const series = await ComicSeries.findById(seriesId);
+//         if (!series) {
+//             return res.status(404).json({ error: "Comic series not found." });
+//         }
+
+//         //  Update country in series
+//         series.country = newCountry;
+//         await series.save();
+
+//         //  Update all related comics
+//         const result = await Comic.updateMany(
+//             { seriesId },
+//             { $set: { country: newCountry } }
+//         );
+
+//         res.json({
+//             success: true,
+//             message: `Country updated to "${newCountry}" for series and ${result.modifiedCount} comics.`,
+//             seriesId,
+//             updatedCountry: newCountry
+//         });
+
+//     } catch (error) {
+//         console.error(" Error updating country:", error);
+//         res.status(500).json({ error: "Internal server error", details: error.message });
+//     }
+// };
+
+
 const updateCountryForSeries = async (req, res) => {
     try {
         const { seriesId, newCountry } = req.body;
 
-        // ✅ Validation
         if (!seriesId || !newCountry) {
             return res.status(400).json({ error: "seriesId and newCountry are required." });
         }
 
-        // 🔎 Find the series
+        //  Find the series
         const series = await ComicSeries.findById(seriesId);
         if (!series) {
             return res.status(404).json({ error: "Comic series not found." });
         }
 
-        // 🧩 Update country in series
-        series.country = newCountry;
+        //  Normalize input
+        const countriesArray = Array.isArray(newCountry)
+            ? newCountry
+            : typeof newCountry === "string"
+                ? [newCountry]
+                : [];
+
+        if (countriesArray.length === 0) {
+            return res.status(400).json({ error: "Invalid country format." });
+        }
+
+        let finalCountry;
+        let finalCountries;
+
+        //  Handle “ALL” or global selection
+        if (countriesArray.includes("ALL") || countriesArray.length >= 200) {
+            finalCountry = "ALL";
+            finalCountries = ["ALL"];
+        } else {
+            //  Even single selection must be an array
+            finalCountry = countriesArray[0];
+            finalCountries = countriesArray;
+        }
+
+        //  Update ComicSeries document
+        series.country = finalCountry;
+        series.countries = finalCountries;
         await series.save();
 
-        // 🧠 Update all related comics
+        //  Update all related Comics (linked by seriesId)
         const result = await Comic.updateMany(
-            { seriesId },
-            { $set: { country: newCountry } }
+            { seriesId: series._id },
+            {
+                $set: {
+                    country: finalCountry,
+                    countries: finalCountries,
+                },
+            },
+            { strict: false } // 🔑 ensures new field gets added
         );
+
+        //  Fallback (in case some comics don't have seriesId)
+        if (result.matchedCount === 0) {
+            await Comic.updateMany(
+                { conceptId: series.conceptId },
+                {
+                    $set: {
+                        country: finalCountry,
+                        countries: finalCountries,
+                    },
+                },
+                { strict: false }
+            );
+        }
 
         res.json({
             success: true,
-            message: `Country updated to "${newCountry}" for series and ${result.modifiedCount} comics.`,
-            seriesId,
-            updatedCountry: newCountry
+            message: `Countries updated to ${JSON.stringify(finalCountries)} for series "${series.title}" and all related comics.`,
+            updatedSeries: {
+                id: series._id,
+                title: series.title,
+                country: finalCountry,
+                countries: finalCountries,
+            },
+            modifiedComics: result.modifiedCount,
         });
-
     } catch (error) {
-        console.error("❌ Error updating country:", error);
+        console.error("Error updating countries:", error);
         res.status(500).json({ error: "Internal server error", details: error.message });
     }
 };
+
+
 
 
 
