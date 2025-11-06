@@ -312,67 +312,214 @@ Format:
 
 
 
+// const getHardcoreQuizByComic = async (req, res) => {
+//   try {
+//     const { id } = req.params; // comicId
+//     const userId = req.query.userId || req.params.userId;
+
+//     const quiz = await HardcoreQuiz.findOne({ comicId: id })
+//       .read("primary")
+//       .populate({ path: "questions", options: { lean: true } })
+//       .lean();
+
+//     if (!quiz) {
+//       return res.status(404).json({ error: "Hardcore Quiz not found" });
+//     }
+
+//     // Default
+//     let hasAttempted = false;
+//     let hasAttemptedAllQuestion = false;
+//     let hasHardCoreChanceLeft = 1;
+//     let activeSubmission = null;
+//     let attemptedAnswers = {};
+
+//     if (userId) {
+//       const userObjectId = new mongoose.Types.ObjectId(userId);
+//       const todayStart = new Date();
+//       todayStart.setHours(0, 0, 0, 0);
+//       const todayEnd = new Date();
+//       todayEnd.setHours(23, 59, 59, 999);
+
+//       const submissions = await HardcoreQuizSubmission.find({
+//         quizId: quiz._id,
+//         userId: userObjectId,
+//       })
+//         .sort({ createdAt: -1 })
+//         .lean();
+
+//       if (submissions.length > 0) hasAttempted = true;
+
+//       // Active attempt
+//       activeSubmission = submissions.find((s) => s.isActive) || null;
+
+//       // Count finished today
+//       const finishedAttemptsToday = submissions.filter(
+//         (s) =>
+//           s.isFinished &&
+//           s.createdAt >= todayStart &&
+//           s.createdAt <= todayEnd
+//       ).length;
+
+//       hasHardCoreChanceLeft = finishedAttemptsToday >= 2 ? 0 : 1;
+
+//       // Merge answers
+//       for (const sub of submissions) {
+//         for (const ans of sub.answers || []) {
+//           attemptedAnswers[ans.questionId.toString()] = {
+//             selectedAnswer: ans.selectedAnswer,
+//             isCorrect: ans.isCorrect,
+//             coins: ans.coins,
+//             exp: ans.exp,
+//           };
+//         }
+//       }
+
+//       // Check if fully completed
+//       const latestFinished = submissions.find((s) => s.isFinished);
+//       if (
+//         latestFinished &&
+//         latestFinished.answers.length === quiz.questions.length &&
+//         latestFinished.answers.every((a) => a.isCorrect)
+//       ) {
+//         hasAttemptedAllQuestion = true;
+//       }
+//     }
+
+//     const questionsWithAttemptStatus = quiz.questions.map((q) => {
+//       const attempt = attemptedAnswers[q._id.toString()];
+//       return {
+//         ...q,
+//         locked: false,
+//         hasAttempted: !!attempt,
+//         selectedAnswer: attempt ? attempt.selectedAnswer : null,
+//         isCorrect: attempt ? attempt.isCorrect : null,
+//         coins: attempt ? attempt.coins : 0,
+//         exp: attempt ? attempt.exp : 0,
+//       };
+//     });
+
+//     res.json({
+//       quiz: {
+//         ...quiz,
+//         questions: questionsWithAttemptStatus,
+//       },
+//       hasAttempted,
+//       hasAttemptedAllQuestion,
+//       hasHardCoreChanceLeft,
+//       activeSubmission: activeSubmission
+//         ? {
+//             _id: activeSubmission._id,
+//             attemptNumber: activeSubmission.attemptNumber,
+//             score: activeSubmission.score,
+//             coinsEarned: activeSubmission.coinsEarned,
+//             expEarned: activeSubmission.expEarned,
+//             answers: activeSubmission.answers.map((a) => ({
+//               questionId: a.questionId,
+//               isCorrect: a.isCorrect,
+//               selectedAnswer: a.selectedAnswer,
+//             })),
+//             isActive: activeSubmission.isActive,
+//           }
+//         : null,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error fetching Hardcore Quiz:", error);
+//     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+//   }
+// };
+
 const getHardcoreQuizByComic = async (req, res) => {
   try {
     const { id } = req.params; // comicId
     const userId = req.query.userId || req.params.userId;
 
-    // 🎯 Always read from primary to get fresh data
     const quiz = await HardcoreQuiz.findOne({ comicId: id })
       .read("primary")
-      .populate({
-        path: "questions",
-        options: { lean: true },
-      })
+      .populate({ path: "questions", options: { lean: true } })
       .lean();
 
     if (!quiz) {
       return res.status(404).json({ error: "Hardcore Quiz not found" });
     }
 
+    // Default
     let hasAttempted = false;
-    let attemptedAnswers = {}; // questionId -> { selectedAnswer, isCorrect, coins, exp }
-    let unlocked = []; // 🔹 initialize unlocked questions list
+    let hasAttemptedAllQuestion = false;
+    let hasHardCoreChanceLeft = 1;
+    let activeSubmission = null;
+    let attemptedAnswers = {};
+    let attemptNumber = 0; // 👈 New
 
     if (userId) {
-      // 🧩 Fetch *all* submissions ever made by this user for this quiz
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      // 🔹 Fetch all submissions by user
       const submissions = await HardcoreQuizSubmission.find({
         quizId: quiz._id,
-        userId: new mongoose.Types.ObjectId(userId),
+        userId: userObjectId,
       })
         .sort({ createdAt: -1 })
         .lean();
 
-      // 🔹 Merge all answers from all submissions
-      if (submissions.length > 0) {
-        hasAttempted = true;
+      if (submissions.length > 0) hasAttempted = true;
 
-        // 🔸 pick latest submission (to get unlocked questions)
-        const latestSubmission = submissions[0];
-        unlocked = latestSubmission.unlockedQuestions
-          ? latestSubmission.unlockedQuestions.map((q) => q.toString())
-          : [];
+      // 🔹 Find active submission
+      activeSubmission = submissions.find((s) => s.isActive) || null;
 
-        for (const submission of submissions) {
-          for (const ans of submission.answers || []) {
-            attemptedAnswers[ans.questionId.toString()] = {
-              selectedAnswer: ans.selectedAnswer,
-              isCorrect: ans.isCorrect,
-              coins: ans.coins,
-              exp: ans.exp,
-            };
-          }
+      // 🔹 Count finished attempts today
+      const finishedAttemptsToday = submissions.filter(
+        (s) =>
+          s.isFinished &&
+          s.createdAt >= todayStart &&
+          s.createdAt <= todayEnd
+      ).length;
+
+      hasHardCoreChanceLeft = finishedAttemptsToday >= 2 ? 0 : 1;
+
+      // 🔹 Determine attempt number
+      if (activeSubmission) {
+        attemptNumber = activeSubmission.attemptNumber;
+      } else if (finishedAttemptsToday > 0 && finishedAttemptsToday < 2) {
+        attemptNumber = finishedAttemptsToday + 1;
+      } else if (finishedAttemptsToday >= 2) {
+        attemptNumber = 2;
+      } else {
+        attemptNumber = 1;
+      }
+
+      // 🔹 Merge all attempted answers (for showing progress)
+      for (const sub of submissions) {
+        for (const ans of sub.answers || []) {
+          attemptedAnswers[ans.questionId.toString()] = {
+            selectedAnswer: ans.selectedAnswer,
+            isCorrect: ans.isCorrect,
+            coins: ans.coins,
+            exp: ans.exp,
+          };
         }
+      }
+
+      // 🔹 Check if user finished all questions correctly
+      const latestFinished = submissions.find((s) => s.isFinished);
+      if (
+        latestFinished &&
+        latestFinished.answers.length === quiz.questions.length &&
+        latestFinished.answers.every((a) => a.isCorrect)
+      ) {
+        hasAttemptedAllQuestion = true;
       }
     }
 
-    // 🧠 Merge question data with attempt + unlock info
+    // 🧠 Merge question data
     const questionsWithAttemptStatus = quiz.questions.map((q) => {
       const attempt = attemptedAnswers[q._id.toString()];
-      const isUnlocked = unlocked.includes(q._id.toString());
       return {
         ...q,
-        locked: !isUnlocked, // 👈 add locked status
+        locked: false,
         hasAttempted: !!attempt,
         selectedAnswer: attempt ? attempt.selectedAnswer : null,
         isCorrect: attempt ? attempt.isCorrect : null,
@@ -381,19 +528,39 @@ const getHardcoreQuizByComic = async (req, res) => {
       };
     });
 
-    // ✅ Response
-    res.json({
+    // ✅ Final Response
+    return res.json({
       quiz: {
         ...quiz,
         questions: questionsWithAttemptStatus,
       },
       hasAttempted,
+      hasAttemptedAllQuestion,
+      hasHardCoreChanceLeft,
+      attemptNumber, // 👈 included here
+      activeSubmission: activeSubmission
+        ? {
+            _id: activeSubmission._id,
+            attemptNumber: activeSubmission.attemptNumber,
+            score: activeSubmission.score,
+            coinsEarned: activeSubmission.coinsEarned,
+            expEarned: activeSubmission.expEarned,
+            answers: activeSubmission.answers.map((a) => ({
+              questionId: a.questionId,
+              isCorrect: a.isCorrect,
+              selectedAnswer: a.selectedAnswer,
+            })),
+            isActive: activeSubmission.isActive,
+          }
+        : null,
     });
   } catch (error) {
-    console.error("Error fetching Hardcore Quiz:", error);
+    console.error("❌ Error fetching Hardcore Quiz:", error);
     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
   }
 };
+
+
 
 
 const COINS_PER_GEM = 1800;
@@ -404,10 +571,8 @@ const submitHardcoreQuiz = async (req, res) => {
     const { quizId, questionId, selectedAnswer, doubleChoice } = req.body;
     const userId = req.user.login_data._id;
 
-    // 🎯 Fetch quiz & question
     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
-    if (!quiz)
-      return res.status(404).json({ error: "Hardcore Quiz not found" });
+    if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
 
     const question = quiz.questions.find(
       (q) => q._id.toString() === questionId
@@ -415,96 +580,124 @@ const submitHardcoreQuiz = async (req, res) => {
     if (!question)
       return res.status(404).json({ error: "Question not found in this quiz" });
 
-    // 🧠 Limit: Only 2 attempts per comic per day
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // Count full quiz attempts (submissions) today
-    const attemptsForComicToday = await HardcoreQuizSubmission.countDocuments({
-      userId,
-      quizId,
-      createdAt: { $gte: todayStart, $lte: todayEnd },
-    });
-
-    if (attemptsForComicToday >= 2) {
-      return res.status(403).json({
-        error: true,
-        message:
-          "You can only attempt this comic’s hardcore quiz 2 times per day.",
-      });
-    }
-
-    // 🔹 Always create a new submission if user starts a new quiz attempt
+    // 🔍 Find active submission
     let submission = await HardcoreQuizSubmission.findOne({
       quizId,
       userId,
-      isActive: true, // current ongoing attempt
+      isActive: true,
     });
 
-    // If no active submission or user finished all questions, start new attempt
-    if (!submission || submission.isFinished) {
+    // 🔹 If not found, create new submission (new attempt)
+    if (!submission) {
+      const todaySubs = await HardcoreQuizSubmission.find({
+        userId,
+        quizId,
+        createdAt: { $gte: todayStart, $lte: todayEnd },
+      });
+
+      const finishedAttemptsToday = todaySubs.filter(
+        (s) => s.isFinished === true
+      ).length;
+
+      if (finishedAttemptsToday >= 2) {
+        return res.status(403).json({
+          error: true,
+          hasHardCoreChanceLeft: 0,
+          message: "You have exceeded the limit for today. Try again tomorrow.",
+        });
+      }
+
+      const attemptNumber = finishedAttemptsToday + 1;
+
       submission = await HardcoreQuizSubmission.create({
         quizId,
         userId,
+        attemptNumber,
         answers: [],
         score: 0,
         coinsEarned: 0,
         expEarned: 0,
         currentMultiplier: 1,
         isActive: true,
+        isFinished: false,
       });
     }
 
-    const isCorrect = question.correctAnswer === selectedAnswer;
+    // 🧠 Prevent duplicate attempt of same question
+    const alreadyAttempted = await HardcoreQuizSubmission.exists({
+      _id: submission._id,
+      "answers.questionId": questionId,
+    });
+    if (alreadyAttempted) {
+      return res.status(400).json({
+        error: true,
+        message: "You have already attempted this question in this run.",
+      });
+    }
 
-    // 🧮 Reward Logic
+    // 🎯 Evaluate answer
+    const isCorrect = question.correctAnswer === selectedAnswer;
     let coins = 0;
     let exp = 0;
 
     if (isCorrect) {
-      if (submission.answers.length === 0) {
-        coins = 40;
-        exp = 20;
-        submission.currentMultiplier = 1;
-      } else {
-        if (doubleChoice === true) {
-          submission.currentMultiplier *= 2;
-          coins = 40 * submission.currentMultiplier;
-          exp = 20 * submission.currentMultiplier;
-        } else {
-          coins = 40 * submission.currentMultiplier;
-          exp = 20 * submission.currentMultiplier;
-        }
-      }
-
+      coins = 40 * submission.currentMultiplier;
+      exp = 20 * submission.currentMultiplier;
       submission.score += 1;
       submission.coinsEarned += coins;
       submission.expEarned += exp;
+      if (doubleChoice === true) submission.currentMultiplier *= 2;
     } else {
-      coins = 0;
-      exp = 0;
+      submission.isActive = false;
+      submission.isFinished = true;
       submission.currentMultiplier = 1;
     }
 
-    submission.answers.push({
-      questionId,
-      selectedAnswer,
-      isCorrect,
-      coins,
-      exp,
-    });
+    // 🧩 Atomic update
+    const updatedSubmission = await HardcoreQuizSubmission.findOneAndUpdate(
+      {
+        _id: submission._id,
+        "answers.questionId": { $ne: questionId },
+      },
+      {
+        $push: { answers: { questionId, selectedAnswer, isCorrect, coins, exp } },
+        $set: {
+          score: submission.score,
+          coinsEarned: submission.coinsEarned,
+          expEarned: submission.expEarned,
+          currentMultiplier: submission.currentMultiplier,
+          isActive: submission.isActive,
+          isFinished: submission.isFinished,
+        },
+      },
+      { new: true }
+    );
 
-    // Mark finished if all questions answered
-    if (submission.answers.length >= quiz.questions.length) {
-      submission.isFinished = true;
-      submission.isActive = false;
+    if (!updatedSubmission) {
+      return res.status(400).json({
+        error: true,
+        message: "Duplicate detected. You already attempted this question.",
+      });
     }
 
-    await submission.save();
+    // ✅ Mark finished if completed or wrong
+    let hasAttemptedAllQuestion = false;
+    if (
+      updatedSubmission.answers.length >= quiz.questions.length &&
+      isCorrect
+    ) {
+      updatedSubmission.isActive = false;
+      updatedSubmission.isFinished = true;
+      hasAttemptedAllQuestion = true;
+      await updatedSubmission.save();
+    }
 
-    // 🔹 Update user wallet if correct
+    // 💰 Reward
     if (isCorrect) {
       const user = await User.findById(userId);
       user.coins += coins;
@@ -513,11 +706,29 @@ const submitHardcoreQuiz = async (req, res) => {
       await user.save();
     }
 
+    // ✅ Ensure finished submissions are marked
+    if (!isCorrect || hasAttemptedAllQuestion) {
+      await HardcoreQuizSubmission.updateOne(
+        { _id: updatedSubmission._id },
+        { $set: { isFinished: true, isActive: false } }
+      );
+    }
 
+    // 🔁 Count finished attempts again
+    const totalFinishedAttempts = await HardcoreQuizSubmission.countDocuments({
+      userId,
+      quizId,
+      isFinished: true,
+      createdAt: { $gte: todayStart, $lte: todayEnd },
+    });
+    const hasHardCoreChanceLeft = totalFinishedAttempts < 2 ? 1 : 0;
 
-
-    return res.json({
-      message: "Question submitted successfully.",
+    res.json({
+      message: !isCorrect
+        ? "Wrong answer! Hardcore quiz over for this attempt."
+        : hasAttemptedAllQuestion
+        ? "You have attempted all hardcore questions for this quiz. Try another comic quiz."
+        : "Correct answer!",
       result: {
         questionId,
         isCorrect,
@@ -527,20 +738,27 @@ const submitHardcoreQuiz = async (req, res) => {
         coins,
         exp,
       },
-      currentScore: submission.score,
+      currentScore: updatedSubmission.score,
       totalQuestions: quiz.questions.length,
-      coinsEarned: submission.coinsEarned,
-      expEarned: submission.expEarned,
-      attemptCountToday: attemptsForComicToday + 1,
+      coinsEarned: updatedSubmission.coinsEarned,
+      expEarned: updatedSubmission.expEarned,
+      hasHardCoreChanceLeft,
+      hasAttemptedAllQuestion,
+      attemptNumber: updatedSubmission.attemptNumber,
     });
   } catch (error) {
     console.error("❌ Submit Hardcore Quiz Error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       error: "Failed to submit hardcore question",
       details: error.message,
     });
   }
 };
+
+
+
+
+
 
 
 const POWER_CARD_COSTS = {

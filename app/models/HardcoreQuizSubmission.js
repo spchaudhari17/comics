@@ -19,7 +19,11 @@ const HardcoreQuizSubmissionSchema = new Schema({
     expEarned: { type: Number, default: 0 },
     submittedAt: { type: Date, default: Date.now },
     currentMultiplier: { type: Number, default: 1 },
-    unlockedQuestions: [{ type: mongoose.Schema.Types.ObjectId, ref: "HardcoreQuizQuestion" }]
+    unlockedQuestions: [{ type: mongoose.Schema.Types.ObjectId, ref: "HardcoreQuizQuestion" }],
+
+    attemptNumber: { type: Number, default: 1 }, // 👈 NEW: track which attempt
+    isActive: { type: Boolean, default: true },
+    isFinished: { type: Boolean, default: false },
 
 }, { timestamps: true });
 
