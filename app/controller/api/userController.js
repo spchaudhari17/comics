@@ -1098,8 +1098,44 @@ const addCoins = async (req, res) => {
     }
 };
 
+const addGems = async (req, res) => {
+    try {
+        const userId = req.user?.login_data?._id; // safely extract user ID
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+
+        // Increment gems atomically by 1
+        const updatedUser = await Users.findByIdAndUpdate(
+            userId,
+            { $inc: { gems: 1 } },
+            { new: true, runValidators: true }
+        ).select('-password -plain_password');
+
+        if (!updatedUser) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        return res.json({
+            success: true,
+            message: 'Gems increased by 1',
+            user: updatedUser
+        });
+
+    } catch (err) {
+        console.error('Error increasing gems:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: err.message
+        });
+    }
+};
+
+
 
 module.exports = {
     signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys,
-    updatePic, profileDetails, deletePic, deleteAccount, addCoins
+    updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems
 }

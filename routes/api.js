@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, } = require('../app/controller/api/comicController');
-const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins } = require('../app/controller/api/userController');
+const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
@@ -89,6 +89,8 @@ router.post("/user/submit-quiz", authentication, submitQuiz);
 router.get("/user/concepts-by-subject/:subjectId", getConceptsBySubject);
 router.get("/user/concepts/:conceptId/comics", getComicsByConcept);
 router.patch("/user/add-coins", authentication, addCoins);
+router.patch("/user/add-gems", authentication, addGems);
+
 
 
 //******************************** admin routes routes started from here ***************************** */
