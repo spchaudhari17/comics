@@ -981,7 +981,7 @@ const getComicsByConcept = async (req, res) => {
     const country = req.query.country;
     const grade = req.query.grade;
 
-    // Base match
+    // 🧠 Base match query
     const matchQuery = {
       status: "approved",
       conceptId: new mongoose.Types.ObjectId(conceptId),
@@ -1000,7 +1000,7 @@ const getComicsByConcept = async (req, res) => {
       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
     }
 
-    // 🔹 Fetch comics with lookups
+    // 🔹 Fetch comics + metadata
     let comics = await Comic.aggregate([
       { $match: matchQuery },
       { $sort: { partNumber: 1 } },
@@ -1037,18 +1037,24 @@ const getComicsByConcept = async (req, res) => {
       },
     ]);
 
-    // 🧩 Track quiz attempts if user logged in
+    // ✅ Step 2 — Add attempt data if user logged in
     if (userId) {
+      const userObjectId = new mongoose.Types.ObjectId(userId);
       const comicIds = comics.map((c) => c._id);
 
-      const hardcoreQuizzes = await HardcoreQuiz.find(
-        { comicId: { $in: comicIds } },
-        "_id comicId"
+      // Fetch normal and hardcore quizzes
+      const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+      const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+
+      // Fetch user submissions
+      const normalSubmissions = await QuizSubmission.find(
+        { quizId: { $in: quizzes.map((q) => q._id) }, userId: userObjectId },
+        "quizId"
       );
 
       const hardcoreSubmissions = await HardcoreQuizSubmission.find({
         quizId: { $in: hardcoreQuizzes.map((hq) => hq._id) },
-        userId: new mongoose.Types.ObjectId(userId),
+        userId: userObjectId,
       })
         .sort({ createdAt: -1 })
         .lean();
@@ -1062,16 +1068,21 @@ const getComicsByConcept = async (req, res) => {
         submissionsByQuiz[s.quizId.toString()].push(s);
       });
 
-      comics.forEach((comic) => {
-        const hardcoreQuiz = hardcoreQuizzes.find(
-          (hq) => hq.comicId.toString() === comic._id.toString()
-        );
+      const attemptedQuizIds = new Set(normalSubmissions.map((s) => s.quizId.toString()));
 
+      // 🔁 Merge logic per comic
+      comics.forEach((comic) => {
+        const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
+        const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
+
+        // Normal quiz
+        comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
+
+        // Hardcore quiz
         if (hardcoreQuiz) {
           const quizId = hardcoreQuiz._id.toString();
           const submissions = submissionsByQuiz[quizId] || [];
 
-          // 🕒 Daily filter
           const todayStart = new Date();
           todayStart.setHours(0, 0, 0, 0);
           const todayEnd = new Date();
@@ -1086,31 +1097,27 @@ const getComicsByConcept = async (req, res) => {
 
           const hasHardCoreChanceLeft = finishedAttemptsToday >= 2 ? 0 : 1;
 
-          // Determine current attempt
           let attemptNumber = 1;
           if (finishedAttemptsToday >= 2) attemptNumber = 2;
           else if (finishedAttemptsToday === 1) attemptNumber = 2;
           else attemptNumber = 1;
 
-          const activeSubmission =
-            submissions.find((s) => s.isActive) || null;
+          const activeSubmission = submissions.find((s) => s.isActive) || null;
 
-          // Merge into comic
           comic.hasAttemptedHardcore = submissions.length > 0;
           comic.attemptNumber = attemptNumber;
           comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
           comic.activeSubmission = activeSubmission
             ? {
-              _id: activeSubmission._id,
-              attemptNumber: activeSubmission.attemptNumber,
-              score: activeSubmission.score,
-              coinsEarned: activeSubmission.coinsEarned,
-              expEarned: activeSubmission.expEarned,
-              isActive: activeSubmission.isActive,
-            }
+                _id: activeSubmission._id,
+                attemptNumber: activeSubmission.attemptNumber,
+                score: activeSubmission.score,
+                coinsEarned: activeSubmission.coinsEarned,
+                expEarned: activeSubmission.expEarned,
+                isActive: activeSubmission.isActive,
+              }
             : null;
         } else {
-          // No hardcore quiz for this comic
           comic.hasAttemptedHardcore = false;
           comic.attemptNumber = 0;
           comic.hasHardCoreChanceLeft = 0;
@@ -1118,8 +1125,9 @@ const getComicsByConcept = async (req, res) => {
         }
       });
     } else {
-      // Guest user — default
+      // Guest users
       comics.forEach((comic) => {
+        comic.hasAttempted = false;
         comic.hasAttemptedHardcore = false;
         comic.attemptNumber = 0;
         comic.hasHardCoreChanceLeft = 0;
@@ -1127,7 +1135,7 @@ const getComicsByConcept = async (req, res) => {
       });
     }
 
-    // 🔹 Series-wise unlock logic
+    // 🧩 Series open logic
     comics = comics.sort((a, b) => {
       const aSeries = a.seriesId ? a.seriesId.toString() : "";
       const bSeries = b.seriesId ? b.seriesId.toString() : "";
@@ -1160,7 +1168,7 @@ const getComicsByConcept = async (req, res) => {
       }
     });
 
-    // 🧮 Total comics count
+    // 🧮 Count total comics
     const totalComics = await Comic.countDocuments({
       status: "approved",
       conceptId: new mongoose.Types.ObjectId(conceptId),
@@ -1173,7 +1181,7 @@ const getComicsByConcept = async (req, res) => {
       }),
     });
 
-    // ✅ Final Response
+    // ✅ Response
     res.json({
       conceptId,
       country: country || "ALL",
