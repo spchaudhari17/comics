@@ -983,10 +983,13 @@ const getComicsByConcept = async (req, res) => {
 
     // 🧠 Base match query
     const matchQuery = {
-      status: "approved",
+      status: "approved",                 // ✅ approved only
+      comicStatus: "published",           // ✅ published only
+      pdfUrl: { $exists: true, $ne: "" }, // ✅ pdfUrl must exist and not be empty
       conceptId: new mongoose.Types.ObjectId(conceptId),
     };
 
+    // 🌍 Country filter using "countries" array
     if (country && country.trim() !== "") {
       matchQuery.$expr = {
         $or: [
@@ -996,11 +999,12 @@ const getComicsByConcept = async (req, res) => {
       };
     }
 
+    // 🎓 Grade filter
     if (grade && grade.trim() !== "") {
       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
     }
 
-    // 🔹 Fetch comics + metadata
+    // 🔹 Fetch comics with lookups
     let comics = await Comic.aggregate([
       { $match: matchQuery },
       { $sort: { partNumber: 1 } },
@@ -1042,11 +1046,9 @@ const getComicsByConcept = async (req, res) => {
       const userObjectId = new mongoose.Types.ObjectId(userId);
       const comicIds = comics.map((c) => c._id);
 
-      // Fetch normal and hardcore quizzes
       const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId");
 
-      // Fetch user submissions
       const normalSubmissions = await QuizSubmission.find(
         { quizId: { $in: quizzes.map((q) => q._id) }, userId: userObjectId },
         "quizId"
@@ -1059,7 +1061,6 @@ const getComicsByConcept = async (req, res) => {
         .sort({ createdAt: -1 })
         .lean();
 
-      // Map by quizId
       const submissionsByQuiz = {};
       hardcoreSubmissions.forEach((s) => {
         if (!submissionsByQuiz[s.quizId.toString()]) {
@@ -1070,15 +1071,12 @@ const getComicsByConcept = async (req, res) => {
 
       const attemptedQuizIds = new Set(normalSubmissions.map((s) => s.quizId.toString()));
 
-      // 🔁 Merge logic per comic
       comics.forEach((comic) => {
         const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
         const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
 
-        // Normal quiz
         comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
 
-        // Hardcore quiz
         if (hardcoreQuiz) {
           const quizId = hardcoreQuiz._id.toString();
           const submissions = submissionsByQuiz[quizId] || [];
@@ -1125,7 +1123,6 @@ const getComicsByConcept = async (req, res) => {
         }
       });
     } else {
-      // Guest users
       comics.forEach((comic) => {
         comic.hasAttempted = false;
         comic.hasAttemptedHardcore = false;
@@ -1168,9 +1165,11 @@ const getComicsByConcept = async (req, res) => {
       }
     });
 
-    // 🧮 Count total comics
+    // 🧮 Count total comics (same filter)
     const totalComics = await Comic.countDocuments({
       status: "approved",
+      comicStatus: "published",
+      pdfUrl: { $exists: true, $ne: "" },
       conceptId: new mongoose.Types.ObjectId(conceptId),
       ...(grade && { grade: { $regex: new RegExp(`^${grade.trim()}$`, "i") } }),
       ...(country && {
@@ -1197,6 +1196,7 @@ const getComicsByConcept = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch comics" });
   }
 };
+
 
 
 const saveSubjectPriority = async (req, res) => {
