@@ -1075,7 +1075,7 @@ const addCoins = async (req, res) => {
         // Increment coins atomically by 10
         const updatedUser = await Users.findByIdAndUpdate(
             userId,
-            { $inc: { coins: 10 } },
+            { $inc: { coins: 2000 } },
             { new: true, runValidators: true }
         ).select('-password -plain_password');
 
@@ -1085,7 +1085,7 @@ const addCoins = async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Coins increased by 10',
+            message: 'Coins increased by 2000',
             user: updatedUser
         });
 
@@ -1110,7 +1110,7 @@ const addGems = async (req, res) => {
         // Increment gems atomically by 1
         const updatedUser = await Users.findByIdAndUpdate(
             userId,
-            { $inc: { gems: 1 } },
+            { $inc: { gems: 2 } },
             { new: true, runValidators: true }
         ).select('-password -plain_password');
 
@@ -1120,7 +1120,7 @@ const addGems = async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Gems increased by 1',
+            message: 'Gems increased by 2',
             user: updatedUser
         });
 
