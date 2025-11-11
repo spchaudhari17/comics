@@ -17,7 +17,7 @@ const BASE_URL = process.env.BASE_URL;
 const signupWithEmail = async (req, res) => {
 
     let { firstname = '', lastname = '', password = '', username = '', email = '', countryCode = '+1',
-        mobileNumber = '', device_udid = '', device_type = '' } = req.body
+        mobileNumber = '', device_udid = '', device_type = '', userType = '' } = req.body
 
 
     if (firstname === '') {
@@ -102,6 +102,7 @@ const signupWithEmail = async (req, res) => {
             mobileNumber: mobileNumber,
             device_type: device_type,
             device_udid: device_udid,
+            userType: userType,
         });
 
         var isSaved = await userSignup.save();

@@ -1107,13 +1107,13 @@ const getComicsByConcept = async (req, res) => {
           comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
           comic.activeSubmission = activeSubmission
             ? {
-                _id: activeSubmission._id,
-                attemptNumber: activeSubmission.attemptNumber,
-                score: activeSubmission.score,
-                coinsEarned: activeSubmission.coinsEarned,
-                expEarned: activeSubmission.expEarned,
-                isActive: activeSubmission.isActive,
-              }
+              _id: activeSubmission._id,
+              attemptNumber: activeSubmission.attemptNumber,
+              score: activeSubmission.score,
+              coinsEarned: activeSubmission.coinsEarned,
+              expEarned: activeSubmission.expEarned,
+              isActive: activeSubmission.isActive,
+            }
             : null;
         } else {
           comic.hasAttemptedHardcore = false;
