@@ -992,6 +992,103 @@ const getPowerCards = async (req, res) => {
 
 // ----------------------------------------
 
+// const buyHardcoreQuestion = async (req, res) => {
+//   try {
+//     const { quizId, questionId } = req.body;
+//     const userId = req.user.login_data._id;
+
+//     // 1️⃣ Fetch user & quiz
+//     const user = await User.findById(userId);
+//     if (!user)
+//       return res.status(404).json({ error: true, message: "User not found" });
+
+//     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+//     if (!quiz)
+//       return res.status(404).json({ error: true, message: "Quiz not found" });
+
+//     // 2️⃣ Check across all submissions (not just active)
+//     const previousUnlock = await HardcoreQuizSubmission.findOne({
+//       userId,
+//       quizId,
+//       unlockedQuestions: { $in: [questionId] },
+//     });
+
+//     if (previousUnlock) {
+//       return res.status(400).json({
+//         error: true,
+//         message: "This question is already purchased.",
+//       });
+//     }
+
+//     // 2️⃣ Get or create submission
+//     let submission = await HardcoreQuizSubmission.findOne({
+//       userId,
+//       quizId,
+//       isActive: true,
+//     });
+
+//     if (!submission) {
+//       submission = await HardcoreQuizSubmission.create({
+//         quizId,
+//         userId,
+//         answers: [],
+//         unlockedQuestions: [],
+//         score: 0,
+//         coinsEarned: 0,
+//         expEarned: 0,
+//         isActive: true,
+//       });
+//     }
+
+//     // 3️⃣ Already unlocked?
+//     if (submission.unlockedQuestions?.includes(questionId)) {
+//       return res.json({ message: "Question already purchased." });
+//     }
+
+//     // 4️⃣ Check gems
+//     if (user.gems < 1) {
+//       return res.status(400).json({
+//         error: true,
+//         message: "Not enough gems. 1 gem required to buy this question.",
+//       });
+//     }
+
+//     // 5️⃣ Deduct gem
+//     user.gems -= 1;
+//     await user.save();
+
+//     // 6️⃣ Mark question as unlocked
+//     submission.unlockedQuestions.push(questionId);
+//     await submission.save();
+
+//     // 7️⃣ Return purchased question details
+//     const boughtQuestion = quiz.questions.find(
+//       (q) => q._id.toString() === questionId
+//     );
+
+//     res.json({
+//       success: true,
+//       message: "Question purchased successfully.",
+//       unlockedQuestion: {
+//         _id: boughtQuestion._id,
+//         question: boughtQuestion.question,
+//         options: boughtQuestion.options,
+//         difficulty: boughtQuestion.difficulty,
+//         correctAnswer: boughtQuestion.correctAnswer,
+//       },
+//       remainingGems: user.gems,
+//     });
+//   } catch (error) {
+//     console.error("❌ Buy Question Error:", error);
+//     res.status(500).json({
+//       error: true,
+//       message: "Failed to purchase question",
+//       details: error.message,
+//     });
+//   }
+// };
+
+
 const buyHardcoreQuestion = async (req, res) => {
   try {
     const { quizId, questionId } = req.body;
@@ -1020,7 +1117,7 @@ const buyHardcoreQuestion = async (req, res) => {
       });
     }
 
-    // 2️⃣ Get or create submission
+    // 3️⃣ Get or create submission
     let submission = await HardcoreQuizSubmission.findOne({
       userId,
       quizId,
@@ -1040,35 +1137,55 @@ const buyHardcoreQuestion = async (req, res) => {
       });
     }
 
-    // 3️⃣ Already unlocked?
+    // 4️⃣ Already unlocked?
     if (submission.unlockedQuestions?.includes(questionId)) {
       return res.json({ message: "Question already purchased." });
     }
 
-    // 4️⃣ Check gems
-    if (user.gems < 1) {
-      return res.status(400).json({
-        error: true,
-        message: "Not enough gems. 1 gem required to buy this question.",
-      });
-    }
-
-    // 5️⃣ Deduct gem
-    user.gems -= 1;
-    await user.save();
-
-    // 6️⃣ Mark question as unlocked
-    submission.unlockedQuestions.push(questionId);
-    await submission.save();
-
-    // 7️⃣ Return purchased question details
+    // 5️⃣ Get the question from quiz
     const boughtQuestion = quiz.questions.find(
       (q) => q._id.toString() === questionId
     );
 
+    if (!boughtQuestion) {
+      return res.status(404).json({
+        error: true,
+        message: "Question not found in this quiz.",
+      });
+    }
+
+    // 6️⃣ Determine gem cost based on difficulty
+    const difficulty = boughtQuestion.difficulty?.toLowerCase() || "easy";
+    const gemCostMap = {
+      easy: 1,
+      medium: 2,
+      hard: 3,
+      extreme: 4,
+    };
+    const gemCost = gemCostMap[difficulty] || 1;
+
+    // 7️⃣ Check if user has enough gems
+    if (user.gems < gemCost) {
+      return res.status(400).json({
+        error: true,
+        message: `Not enough gems. ${gemCost} gem(s) required to buy this ${difficulty} question.`,
+        requiredGems: gemCost,
+        userGems: user.gems,
+      });
+    }
+
+    // 8️⃣ Deduct gems
+    user.gems -= gemCost;
+    await user.save();
+
+    // 9️⃣ Mark question as unlocked
+    submission.unlockedQuestions.push(questionId);
+    await submission.save();
+
+    // 🔟 Return purchased question details
     res.json({
       success: true,
-      message: "Question purchased successfully.",
+      message: `Question purchased successfully.`,
       unlockedQuestion: {
         _id: boughtQuestion._id,
         question: boughtQuestion.question,
@@ -1076,6 +1193,7 @@ const buyHardcoreQuestion = async (req, res) => {
         difficulty: boughtQuestion.difficulty,
         correctAnswer: boughtQuestion.correctAnswer,
       },
+      spentGems: gemCost,
       remainingGems: user.gems,
     });
   } catch (error) {
