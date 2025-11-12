@@ -8,6 +8,7 @@ const ComicPage = require("../../models/ComicPage");
 const PDFDocument = require("pdfkit");
 const sharp = require("sharp");
 const DidYouKnow = require("../../models/DidYouKnow");
+const Subject = require("../../models/Subject");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -291,15 +292,48 @@ Make it colorful, engaging, and consistent with the comic style.
 
 
 
+// const listDidYouKnow = async (req, res) => {
+//   try {
+//     const { comicId } = req.params;
+//     const facts = await DidYouKnow.find({ comicId });
+//     res.json({ didYouKnow: facts });
+//   } catch (err) {
+//     res.status(500).json({ error: "Failed to fetch Did You Know facts" });
+//   }
+// };
+
+
 const listDidYouKnow = async (req, res) => {
   try {
     const { comicId } = req.params;
+
+    // 🔍 Fetch all "Did You Know" facts for this comic
     const facts = await DidYouKnow.find({ comicId });
-    res.json({ didYouKnow: facts });
+
+    // 🧠 Find related subject through comic
+    const comic = await Comic.findById(comicId);
+    let showAdsDidYouKnow = true;
+
+    if (comic?.subjectId) {
+      const subject = await Subject.findById(comic.subjectId);
+      showAdsDidYouKnow = subject ? subject.showAdsDidYouKnow : true;
+    }
+
+    // 🆕 Attach ad flags to each fact
+    const factsWithAds = facts.map((fact) => ({
+      ...fact.toObject(),
+      showAdsDidYouKnow,
+      showInterestialAds: showAdsDidYouKnow,
+    }));
+
+    // ✅ Send updated response
+    res.json({ didYouKnow: factsWithAds });
   } catch (err) {
+    console.error("❌ Error fetching Did You Know facts:", err);
     res.status(500).json({ error: "Failed to fetch Did You Know facts" });
   }
 };
+
 
 
 module.exports = { generateDidYouKnow, listDidYouKnow }

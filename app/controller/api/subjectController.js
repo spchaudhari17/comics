@@ -502,20 +502,93 @@ const deleteSubject = async (req, res) => {
 };
 
 
+// const updateSubject = async (req, res) => {
+//   try {
+//     const { id, name, ishowads } = req.body;
+//     const imageFile = req.files?.image;
+
+//     // Find subject
+//     const subject = await Subject.findById(id);
+//     if (!subject) {
+//       return res.status(404).json({ error: "Subject not found" });
+//     }
+
+//     // ✅ Update fields if provided
+//     if (name) subject.name = name;
+//     if (ishowads !== undefined) subject.ishowads = JSON.parse(ishowads);
+
+//     // ✅ If new image uploaded → replace in S3
+//     if (imageFile) {
+//       // Delete old one if exists
+//       if (subject.image) {
+//         try {
+//           const fileName = subject.image.split("/").pop();
+//           await deleteFiles("subjects", fileName);
+//         } catch (err) {
+//           console.warn("S3 delete failed:", err);
+//         }
+//       }
+
+//       const buffer = Buffer.from(imageFile.data, "binary");
+//       const optimizedBuffer = await sharp(buffer)
+//         .resize({ width: 600 })
+//         .jpeg({ quality: 75 })
+//         .toBuffer();
+
+//       const optimizedFile = {
+//         name: imageFile.name.replace(/\.[^/.]+$/, ".jpg"),
+//         data: optimizedBuffer,
+//         mimetype: "image/jpeg"
+//       };
+
+//       const uploadedUrl = await upload_files("subjects", optimizedFile);
+//       if (uploadedUrl) subject.image = uploadedUrl;
+//     }
+
+//     await subject.save();
+
+//     res.json({ success: true, message: "Subject updated successfully", subject });
+//   } catch (error) {
+//     console.error("Error updating subject:", error);
+//     res.status(500).json({ error: "Internal server error", details: error.message });
+//   }
+// };
+
+
+
 const updateSubject = async (req, res) => {
   try {
-    const { id, name, ishowads } = req.body;
+    const {
+      id,
+      name,
+      ishowads,
+      showAdsFaq,
+      showAdsDidYouKnow,
+      showAdsQuiz,
+      showAdsHardcoreQuiz
+    } = req.body;
+
     const imageFile = req.files?.image;
 
-    // Find subject
+    // 🔎 Find subject
     const subject = await Subject.findById(id);
     if (!subject) {
       return res.status(404).json({ error: "Subject not found" });
     }
 
-    // ✅ Update fields if provided
+    // ✅ Update simple text/boolean fields
     if (name) subject.name = name;
     if (ishowads !== undefined) subject.ishowads = JSON.parse(ishowads);
+
+    // ✅ Handle ads toggles (admin panel flags)
+    if (showAdsFaq !== undefined)
+      subject.showAdsFaq = JSON.parse(showAdsFaq);
+    if (showAdsDidYouKnow !== undefined)
+      subject.showAdsDidYouKnow = JSON.parse(showAdsDidYouKnow);
+    if (showAdsQuiz !== undefined)
+      subject.showAdsQuiz = JSON.parse(showAdsQuiz);
+    if (showAdsHardcoreQuiz !== undefined)
+      subject.showAdsHardcoreQuiz = JSON.parse(showAdsHardcoreQuiz);
 
     // ✅ If new image uploaded → replace in S3
     if (imageFile) {
@@ -529,6 +602,7 @@ const updateSubject = async (req, res) => {
         }
       }
 
+      // Optimize + upload
       const buffer = Buffer.from(imageFile.data, "binary");
       const optimizedBuffer = await sharp(buffer)
         .resize({ width: 600 })
@@ -538,7 +612,7 @@ const updateSubject = async (req, res) => {
       const optimizedFile = {
         name: imageFile.name.replace(/\.[^/.]+$/, ".jpg"),
         data: optimizedBuffer,
-        mimetype: "image/jpeg"
+        mimetype: "image/jpeg",
       };
 
       const uploadedUrl = await upload_files("subjects", optimizedFile);
@@ -547,12 +621,20 @@ const updateSubject = async (req, res) => {
 
     await subject.save();
 
-    res.json({ success: true, message: "Subject updated successfully", subject });
+    res.json({
+      success: true,
+      message: "Subject updated successfully",
+      subject,
+    });
   } catch (error) {
-    console.error("Error updating subject:", error);
-    res.status(500).json({ error: "Internal server error", details: error.message });
+    console.error("❌ Error updating subject:", error);
+    res.status(500).json({
+      error: "Internal server error",
+      details: error.message,
+    });
   }
 };
+
 
 
 // perfect working on country
@@ -759,216 +841,6 @@ const getConceptsBySubject = async (req, res) => {
   }
 };
 
-
-
-// const getComicsByConcept = async (req, res) => {
-//   try {
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-//     const userId = req.query.userId;
-//     const country = req.query.country; // ✅ country query param
-//     const grade = req.query.grade;     // ✅ grade query param
-
-//     // 🧠 Base match query
-//     const matchQuery = {
-//       status: "approved",
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     };
-
-//     // 🌍 Country filter using "countries" array
-//     if (country && country.trim() !== "") {
-//       matchQuery.$expr = {
-//         $or: [
-//           { $in: [country.trim().toUpperCase(), "$countries"] },
-//           { $in: ["ALL", "$countries"] } // include globally available comics
-//         ]
-//       };
-//     }
-
-//     // 🎓 Grade filter
-//     if (grade && grade.trim() !== "") {
-//       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
-//     }
-
-//     // 🧩 Aggregation pipeline
-//     let comics = await Comic.aggregate([
-//       { $match: matchQuery },
-//       { $sort: { partNumber: 1 } },
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       // 🧠 Related lookups
-//       { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
-//       { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
-//       { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
-//       { $lookup: { from: "subjects", localField: "subjectId", foreignField: "_id", as: "subjectData" } },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-//       { $lookup: { from: "themes", localField: "themeId", foreignField: "_id", as: "themeData" } },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-//       { $lookup: { from: "comicpages", localField: "_id", foreignField: "comicId", as: "pages" } },
-
-//       // 🧩 Derived flags
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subjectId: "$subjectData._id",
-//           subject: "$subjectData.name",
-//           themeId: "$themeData._id",
-//           theme: "$themeData.name",
-//         },
-//       },
-
-//       // 🧹 Clean output
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           hardcoreQuizData: 0,
-//           pages: 0,
-//           subjectData: 0,
-//           themeData: 0,
-//           prompt: 0,
-//         },
-//       },
-//     ]);
-
-//     // 🧪 Step 2: Mark attempted quizzes
-//     if (userId) {
-//       const comicIds = comics.map((c) => c._id);
-//       const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
-//       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId");
-
-//       const submissions = await QuizSubmission.find(
-//         { quizId: { $in: quizzes.map((q) => q._id) }, userId: new mongoose.Types.ObjectId(userId) },
-//         "quizId"
-//       );
-//       const hardcoreSubmissions = await HardcoreQuizSubmission.find(
-//         { quizId: { $in: hardcoreQuizzes.map((hq) => hq._id) }, userId: new mongoose.Types.ObjectId(userId) },
-//         "quizId"
-//       );
-
-//       const attemptedQuizIds = new Set(submissions.map((s) => s.quizId.toString()));
-//       const attemptedHardcoreIds = new Set(hardcoreSubmissions.map((s) => s.quizId.toString()));
-
-//       comics.forEach((comic) => {
-//         const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
-//         const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
-
-//         comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
-//         comic.hasAttemptedHardcore = hardcoreQuiz ? attemptedHardcoreIds.has(hardcoreQuiz._id.toString()) : false;
-//       });
-//     } else {
-//       comics.forEach((comic) => {
-//         comic.hasAttempted = false;
-//         comic.hasAttemptedHardcore = false;
-//       });
-//     }
-
-//     // 🧩 Step 3: Series-wise open logic
-//     comics = comics.sort((a, b) => {
-//       const aSeries = a.seriesId ? a.seriesId.toString() : "";
-//       const bSeries = b.seriesId ? b.seriesId.toString() : "";
-//       if (aSeries === bSeries) return a.partNumber - b.partNumber;
-//       return aSeries.localeCompare(bSeries);
-//     });
-
-//     const seriesGroups = {};
-//     comics.forEach((comic) => {
-//       const key = comic.seriesId ? comic.seriesId.toString() : "no-series";
-//       if (!seriesGroups[key]) seriesGroups[key] = [];
-//       seriesGroups[key].push(comic);
-//     });
-
-//     Object.values(seriesGroups).forEach((seriesComics) => {
-//       seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-//       if (seriesComics.length === 1) {
-//         seriesComics[0].isOpen = true;
-//       } else {
-//         seriesComics.forEach((comic) => {
-//           if (comic.partNumber === 1) {
-//             comic.isOpen = true;
-//           } else {
-//             const prevComic = seriesComics.find(
-//               (c) => c.partNumber === comic.partNumber - 1
-//             );
-//             comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
-//           }
-//         });
-//       }
-//     });
-
-//     // 🧮 Step 4: Total comics count
-//     const totalComics = await Comic.countDocuments({
-//       status: "approved",
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//       ...(grade && { grade: { $regex: new RegExp(`^${grade.trim()}$`, "i") } }),
-//       ...(country && {
-//         $or: [
-//           { countries: country.trim().toUpperCase() },
-//           { countries: "ALL" }
-//         ]
-//       })
-//     });
-
-//     // 👁️ Increment total_view for newly opened comics
-//     if (userId) {
-//       const openComics = comics.filter((c) => c.isOpen);
-//       const openComicIds = openComics.map((c) => c._id);
-
-//       if (openComicIds.length > 0) {
-//         const alreadyViewed = await ComicView.find({
-//           userId: new mongoose.Types.ObjectId(userId),
-//           comicId: { $in: openComicIds },
-//         }).distinct("comicId");
-
-//         const newViews = openComicIds.filter(
-//           (id) => !alreadyViewed.includes(id.toString())
-//         );
-
-//         if (newViews.length > 0) {
-//           const viewDocs = newViews.map((comicId) => ({
-//             comicId,
-//             userId: new mongoose.Types.ObjectId(userId),
-//           }));
-
-//           try {
-//             await ComicView.insertMany(viewDocs, { ordered: false });
-//             await Comic.updateMany(
-//               { _id: { $in: newViews } },
-//               { $inc: { total_view: 1 } }
-//             );
-//           } catch (err) {
-//             if (err.code === 11000) {
-//               console.warn("Duplicate view skipped (already exists)");
-//             } else {
-//               console.error("Error inserting comic views:", err);
-//             }
-//           }
-//         }
-//       }
-//     }
-
-//     // ✅ Final response
-//     res.json({
-//       conceptId,
-//       country: country || "ALL",
-//       grade: grade || "ALL",
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching comics by concept:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
 
 
 const getComicsByConcept = async (req, res) => {

@@ -9,6 +9,7 @@ const QuizQuestion = require("../../models/QuizQuestion");
 const Comic = require("../../models/Comic");
 const QuizSubmission = require("../../models/QuizSubmission");
 const { default: mongoose } = require("mongoose");
+const Subject = require("../../models/Subject");
 
 
 
@@ -150,38 +151,84 @@ Format:
 
 
 
+// const getQuizByComic = async (req, res) => {
+//   try {
+//     const { id, userId } = req.params; // comicId aur userId (optional)
+
+//     // Quiz nikalna
+//     const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
+//     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+
+//     // Default false rakho
+//     let hasAttempted = false;
+
+//     // Agar userId mila hai to hi attempt check karo
+//     if (userId) {
+//       const submission = await QuizSubmission.findOne({
+//         quizId: quiz._id,
+//         userId: new mongoose.Types.ObjectId(userId), // ObjectId mein convert
+//       });
+
+//       hasAttempted = !!submission;
+//     }
+
+//     res.json({
+//       quiz,
+//       hasAttempted,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching quiz:", error);
+//     res.status(500).json({ error: "Failed to fetch quiz" });
+//   }
+// };
+
+
 const getQuizByComic = async (req, res) => {
   try {
     const { id, userId } = req.params; // comicId aur userId (optional)
 
-    // Quiz nikalna
+    // 🧠 Quiz nikalna
     const quiz = await Quiz.findOne({ comicId: id }).populate("questions");
     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
 
-    // Default false rakho
+    // 🎯 Default false rakho
     let hasAttempted = false;
 
-    // Agar userId mila hai to hi attempt check karo
+    // 🧩 Agar userId mila hai to hi attempt check karo
     if (userId) {
       const submission = await QuizSubmission.findOne({
         quizId: quiz._id,
-        userId: new mongoose.Types.ObjectId(userId), // ObjectId mein convert
+        userId: new mongoose.Types.ObjectId(userId),
       });
-
       hasAttempted = !!submission;
     }
 
+    // 🔍 Comic ke through subject ka ad flag nikalna
+    const comic = await Comic.findById(id);
+    let showAdsQuiz = true;
+
+    if (comic?.subjectId) {
+      const subject = await Subject.findById(comic.subjectId);
+      showAdsQuiz = subject ? subject.showAdsQuiz : true;
+    }
+
+    // 🆕 Add ad flags directly inside quiz object
+    const quizWithAds = {
+      ...quiz.toObject(),
+      showAdsQuiz,
+      showInterestialAds: showAdsQuiz,
+    };
+
+    // ✅ Send response
     res.json({
-      quiz,
+      quiz: quizWithAds,
       hasAttempted,
     });
   } catch (error) {
-    console.error("Error fetching quiz:", error);
+    console.error("❌ Error fetching quiz:", error);
     res.status(500).json({ error: "Failed to fetch quiz" });
   }
 };
-
-
 
 
 const publishQuiz = async (req, res) => {

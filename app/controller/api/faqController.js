@@ -9,6 +9,7 @@ const PDFDocument = require("pdfkit");
 const sharp = require("sharp");
 const DidYouKnow = require("../../models/DidYouKnow");
 const FAQ = require("../../models/FAQ");
+const Subject = require("../../models/Subject");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -155,15 +156,48 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
 
 
 
+// const listFAQs = async (req, res) => {
+//   try {
+//     const { comicId } = req.params;
+//     const faqs = await FAQ.find({ comicId });
+//     res.json({ faqs });
+//   } catch (err) {
+//     res.status(500).json({ error: "Failed to fetch FAQs" });
+//   }
+// };
+
+
 const listFAQs = async (req, res) => {
   try {
     const { comicId } = req.params;
+
+    // 🔍 Fetch FAQs by comicId
     const faqs = await FAQ.find({ comicId });
-    res.json({ faqs });
+
+    // 🧠 Fetch related subject via comic
+    const comic = await Comic.findById(comicId);
+    let showAdsFaq = true;
+
+    if (comic?.subjectId) {
+      const subject = await Subject.findById(comic.subjectId);
+      showAdsFaq = subject ? subject.showAdsFaq : true;
+    }
+
+    // 🆕 For each FAQ, attach both flags
+    const faqsWithAds = faqs.map((faq) => ({
+      ...faq.toObject(),
+      showAdsFaq,
+      showInterestialAds: showAdsFaq,
+    }));
+
+    // ✅ Return modified FAQs
+    res.json({ faqs: faqsWithAds });
   } catch (err) {
+    console.error("❌ Error fetching FAQs:", err);
     res.status(500).json({ error: "Failed to fetch FAQs" });
   }
 };
+
 
 
 module.exports = { generateFAQs, listFAQs }

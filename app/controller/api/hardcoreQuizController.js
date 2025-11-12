@@ -5,6 +5,7 @@ const Comic = require("../../models/Comic");
 const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
 const { default: mongoose } = require("mongoose");
 const User = require("../../models/User");
+const Subject = require("../../models/Subject");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -332,6 +333,7 @@ Format:
 //     let hasHardCoreChanceLeft = 1;
 //     let activeSubmission = null;
 //     let attemptedAnswers = {};
+//     let attemptNumber = 0; // 👈 New
 
 //     if (userId) {
 //       const userObjectId = new mongoose.Types.ObjectId(userId);
@@ -340,6 +342,7 @@ Format:
 //       const todayEnd = new Date();
 //       todayEnd.setHours(23, 59, 59, 999);
 
+//       // 🔹 Fetch all submissions by user
 //       const submissions = await HardcoreQuizSubmission.find({
 //         quizId: quiz._id,
 //         userId: userObjectId,
@@ -349,10 +352,10 @@ Format:
 
 //       if (submissions.length > 0) hasAttempted = true;
 
-//       // Active attempt
+//       // 🔹 Find active submission
 //       activeSubmission = submissions.find((s) => s.isActive) || null;
 
-//       // Count finished today
+//       // 🔹 Count finished attempts today
 //       const finishedAttemptsToday = submissions.filter(
 //         (s) =>
 //           s.isFinished &&
@@ -362,7 +365,18 @@ Format:
 
 //       hasHardCoreChanceLeft = finishedAttemptsToday >= 2 ? 0 : 1;
 
-//       // Merge answers
+//       // 🔹 Determine attempt number
+//       if (activeSubmission) {
+//         attemptNumber = activeSubmission.attemptNumber;
+//       } else if (finishedAttemptsToday > 0 && finishedAttemptsToday < 2) {
+//         attemptNumber = finishedAttemptsToday + 1;
+//       } else if (finishedAttemptsToday >= 2) {
+//         attemptNumber = 2;
+//       } else {
+//         attemptNumber = 1;
+//       }
+
+//       // 🔹 Merge all attempted answers (for showing progress)
 //       for (const sub of submissions) {
 //         for (const ans of sub.answers || []) {
 //           attemptedAnswers[ans.questionId.toString()] = {
@@ -374,7 +388,7 @@ Format:
 //         }
 //       }
 
-//       // Check if fully completed
+//       // 🔹 Check if user finished all questions correctly
 //       const latestFinished = submissions.find((s) => s.isFinished);
 //       if (
 //         latestFinished &&
@@ -385,6 +399,7 @@ Format:
 //       }
 //     }
 
+//     // 🧠 Merge question data
 //     const questionsWithAttemptStatus = quiz.questions.map((q) => {
 //       const attempt = attemptedAnswers[q._id.toString()];
 //       return {
@@ -398,7 +413,8 @@ Format:
 //       };
 //     });
 
-//     res.json({
+//     // ✅ Final Response
+//     return res.json({
 //       quiz: {
 //         ...quiz,
 //         questions: questionsWithAttemptStatus,
@@ -406,6 +422,7 @@ Format:
 //       hasAttempted,
 //       hasAttemptedAllQuestion,
 //       hasHardCoreChanceLeft,
+//       attemptNumber, // 👈 included here
 //       activeSubmission: activeSubmission
 //         ? {
 //             _id: activeSubmission._id,
@@ -448,7 +465,7 @@ const getHardcoreQuizByComic = async (req, res) => {
     let hasHardCoreChanceLeft = 1;
     let activeSubmission = null;
     let attemptedAnswers = {};
-    let attemptNumber = 0; // 👈 New
+    let attemptNumber = 0;
 
     if (userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
@@ -528,16 +545,30 @@ const getHardcoreQuizByComic = async (req, res) => {
       };
     });
 
+    // 🔍 Get subject flag for ads
+    const comic = await Comic.findById(id);
+    let showAdsHardcoreQuiz = true;
+
+    if (comic?.subjectId) {
+      const subject = await Subject.findById(comic.subjectId);
+      showAdsHardcoreQuiz = subject ? subject.showAdsHardcoreQuiz : true;
+    }
+
+    // 🆕 Add ad flags to quiz
+    const quizWithAds = {
+      ...quiz,
+      questions: questionsWithAttemptStatus,
+      showAdsHardcoreQuiz,
+      showInterestialAds: showAdsHardcoreQuiz,
+    };
+
     // ✅ Final Response
     return res.json({
-      quiz: {
-        ...quiz,
-        questions: questionsWithAttemptStatus,
-      },
+      quiz: quizWithAds,
       hasAttempted,
       hasAttemptedAllQuestion,
       hasHardCoreChanceLeft,
-      attemptNumber, // 👈 included here
+      attemptNumber,
       activeSubmission: activeSubmission
         ? {
             _id: activeSubmission._id,
@@ -559,7 +590,6 @@ const getHardcoreQuizByComic = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
   }
 };
-
 
 
 
