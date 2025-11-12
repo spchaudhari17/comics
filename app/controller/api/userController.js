@@ -833,6 +833,186 @@ const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
 
 
 
+// const profileDetails = async (req, res) => {
+//     try {
+//         const userId = req.user.login_data._id;
+
+//         // 1️⃣ Fetch user
+//         const user = await Users.findById(userId).lean();
+//         if (!user) {
+//             return res.status(404).json({
+//                 error: true,
+//                 status: 404,
+//                 message: "User not found",
+//                 message_desc: "No user found with this ID",
+//                 data: {},
+//             });
+//         }
+
+//         // 2️⃣ Total unique quizzes attempted
+//         const quizzesTaken = await QuizSubmission.aggregate([
+//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+//             { $group: { _id: "$quizId" } },
+//         ]);
+//         const totalQuizzesPlayed = quizzesTaken.length;
+
+//         // 3️⃣ Total unique comics completed
+//         const comicsCompleted = await QuizSubmission.aggregate([
+//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+//             {
+//                 $lookup: {
+//                     from: "quizzes",
+//                     localField: "quizId",
+//                     foreignField: "_id",
+//                     as: "quizData",
+//                 },
+//             },
+//             { $unwind: "$quizData" },
+//             { $group: { _id: "$quizData.comicId" } },
+//         ]);
+//         const topicsCompleted = comicsCompleted.length;
+
+//         // 4️⃣ Compute correct answers, accuracy, avg time, highest streak
+//         const submissions = await QuizSubmission.find({ userId }).lean();
+//         let correctAnswers = 0;
+//         let totalQuestions = 0;
+//         let totalTime = 0;
+//         let highestStreak = 0;
+
+//         submissions.forEach((sub) => {
+//             let streak = 0;
+//             sub.answers.forEach((ans) => {
+//                 totalQuestions++;
+//                 if (ans.timeTaken) totalTime += ans.timeTaken;
+//                 if (ans.isCorrect) {
+//                     correctAnswers++;
+//                     streak++;
+//                     if (streak > highestStreak) highestStreak = streak;
+//                 } else {
+//                     streak = 0;
+//                 }
+//             });
+//         });
+
+//         const accuracyRate =
+//             totalQuestions > 0 ? ((correctAnswers / totalQuestions) * 100).toFixed(1) : 0;
+//         const avgResponseTime =
+//             totalQuestions > 0 ? (totalTime / totalQuestions).toFixed(1) : 0;
+
+//         // 5️⃣ Hardcore stats
+//         const hardcoreAttempts = await HardcoreQuizSubmission.countDocuments({ userId });
+//         const hardcoreSubs = await HardcoreQuizSubmission.find({ userId }).lean();
+//         let doubleOrNothingWins = 0;
+//         let totalHardcoreRounds = 0;
+
+//         hardcoreSubs.forEach((sub) => {
+//             totalHardcoreRounds++;
+//             if (sub.coinsEarned > 0) doubleOrNothingWins++;
+//         });
+
+//         const doubleOrNothingSuccessRate =
+//             totalHardcoreRounds > 0
+//                 ? ((doubleOrNothingWins / totalHardcoreRounds) * 100).toFixed(1)
+//                 : 0;
+
+//         // 6️⃣ Toughest Question Beaten
+//         const toughest = await HardcoreQuizSubmission.aggregate([
+//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+//             { $unwind: "$answers" },
+//             { $match: { "answers.isCorrect": true } },
+//             {
+//                 $lookup: {
+//                     from: "hardcorequizquestions",
+//                     localField: "answers.questionId",
+//                     foreignField: "_id",
+//                     as: "questionData",
+//                 },
+//             },
+//             { $unwind: "$questionData" },
+//             { $sort: { "questionData.difficulty": -1 } },
+//             { $limit: 1 },
+//             { $project: { "questionData.difficulty": 1 } },
+//         ]);
+
+//         const toughestQuestionBeaten =
+//             toughest.length > 0 ? toughest[0].questionData.difficulty : "N/A";
+
+//         // 7️⃣ Calculate live gems
+//         const liveGems = user.gems
+
+//         // 8️⃣ Prepare myStats object
+//         const myStats = {
+//             total_quizzes_played: totalQuizzesPlayed,
+//             correct_answers: correctAnswers,
+//             accuracy_rate: Number(accuracyRate),
+//             average_response_time: Number(avgResponseTime),
+//             highest_streak: highestStreak,
+//             topics_completed: topicsCompleted,
+//             campaign_levels_unlocked: topicsCompleted,
+//             hardcore_mode_attempts: hardcoreAttempts,
+//             double_or_nothing_success_rate: Number(doubleOrNothingSuccessRate),
+//             toughest_question_beaten: toughestQuestionBeaten,
+//             best_performance: `${accuracyRate}% accuracy, ${highestStreak} streak`,
+//         };
+
+//         // 9️⃣ Prepare myCards
+//         const myCards = {
+//             hint: user.powerCards?.hint || 0,
+//             timeExtend: user.powerCards?.timeExtend || 0,
+//             reduceOptions: user.powerCards?.reduceOptions || 0,
+//             changeQuestion: user.powerCards?.changeQuestion || 0,
+//         };
+
+//         // 🔟 Final flat response with myStats nested
+//         const profile = {
+//             _id: user._id,
+//             username: user.username,
+//             email: user.email,
+//             email_verified_at: user.email_verified_at || null,
+//             profile_pic: user.profile_pic || "",
+//             created_at: user.createdAt,
+//             updated_at: user.updatedAt,
+
+//             // 📊 Basic stats
+//             total_quizzes_taken: totalQuizzesPlayed,
+//             number_of_comics_completed: topicsCompleted,
+
+//             // 🪙 Wallet
+//             coins: user.coins,
+//             exp: user.exp,
+//             gems: liveGems,
+
+//             // 🧾 Totals
+//             total_coins_earned: user.coins,
+//             total_exp_earned: user.exp,
+//             total_gems_earned: liveGems,
+
+//             // 📊 My Stats (nested)
+//             myStats,
+
+//             // 🎴 My Power Cards
+//             my_cards: myCards,
+//         };
+
+//         return res.status(200).json({
+//             error: false,
+//             status: 200,
+//             message: "Profile fetched successfully",
+//             data: profile,
+//         });
+//     } catch (error) {
+//         console.error("❌ Profile Details Error:", error);
+//         return res.status(500).json({
+//             error: true,
+//             status: 500,
+//             message: "Something went wrong.",
+//             message_desc: "Unhandled exception: " + error.message,
+//             data: {},
+//         });
+//     }
+// };
+
+
 const profileDetails = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
@@ -847,6 +1027,29 @@ const profileDetails = async (req, res) => {
                 message_desc: "No user found with this ID",
                 data: {},
             });
+        }
+
+        // 🧠 0️⃣ Ad logic (1 every 10 min, max 3/day)
+        const now = new Date();
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const adLogs = user.adLogs || [];
+        const todaysAds = adLogs.filter((time) => new Date(time) >= todayStart);
+        const adsShownToday = todaysAds.length;
+
+        let canShowAd = true;
+        let nextAdAvailableAt = null;
+
+        if (adsShownToday >= 3) {
+            canShowAd = false;
+        } else if (todaysAds.length > 0) {
+            const lastAdTime = new Date(todaysAds[todaysAds.length - 1]);
+            const diffMinutes = (now - lastAdTime) / (1000 * 60);
+            if (diffMinutes < 10) {
+                canShowAd = false;
+                nextAdAvailableAt = new Date(lastAdTime.getTime() + 10 * 60 * 1000);
+            }
         }
 
         // 2️⃣ Total unique quizzes attempted
@@ -937,10 +1140,10 @@ const profileDetails = async (req, res) => {
         const toughestQuestionBeaten =
             toughest.length > 0 ? toughest[0].questionData.difficulty : "N/A";
 
-        // 7️⃣ Calculate live gems
-        const liveGems = user.gems
+        // 7️⃣ Live gems
+        const liveGems = user.gems;
 
-        // 8️⃣ Prepare myStats object
+        // 8️⃣ My Stats
         const myStats = {
             total_quizzes_played: totalQuizzesPlayed,
             correct_answers: correctAnswers,
@@ -955,7 +1158,7 @@ const profileDetails = async (req, res) => {
             best_performance: `${accuracyRate}% accuracy, ${highestStreak} streak`,
         };
 
-        // 9️⃣ Prepare myCards
+        // 9️⃣ My Cards
         const myCards = {
             hint: user.powerCards?.hint || 0,
             timeExtend: user.powerCards?.timeExtend || 0,
@@ -963,7 +1166,7 @@ const profileDetails = async (req, res) => {
             changeQuestion: user.powerCards?.changeQuestion || 0,
         };
 
-        // 🔟 Final flat response with myStats nested
+        // 🔟 Final Response
         const profile = {
             _id: user._id,
             username: user.username,
@@ -982,7 +1185,7 @@ const profileDetails = async (req, res) => {
             exp: user.exp,
             gems: liveGems,
 
-            // 🧾 Totals
+            // 📈 Totals
             total_coins_earned: user.coins,
             total_exp_earned: user.exp,
             total_gems_earned: liveGems,
@@ -992,6 +1195,13 @@ const profileDetails = async (req, res) => {
 
             // 🎴 My Power Cards
             my_cards: myCards,
+
+            // 🆕 Ad Info
+            adInfo: {
+                canShowAd,
+                adsShownToday,
+                nextAdAvailableAt,
+            },
         };
 
         return res.status(200).json({
@@ -1011,7 +1221,6 @@ const profileDetails = async (req, res) => {
         });
     }
 };
-
 
 
 const deleteAccount = async (req, res) => {
@@ -1099,41 +1308,110 @@ const addCoins = async (req, res) => {
     }
 };
 
+// const addGems = async (req, res) => {
+//     try {
+//         const userId = req.user?.login_data?._id; // safely extract user ID
+
+//         if (!userId) {
+//             return res.status(401).json({ success: false, message: 'Not authenticated' });
+//         }
+
+//         // Increment gems atomically by 1
+//         const updatedUser = await Users.findByIdAndUpdate(
+//             userId,
+//             { $inc: { gems: 2 } },
+//             { new: true, runValidators: true }
+//         ).select('-password -plain_password');
+
+//         if (!updatedUser) {
+//             return res.status(404).json({ success: false, message: 'User not found' });
+//         }
+
+//         return res.json({
+//             success: true,
+//             message: 'Gems increased by 2',
+//             user: updatedUser
+//         });
+
+//     } catch (err) {
+//         console.error('Error increasing gems:', err);
+//         return res.status(500).json({
+//             success: false,
+//             message: 'Server error',
+//             error: err.message
+//         });
+//     }
+// };
+
 const addGems = async (req, res) => {
     try {
-        const userId = req.user?.login_data?._id; // safely extract user ID
+        const userId = req.user?.login_data?._id;
 
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Not authenticated' });
         }
 
-        // Increment gems atomically by 1
-        const updatedUser = await Users.findByIdAndUpdate(
-            userId,
-            { $inc: { gems: 2 } },
-            { new: true, runValidators: true }
-        ).select('-password -plain_password');
-
-        if (!updatedUser) {
+        const user = await Users.findById(userId);
+        if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        const now = new Date();
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        // 🧠 Filter ad logs for today only
+        let adLogs = user.adLogs || [];
+        adLogs = adLogs.filter((time) => new Date(time) >= todayStart);
+
+        // 🔹 1️⃣ Check max ads/day
+        if (adLogs.length >= 3) {
+            return res.status(400).json({
+                success: false,
+                message: "Daily ad limit reached (max 3 ads per day).",
+                adsShownToday: adLogs.length,
+            });
+        }
+
+        // 🔹 2️⃣ Check 10-minute cooldown
+        if (adLogs.length > 0) {
+            const lastAdTime = new Date(adLogs[adLogs.length - 1]);
+            const diffMinutes = (now - lastAdTime) / (1000 * 60);
+
+            if (diffMinutes < 10) {
+                const nextAdTime = new Date(lastAdTime.getTime() + 10 * 60 * 1000);
+                return res.status(400).json({
+                    success: false,
+                    message: `Please wait ${Math.ceil(10 - diffMinutes)} more minute(s) before next ad.`,
+                    nextAdAvailableAt: nextAdTime,
+                    adsShownToday: adLogs.length,
+                });
+            }
+        }
+
+        // ✅ 3️⃣ Give gems + Log this ad
+        user.gems += 2;
+        adLogs.push(now);
+        user.adLogs = adLogs;
+
+        await user.save();
+
         return res.json({
             success: true,
-            message: 'Gems increased by 2',
-            user: updatedUser
+            message: "Gems increased by 2 (Ad viewed successfully).",
+            gems: user.gems,
+            adsShownToday: adLogs.length,
+            nextAdAvailableAt: new Date(now.getTime() + 10 * 60 * 1000),
         });
-
     } catch (err) {
-        console.error('Error increasing gems:', err);
+        console.error("Error increasing gems:", err);
         return res.status(500).json({
             success: false,
-            message: 'Server error',
-            error: err.message
+            message: "Server error",
+            error: err.message,
         });
     }
 };
-
 
 
 module.exports = {

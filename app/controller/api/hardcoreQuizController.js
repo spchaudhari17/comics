@@ -571,18 +571,18 @@ const getHardcoreQuizByComic = async (req, res) => {
       attemptNumber,
       activeSubmission: activeSubmission
         ? {
-            _id: activeSubmission._id,
-            attemptNumber: activeSubmission.attemptNumber,
-            score: activeSubmission.score,
-            coinsEarned: activeSubmission.coinsEarned,
-            expEarned: activeSubmission.expEarned,
-            answers: activeSubmission.answers.map((a) => ({
-              questionId: a.questionId,
-              isCorrect: a.isCorrect,
-              selectedAnswer: a.selectedAnswer,
-            })),
-            isActive: activeSubmission.isActive,
-          }
+          _id: activeSubmission._id,
+          attemptNumber: activeSubmission.attemptNumber,
+          score: activeSubmission.score,
+          coinsEarned: activeSubmission.coinsEarned,
+          expEarned: activeSubmission.expEarned,
+          answers: activeSubmission.answers.map((a) => ({
+            questionId: a.questionId,
+            isCorrect: a.isCorrect,
+            selectedAnswer: a.selectedAnswer,
+          })),
+          isActive: activeSubmission.isActive,
+        }
         : null,
     });
   } catch (error) {
@@ -757,8 +757,8 @@ const submitHardcoreQuiz = async (req, res) => {
       message: !isCorrect
         ? "Wrong answer! Hardcore quiz over for this attempt."
         : hasAttemptedAllQuestion
-        ? "You have attempted all hardcore questions for this quiz. Try another comic quiz."
-        : "Correct answer!",
+          ? "You have attempted all hardcore questions for this quiz. Try another comic quiz."
+          : "Correct answer!",
       result: {
         questionId,
         isCorrect,

@@ -57,6 +57,7 @@ var UserSchema = new mongoose.Schema({
         changeQuestion: { type: Number, default: 0 },
     },
 
+    adLogs: { type: [Date], default: [] },
 
 
 }, { timestamps: true })
