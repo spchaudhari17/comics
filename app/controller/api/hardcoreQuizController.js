@@ -12,155 +12,6 @@ const openai = new OpenAI({
 });
 
 
-// const generateHardcoreQuiz = async (req, res) => {
-//   const { comicId, script, subject, concept, grade } = req.body;
-
-//   try {
-//     // 🧠 Step 1: Check if quiz already exists
-//     const existingQuiz = await HardcoreQuiz.findOne({ comicId })
-//       .populate({
-//         path: "questions",
-//         select: "question options correctAnswer difficulty explanation hint",
-//       })
-//       .lean();
-
-//     if (existingQuiz) {
-//       return res.status(200).json({
-//         message: "Adaptive quiz already exists for this comic.",
-//         quizId: existingQuiz._id,
-//         quiz: existingQuiz,
-//         alreadyExists: true,
-//       });
-//     }
-
-//     // 🧩 Step 2: Extract text from comic script
-//     let storyText = "";
-//     if (Array.isArray(script)) {
-//       storyText = script
-//         .map((page) =>
-//           page.panels
-//             .map(
-//               (p) => `Scene: ${p.scene || ""}. Caption: ${p.caption || ""}`
-//             )
-//             .join("\n")
-//         )
-//         .join("\n\n");
-//     } else {
-//       storyText = script || "";
-//     }
-
-//     // 🧠 Step 3: Prompt for OpenAI
-//     const prompt = `
-// You are an expert educational AI quiz generator.
-
-// Context:
-// - Subject: ${subject}
-// - Concept: ${concept}
-// - Grade: ${grade}
-// - Reference Story (ignore dialogues):
-// ${storyText}
-
-// Task:
-// Create **6–8 adaptive multiple-choice questions (MCQs)** that gradually increase in difficulty:
-// 1. 2 easy
-// 2. 2 medium
-// 3. 2 hard
-// 4. 1–2 extreme
-
-// Rules:
-// - Each question must have **6–7 options**.
-// - Only **one correct answer**.
-// - Include:
-//   - "difficulty": one of ["easy", "medium", "hard", "extreme"]
-//   - "explanation": short conceptual reasoning
-//   - "hint": small tip without giving answer
-// - Each question should test progressively deeper understanding.
-
-// Return **strict JSON array**, sorted from easy → extreme.
-
-// Format:
-// [
-//   {
-//     "question": "string",
-//     "options": ["opt1", "opt2", "opt3", "opt4", "opt5", "opt6", "opt7"],
-//     "correctAnswer": "string",
-//     "difficulty": "easy|medium|hard|extreme",
-//     "explanation": "string",
-//     "hint": "string"
-//   }
-// ]
-// `;
-
-//     // 🧩 Step 4: Generate quiz from OpenAI
-//     const response = await openai.chat.completions.create({
-//       model: "gpt-4o",
-//       messages: [
-//         { role: "system", content: "Return valid JSON only, no markdown." },
-//         { role: "user", content: prompt },
-//       ],
-//       temperature: 0.7,
-//       max_tokens: 1300,
-//     });
-
-//     let raw = response.choices[0].message.content.trim();
-//     if (raw.startsWith("```")) raw = raw.replace(/```json|```/g, "").trim();
-
-//     let questions;
-//     try {
-//       questions = JSON.parse(raw);
-//       if (!Array.isArray(questions)) throw new Error("Invalid JSON array");
-//     } catch (err) {
-//       return res.status(500).json({
-//         error: "Invalid JSON from OpenAI",
-//         details: err.message,
-//         raw,
-//       });
-//     }
-
-//     // 🧩 Step 5: Create new quiz
-//     const quiz = await HardcoreQuiz.create({
-//       comicId,
-//       user_id: req.user.login_data._id,
-//       status: "draft",
-//       mode: "adaptive", // changed mode name to reflect all levels
-//     });
-
-//     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
-
-//     // 🧩 Step 6: Save questions in DB
-//     const savedQuestions = [];
-//     for (const q of questions) {
-//       const newQ = await HardcoreQuizQuestion.create({
-//         quizId: quiz._id,
-//         question: q.question,
-//         options: q.options,
-//         correctAnswer: q.correctAnswer,
-//         difficulty: q.difficulty,
-//         explanation: q.explanation,
-//         hint: q.hint,
-//       });
-//       savedQuestions.push(newQ._id);
-//     }
-
-//     quiz.questions = savedQuestions;
-//     await quiz.save();
-
-//     // 🧩 Step 7: Return response
-//     res.json({
-//       message: "Adaptive quiz successfully created (easy → extreme).",
-//       quizId: quiz._id,
-//       questions,
-//       alreadyExists: false,
-//     });
-//   } catch (error) {
-//     console.error("Adaptive Quiz Generation Error:", error);
-//     res.status(500).json({
-//       error: "Failed to generate adaptive quiz",
-//       details: error.message,
-//     });
-//   }
-// };
-
 
 const generateHardcoreQuiz = async (req, res) => {
   const { comicId, script, subject, concept, grade } = req.body;
@@ -199,6 +50,48 @@ const generateHardcoreQuiz = async (req, res) => {
     }
 
     // 🧠 Step 3: New concept-based prompt
+    //     const prompt = `
+    // You are an advanced educational content creator specializing in adaptive learning.
+
+    // Context:
+    // - Subject: ${subject || "General Knowledge"}
+    // - Concept: ${concept || ""}
+    // - Grade Level: ${grade || "School Level"}
+    // - Reference (optional): ${storyContext.slice(0, 500)}  // for context only, ignore storylines or characters.
+
+    // Your task:
+    // Generate **6–8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
+    // Questions must progress in difficulty:
+    // 1. 2 easy
+    // 2. 2 medium
+    // 3. 2 hard
+    // 4. 1–2 extreme
+
+    // Guidelines:
+    // - Base all questions strictly on the **concept and subject**, not on the story or characters.
+    // - Each question must assess reasoning, application, or critical thinking.
+    // - Avoid asking about comic scenes, dialogues, or fictional details.
+    // - Each question must have **6–7 options** with exactly **one correct answer**.
+    // - Include fields:
+    //   • "difficulty": one of ["easy","medium","hard","extreme"]
+    //   • "explanation": a short reasoning of why the correct answer is right
+    //   • "hint": a small tip that helps but doesn’t reveal the answer.
+
+    // Return only valid JSON array, sorted from easy → extreme.
+
+    // Format:
+    // [
+    //   {
+    //     "question": "string",
+    //     "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"],
+    //     "correctAnswer": "string",
+    //     "difficulty": "easy|medium|hard|extreme",
+    //     "explanation": "string",
+    //     "hint": "string"
+    //   }
+    // ]
+    // `;
+
     const prompt = `
 You are an advanced educational content creator specializing in adaptive learning.
 
@@ -209,24 +102,36 @@ Context:
 - Reference (optional): ${storyContext.slice(0, 500)}  // for context only, ignore storylines or characters.
 
 Your task:
-Generate **6–8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
-Questions must progress in difficulty:
-1. 2 easy
-2. 2 medium
-3. 2 hard
-4. 1–2 extreme
+Generate **8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
+
+Each question must assess reasoning, application, or critical thinking — not memory recall.
+
+Questions must be created in **two rounds**, each round containing one of each difficulty:
+- Round 1:
+  1. easy
+  2. medium
+  3. hard
+  4. extreme
+- Round 2:
+  5. easy
+  6. medium
+  7. hard
+  8. extreme
 
 Guidelines:
-- Base all questions strictly on the **concept and subject**, not on the story or characters.
-- Each question must assess reasoning, application, or critical thinking.
+- Base all questions strictly on the **concept and subject**, not on any story or characters.
 - Avoid asking about comic scenes, dialogues, or fictional details.
 - Each question must have **6–7 options** with exactly **one correct answer**.
-- Include fields:
-  • "difficulty": one of ["easy","medium","hard","extreme"]
-  • "explanation": a short reasoning of why the correct answer is right
-  • "hint": a small tip that helps but doesn’t reveal the answer.
+- Difficulty progression must strictly follow: easy → medium → hard → extreme → easy → medium → hard → extreme.
+- Include these fields for each question:
+  • "question": the actual question text  
+  • "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"]  
+  • "correctAnswer": one string matching exactly one of the options  
+  • "difficulty": one of ["easy","medium","hard","extreme"]  
+  • "explanation": a short reasoning of why the correct answer is right  
+  • "hint": a small tip that helps but doesn’t reveal the answer  
 
-Return only valid JSON array, sorted from easy → extreme.
+Return only **valid JSON array**, following the required 8-question order.
 
 Format:
 [
@@ -240,6 +145,7 @@ Format:
   }
 ]
 `;
+
 
     // 🧩 Step 4: Generate quiz via OpenAI
     const response = await openai.chat.completions.create({
@@ -311,139 +217,6 @@ Format:
   }
 };
 
-
-
-// const getHardcoreQuizByComic = async (req, res) => {
-//   try {
-//     const { id } = req.params; // comicId
-//     const userId = req.query.userId || req.params.userId;
-
-//     const quiz = await HardcoreQuiz.findOne({ comicId: id })
-//       .read("primary")
-//       .populate({ path: "questions", options: { lean: true } })
-//       .lean();
-
-//     if (!quiz) {
-//       return res.status(404).json({ error: "Hardcore Quiz not found" });
-//     }
-
-//     // Default
-//     let hasAttempted = false;
-//     let hasAttemptedAllQuestion = false;
-//     let hasHardCoreChanceLeft = 1;
-//     let activeSubmission = null;
-//     let attemptedAnswers = {};
-//     let attemptNumber = 0; // 👈 New
-
-//     if (userId) {
-//       const userObjectId = new mongoose.Types.ObjectId(userId);
-//       const todayStart = new Date();
-//       todayStart.setHours(0, 0, 0, 0);
-//       const todayEnd = new Date();
-//       todayEnd.setHours(23, 59, 59, 999);
-
-//       // 🔹 Fetch all submissions by user
-//       const submissions = await HardcoreQuizSubmission.find({
-//         quizId: quiz._id,
-//         userId: userObjectId,
-//       })
-//         .sort({ createdAt: -1 })
-//         .lean();
-
-//       if (submissions.length > 0) hasAttempted = true;
-
-//       // 🔹 Find active submission
-//       activeSubmission = submissions.find((s) => s.isActive) || null;
-
-//       // 🔹 Count finished attempts today
-//       const finishedAttemptsToday = submissions.filter(
-//         (s) =>
-//           s.isFinished &&
-//           s.createdAt >= todayStart &&
-//           s.createdAt <= todayEnd
-//       ).length;
-
-//       hasHardCoreChanceLeft = finishedAttemptsToday >= 2 ? 0 : 1;
-
-//       // 🔹 Determine attempt number
-//       if (activeSubmission) {
-//         attemptNumber = activeSubmission.attemptNumber;
-//       } else if (finishedAttemptsToday > 0 && finishedAttemptsToday < 2) {
-//         attemptNumber = finishedAttemptsToday + 1;
-//       } else if (finishedAttemptsToday >= 2) {
-//         attemptNumber = 2;
-//       } else {
-//         attemptNumber = 1;
-//       }
-
-//       // 🔹 Merge all attempted answers (for showing progress)
-//       for (const sub of submissions) {
-//         for (const ans of sub.answers || []) {
-//           attemptedAnswers[ans.questionId.toString()] = {
-//             selectedAnswer: ans.selectedAnswer,
-//             isCorrect: ans.isCorrect,
-//             coins: ans.coins,
-//             exp: ans.exp,
-//           };
-//         }
-//       }
-
-//       // 🔹 Check if user finished all questions correctly
-//       const latestFinished = submissions.find((s) => s.isFinished);
-//       if (
-//         latestFinished &&
-//         latestFinished.answers.length === quiz.questions.length &&
-//         latestFinished.answers.every((a) => a.isCorrect)
-//       ) {
-//         hasAttemptedAllQuestion = true;
-//       }
-//     }
-
-//     // 🧠 Merge question data
-//     const questionsWithAttemptStatus = quiz.questions.map((q) => {
-//       const attempt = attemptedAnswers[q._id.toString()];
-//       return {
-//         ...q,
-//         locked: false,
-//         hasAttempted: !!attempt,
-//         selectedAnswer: attempt ? attempt.selectedAnswer : null,
-//         isCorrect: attempt ? attempt.isCorrect : null,
-//         coins: attempt ? attempt.coins : 0,
-//         exp: attempt ? attempt.exp : 0,
-//       };
-//     });
-
-//     // ✅ Final Response
-//     return res.json({
-//       quiz: {
-//         ...quiz,
-//         questions: questionsWithAttemptStatus,
-//       },
-//       hasAttempted,
-//       hasAttemptedAllQuestion,
-//       hasHardCoreChanceLeft,
-//       attemptNumber, // 👈 included here
-//       activeSubmission: activeSubmission
-//         ? {
-//             _id: activeSubmission._id,
-//             attemptNumber: activeSubmission.attemptNumber,
-//             score: activeSubmission.score,
-//             coinsEarned: activeSubmission.coinsEarned,
-//             expEarned: activeSubmission.expEarned,
-//             answers: activeSubmission.answers.map((a) => ({
-//               questionId: a.questionId,
-//               isCorrect: a.isCorrect,
-//               selectedAnswer: a.selectedAnswer,
-//             })),
-//             isActive: activeSubmission.isActive,
-//           }
-//         : null,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching Hardcore Quiz:", error);
-//     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
-//   }
-// };
 
 const getHardcoreQuizByComic = async (req, res) => {
   try {
