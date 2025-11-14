@@ -112,11 +112,11 @@ const signupWithEmail = async (req, res) => {
 
 
         await mailer.sendMail({
-            from: '"comics" <Comicsapp@gmail.com>', // sender address
+            from: '"kridemy" <notifications@kridemy.com>', // sender address
             to: email, // list of receivers
-            subject: "comics account verification link", // Subject line
+            subject: "kridemy account verification link", // Subject line
             text: "Verification link", // plain text body
-            html: "Hi! " + firstname + ",<br><br>Your Email verification OTP is:" + otp + "<br><br> Any issues please email Comicsapp@gmail.com. <br><br> Reminder Team", // html body
+            html: "Hi! " + firstname + ",<br><br>Your Email verification OTP is:" + otp + "<br><br> Any issues please email notifications@kridemy.com. <br><br> Reminder Team", // html body
         });
 
 
@@ -269,11 +269,11 @@ const loginWithEmail = async (req, res) => {
 
 
             await mailer.sendMail({
-                from: '"comics" <Comicsapp@gmail.com>',
+                from: '"kridemy" <notifications@kridemy.com>',
                 to: email,
-                subject: "comics account verification link",
+                subject: "kridemy account verification link",
                 text: "Verification link",
-                html: `Hi! ${isExist.firstname},<br><br>Your Email verification OTP is: ${newOtp}<br><br>Any issues please email Comicsapp@gmail.com.<br><br>Reminder Team`
+                html: `Hi! ${isExist.firstname},<br><br>Your Email verification OTP is: ${newOtp}<br><br>Any issues please email notifications@kridemy.com.<br><br>Reminder Team`
             });
 
             return res.send({
@@ -365,7 +365,7 @@ const forgotPassword = async (req, res) => {
         await user.save();
 
         await mailer.sendMail({
-            from: '"Comics App" <comicsapp@gmail.com>',
+            from: '"kridemy" <notifications@kridemy.com>',
             to: email,
             subject: "Password Reset OTP",
             html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
@@ -414,11 +414,11 @@ const resendOtp = async (req, res) => {
 
 
         await mailer.sendMail({
-            from: '"comics" <Comicsapp@gmail.com>', // sender address
+            from: '"kidemy" <notifications@kridemy.com>', // sender address
             to: email, // list of receivers
-            subject: "comics Reset Password OTP", // Subject line
+            subject: "kridemy Reset Password OTP", // Subject line
             text: "Reset Password OTP", // plain text body
-            html: "Hello " + data.first_name + ",<br><br>To reset your password please enter the below verification code into comics app when prompted:" + data.otp + "<br><br> If you have any trouble changing your password please feel free to email us at Comicsapp@gmail.com. <br> <br><br> Best regards, <br><br> Wake wall app team", // html body
+            html: "Hello " + data.first_name + ",<br><br>To reset your password please enter the below verification code into comics app when prompted:" + data.otp + "<br><br> If you have any trouble changing your password please feel free to email us at notifications@kridemy.com. <br> <br><br> Best regards, <br><br> Wake wall app team", // html body
 
         });
 

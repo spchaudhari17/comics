@@ -13,6 +13,168 @@ const openai = new OpenAI({
 
 
 
+// const generateHardcoreQuiz = async (req, res) => {
+//   const { comicId, script, subject, concept, grade } = req.body;
+
+//   try {
+//     // 🧠 Step 1: Check if quiz already exists
+//     const existingQuiz = await HardcoreQuiz.findOne({ comicId })
+//       .populate({
+//         path: "questions",
+//         select: "question options correctAnswer difficulty explanation hint",
+//       })
+//       .lean();
+
+//     if (existingQuiz) {
+//       return res.status(200).json({
+//         message: "Adaptive quiz already exists for this comic.",
+//         quizId: existingQuiz._id,
+//         quiz: existingQuiz,
+//         alreadyExists: true,
+//       });
+//     }
+
+//     // 🧩 Step 2: Extract minimal reference context from script (no story use)
+//     // Just use a short trimmed version to give GPT background if needed
+//     let storyContext = "";
+//     if (Array.isArray(script)) {
+//       storyContext = script
+//         .map((page) =>
+//           page.panels
+//             .map((p) => `${p.caption || ""}`)
+//             .join(" ")
+//         )
+//         .join(" ");
+//     } else {
+//       storyContext = script || "";
+//     }
+
+//     const prompt = `
+// You are an advanced educational content creator specializing in adaptive learning.
+
+// Context:
+// - Subject: ${subject || "General Knowledge"}
+// - Concept: ${concept || ""}
+// - Grade Level: ${grade || "School Level"}
+// - Reference (optional): ${storyContext.slice(0, 500)}  // for context only, ignore storylines or characters.
+
+// Your task:
+// Generate **8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
+
+// Each question must assess reasoning, application, or critical thinking — not memory recall.
+
+// Questions must be created in **two rounds**, each round containing one of each difficulty:
+// - Round 1:
+//   1. easy
+//   2. medium
+//   3. hard
+//   4. extreme
+// - Round 2:
+//   5. easy
+//   6. medium
+//   7. hard
+//   8. extreme
+
+// Guidelines:
+// - Base all questions strictly on the **concept and subject**, not on any story or characters.
+// - Avoid asking about comic scenes, dialogues, or fictional details.
+// - Each question must have **6–7 options** with exactly **one correct answer**.
+// - Difficulty progression must strictly follow: easy → medium → hard → extreme → easy → medium → hard → extreme.
+// - Include these fields for each question:
+//   • "question": the actual question text  
+//   • "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"]  
+//   • "correctAnswer": one string matching exactly one of the options  
+//   • "difficulty": one of ["easy","medium","hard","extreme"]  
+//   • "explanation": a short reasoning of why the correct answer is right  
+//   • "hint": a small tip that helps but doesn’t reveal the answer  
+
+// Return only **valid JSON array**, following the required 8-question order.
+
+// Format:
+// [
+//   {
+//     "question": "string",
+//     "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"],
+//     "correctAnswer": "string",
+//     "difficulty": "easy|medium|hard|extreme",
+//     "explanation": "string",
+//     "hint": "string"
+//   }
+// ]
+// `;
+
+
+//     // 🧩 Step 4: Generate quiz via OpenAI
+//     const response = await openai.chat.completions.create({
+//       model: "gpt-4o",
+//       messages: [
+//         { role: "system", content: "Return only strict valid JSON, no markdown." },
+//         { role: "user", content: prompt },
+//       ],
+//       temperature: 0.7,
+//       max_tokens: 1500,
+//     });
+
+//     let raw = response.choices[0].message.content.trim();
+//     if (raw.startsWith("```")) raw = raw.replace(/```json|```/g, "").trim();
+
+//     let questions;
+//     try {
+//       questions = JSON.parse(raw);
+//       if (!Array.isArray(questions)) throw new Error("Invalid JSON array");
+//     } catch (err) {
+//       return res.status(500).json({
+//         error: "Invalid JSON from OpenAI",
+//         details: err.message,
+//         raw,
+//       });
+//     }
+
+//     // 🧩 Step 5: Create new quiz
+//     const quiz = await HardcoreQuiz.create({
+//       comicId,
+//       user_id: req.user.login_data._id,
+//       status: "draft",
+//       mode: "adaptive", // adaptive quiz
+//     });
+
+//     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
+
+//     // 🧩 Step 6: Save questions in DB
+//     const savedQuestions = [];
+//     for (const q of questions) {
+//       const newQ = await HardcoreQuizQuestion.create({
+//         quizId: quiz._id,
+//         question: q.question,
+//         options: q.options,
+//         correctAnswer: q.correctAnswer,
+//         difficulty: q.difficulty,
+//         explanation: q.explanation,
+//         hint: q.hint,
+//       });
+//       savedQuestions.push(newQ._id);
+//     }
+
+//     quiz.questions = savedQuestions;
+//     await quiz.save();
+
+//     // 🧩 Step 7: Response
+//     res.json({
+//       message: "Concept-based adaptive quiz successfully created (easy → extreme).",
+//       quizId: quiz._id,
+//       questions,
+//       alreadyExists: false,
+//     });
+//   } catch (error) {
+//     console.error("Adaptive Quiz Generation Error:", error);
+//     res.status(500).json({
+//       error: "Failed to generate adaptive quiz",
+//       details: error.message,
+//     });
+//   }
+// };
+
+
 const generateHardcoreQuiz = async (req, res) => {
   const { comicId, script, subject, concept, grade } = req.body;
 
@@ -34,8 +196,7 @@ const generateHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // 🧩 Step 2: Extract minimal reference context from script (no story use)
-    // Just use a short trimmed version to give GPT background if needed
+    // 🧩 Step 2: Extract safe story context (only educational text)
     let storyContext = "";
     if (Array.isArray(script)) {
       storyContext = script
@@ -49,91 +210,49 @@ const generateHardcoreQuiz = async (req, res) => {
       storyContext = script || "";
     }
 
-    // 🧠 Step 3: New concept-based prompt
-    //     const prompt = `
-    // You are an advanced educational content creator specializing in adaptive learning.
+    // Limit context to avoid overflow, but still detailed enough
+    const trimmedContext = storyContext.slice(0, 1500);
 
-    // Context:
-    // - Subject: ${subject || "General Knowledge"}
-    // - Concept: ${concept || ""}
-    // - Grade Level: ${grade || "School Level"}
-    // - Reference (optional): ${storyContext.slice(0, 500)}  // for context only, ignore storylines or characters.
-
-    // Your task:
-    // Generate **6–8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
-    // Questions must progress in difficulty:
-    // 1. 2 easy
-    // 2. 2 medium
-    // 3. 2 hard
-    // 4. 1–2 extreme
-
-    // Guidelines:
-    // - Base all questions strictly on the **concept and subject**, not on the story or characters.
-    // - Each question must assess reasoning, application, or critical thinking.
-    // - Avoid asking about comic scenes, dialogues, or fictional details.
-    // - Each question must have **6–7 options** with exactly **one correct answer**.
-    // - Include fields:
-    //   • "difficulty": one of ["easy","medium","hard","extreme"]
-    //   • "explanation": a short reasoning of why the correct answer is right
-    //   • "hint": a small tip that helps but doesn’t reveal the answer.
-
-    // Return only valid JSON array, sorted from easy → extreme.
-
-    // Format:
-    // [
-    //   {
-    //     "question": "string",
-    //     "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"],
-    //     "correctAnswer": "string",
-    //     "difficulty": "easy|medium|hard|extreme",
-    //     "explanation": "string",
-    //     "hint": "string"
-    //   }
-    // ]
-    // `;
-
+    // 🧠 Step 3: STRICT script-based prompt (super improved)
     const prompt = `
-You are an advanced educational content creator specializing in adaptive learning.
+You are an advanced educational quiz creator.
 
-Context:
-- Subject: ${subject || "General Knowledge"}
-- Concept: ${concept || ""}
-- Grade Level: ${grade || "School Level"}
-- Reference (optional): ${storyContext.slice(0, 500)}  // for context only, ignore storylines or characters.
+Your rules:
+- All questions MUST be based ONLY on the comic script provided.
+- No external knowledge, no advanced theory, no off-topic content.
+- Questions must remain within the concept actually shown or implied in the script.
+- The script is your ONLY knowledge source.
+- You may create reasoning and application questions, but only within script boundaries.
 
-Your task:
-Generate **8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
+Comic Script (your ONLY content source):
+"${trimmedContext}"
 
-Each question must assess reasoning, application, or critical thinking — not memory recall.
+Task:
+Create EXACTLY 8 multiple-choice questions based only on what the script teaches.
 
-Questions must be created in **two rounds**, each round containing one of each difficulty:
-- Round 1:
-  1. easy
-  2. medium
-  3. hard
-  4. extreme
-- Round 2:
-  5. easy
-  6. medium
-  7. hard
-  8. extreme
+Difficulty pattern (mandatory):
+1. easy
+2. medium
+3. hard
+4. extreme
+5. easy
+6. medium
+7. hard
+8. extreme
 
-Guidelines:
-- Base all questions strictly on the **concept and subject**, not on any story or characters.
-- Avoid asking about comic scenes, dialogues, or fictional details.
-- Each question must have **6–7 options** with exactly **one correct answer**.
-- Difficulty progression must strictly follow: easy → medium → hard → extreme → easy → medium → hard → extreme.
-- Include these fields for each question:
-  • "question": the actual question text  
-  • "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"]  
-  • "correctAnswer": one string matching exactly one of the options  
-  • "difficulty": one of ["easy","medium","hard","extreme"]  
-  • "explanation": a short reasoning of why the correct answer is right  
-  • "hint": a small tip that helps but doesn’t reveal the answer  
+Requirements for each question:
+- Must connect directly to ideas or explanations found in the script.
+- 6–7 options per question.
+- Only one correct answer (must match one option exactly).
+- Include:
+  • "question"
+  • "options"
+  • "correctAnswer"
+  • "difficulty"
+  • "explanation" (must reference something from the script)
+  • "hint" (helpful but does not reveal answer)
 
-Return only **valid JSON array**, following the required 8-question order.
-
-Format:
+Return ONLY a strict JSON array in this format:
 [
   {
     "question": "string",
@@ -147,15 +266,15 @@ Format:
 `;
 
 
-    // 🧩 Step 4: Generate quiz via OpenAI
+    // 🧠 Step 4: Generate quiz
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: "Return only strict valid JSON, no markdown." },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
-      max_tokens: 1500,
+      temperature: 0.6,
+      max_tokens: 2000,
     });
 
     let raw = response.choices[0].message.content.trim();
@@ -173,17 +292,17 @@ Format:
       });
     }
 
-    // 🧩 Step 5: Create new quiz
+    // 🧩 Step 5: Create quiz document
     const quiz = await HardcoreQuiz.create({
       comicId,
       user_id: req.user.login_data._id,
       status: "draft",
-      mode: "adaptive", // adaptive quiz
+      mode: "adaptive",
     });
 
     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
 
-    // 🧩 Step 6: Save questions in DB
+    // 🧩 Step 6: Save questions
     const savedQuestions = [];
     for (const q of questions) {
       const newQ = await HardcoreQuizQuestion.create({
@@ -201,13 +320,14 @@ Format:
     quiz.questions = savedQuestions;
     await quiz.save();
 
-    // 🧩 Step 7: Response
+    // 🧩 Step 7: Send response
     res.json({
-      message: "Concept-based adaptive quiz successfully created (easy → extreme).",
+      message: "Script-based adaptive quiz created successfully.",
       quizId: quiz._id,
       questions,
       alreadyExists: false,
     });
+
   } catch (error) {
     console.error("Adaptive Quiz Generation Error:", error);
     res.status(500).json({
