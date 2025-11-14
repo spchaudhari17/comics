@@ -63,7 +63,11 @@ app.use(
 // app.use(cors(corsOptions));
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
-app.use(fileUpload());
+// app.use(fileUpload());
+app.use(fileUpload({
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB allowed
+}));
+
 
 app.use("/api", router)
 
