@@ -25,6 +25,24 @@ const generateQuiz = async (req, res) => {
   const { comicId, script, subject, concept, grade } = req.body;
 
   try {
+
+    const existingQuiz = await Quiz.findOne({ comicId })
+      .populate({
+        path: "questions",
+        select: "question options correctAnswer difficulty explanation",
+      })
+      .lean();
+
+    if (existingQuiz) {
+      return res.status(200).json({
+        message: "Quiz already exists for this comic.",
+        quizId: existingQuiz._id,
+        questions: existingQuiz.questions,
+        alreadyExists: true,
+      });
+    }
+
+
     // -------- Clean story text (remove dialogues) --------
     let storyText = "";
     if (Array.isArray(script)) {

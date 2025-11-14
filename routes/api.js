@@ -113,7 +113,7 @@ router.post("/user/generate-hardcore-quiz", authentication, generateHardcoreQuiz
 //  Get Hardcore Quiz for a Comic (with userId - optional)
 router.get("/user/comic/:id/hardcore-quiz/:userId", getHardcoreQuizByComic);
 // Get Hardcore Quiz for a Comic (without userId)
-router.get("/user/comic/:id/hardcore-quiz", getHardcoreQuizByComic); 
+router.get("/user/comic/:id/hardcore-quiz", getHardcoreQuizByComic);
 router.post("/user/submit-hardcore-quiz", authentication, submitHardcoreQuiz);
 
 
