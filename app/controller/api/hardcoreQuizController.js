@@ -530,12 +530,64 @@ const POWER_CARD_COSTS = {
   changeQuestion: 600,
 };
 
+// const buyPowerCard = async (req, res) => {
+//   try {
+//     const { powerType, quantity = 1 } = req.body;
+//     const userId = req.user.login_data._id;
+
+//     // 🧠 Validate input key
+//     if (!POWER_CARD_COSTS[powerType]) {
+//       return res.status(400).json({
+//         error: true,
+//         message: "Invalid power card type.",
+//       });
+//     }
+
+//     const user = await User.findById(userId);
+//     if (!user)
+//       return res.status(404).json({ error: true, message: "User not found" });
+
+//     const cost = POWER_CARD_COSTS[powerType] * quantity;
+
+//     if (user.coins < cost) {
+//       return res.status(400).json({
+//         error: true,
+//         message: `Not enough coins. You need ${cost} coins.`,
+//       });
+//     }
+
+//     // 🪙 Deduct coins and add the card(s)
+//     user.coins -= cost;
+//     // user.gems = getGemsFromCoins(user.coins);
+//     user.powerCards[powerType] =
+//       (user.powerCards[powerType] || 0) + quantity;
+
+//     await user.save();
+
+//     res.json({
+//       message: `Purchased ${quantity} ${powerType} power card(s) successfully.`,
+//       powerType,
+//       quantity,
+//       cost,
+//       wallet: { coins: user.coins, gems: user.gems },
+//       powerCards: user.powerCards,
+//     });
+//   } catch (error) {
+//     console.error("Buy Power Card Error:", error);
+//     res.status(500).json({
+//       error: true,
+//       message: "Failed to buy power card",
+//       details: error.message,
+//     });
+//   }
+// };
+
 const buyPowerCard = async (req, res) => {
   try {
     const { powerType, quantity = 1 } = req.body;
     const userId = req.user.login_data._id;
 
-    // 🧠 Validate input key
+    // Validate input
     if (!POWER_CARD_COSTS[powerType]) {
       return res.status(400).json({
         error: true,
@@ -549,6 +601,7 @@ const buyPowerCard = async (req, res) => {
 
     const cost = POWER_CARD_COSTS[powerType] * quantity;
 
+    // Check coins
     if (user.coins < cost) {
       return res.status(400).json({
         error: true,
@@ -556,9 +609,10 @@ const buyPowerCard = async (req, res) => {
       });
     }
 
-    // 🪙 Deduct coins and add the card(s)
+    // Deduct coins ONLY — gems will stay same
     user.coins -= cost;
-    user.gems = getGemsFromCoins(user.coins);
+
+    // Add power card
     user.powerCards[powerType] =
       (user.powerCards[powerType] || 0) + quantity;
 
@@ -569,7 +623,7 @@ const buyPowerCard = async (req, res) => {
       powerType,
       quantity,
       cost,
-      wallet: { coins: user.coins, gems: user.gems },
+      wallet: { coins: user.coins, gems: user.gems }, // gems same
       powerCards: user.powerCards,
     });
   } catch (error) {

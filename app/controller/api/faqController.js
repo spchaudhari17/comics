@@ -31,6 +31,129 @@ function safeJsonParse(str) {
   }
 }
 
+// old with human charactors
+// const generateFAQs = async (req, res) => {
+//   const { comicId } = req.body;
+
+//   try {
+//     const comic = await Comic.findById(comicId).populate("styleId themeId subjectId");
+//     if (!comic) return res.status(404).json({ error: "Comic not found" });
+
+//     // ✅ Prevent duplicates
+//     const existingFAQs = await FAQ.find({ comicId });
+//     if (existingFAQs.length > 0) {
+//       return res.json({ faqs: existingFAQs });
+//     }
+
+//     const pages = JSON.parse(comic.prompt || "[]");
+//     const storyText = pages
+//       .map(p => p.panels.map(pp => `${pp.scene}: ${pp.caption}`).join("\n"))
+//       .join("\n\n");
+
+//     const faqPrompt = `
+// You are an educational assistant.
+// Generate 2–4 meaningful FAQs and answers based on the following comic.
+
+// Context:
+// - Subject: ${comic.subject || comic.subjectId?.name || "General Knowledge"}
+// - Concept: ${comic.concept || ""}
+// - Grade Level: ${comic.grade || "School Level"}
+
+// Comic Story (summary, ignore dialogues and characters): 
+// ${storyText}
+
+// Guidelines:
+// - FAQs must test conceptual understanding (definitions, reasoning, cause-effect, applications).
+// - Questions must be directly related to "${comic.concept}" and "${comic.subject}".
+// - ❌ Do NOT repeat information already covered in the comic storyline.
+// - ✅ Focus on additional insights, deeper clarifications, or real-world applications.
+// - Do NOT ask about characters, artwork, or dialogues.
+// - Keep answers short and clear.
+// - Return ONLY valid JSON.
+
+// Format:
+// [
+//   { "question": "string", "answer": "string" }
+// ]
+//     `;
+
+//     const response = await openai.chat.completions.create({
+//       model: "gpt-4o",
+//       messages: [
+//         { role: "system", content: "Return ONLY valid JSON, no markdown." },
+//         { role: "user", content: faqPrompt }
+//       ],
+//       temperature: 0.4,
+//       max_tokens: 800
+//     });
+
+//     const raw = response.choices[0].message.content.trim();
+//     const faqs = safeJsonParse(raw);
+
+//     const stylePrompt = comic.styleId?.prompt || "";
+//     const themePrompt = comic.themeId?.prompt || "";
+
+//     const faqImages = await Promise.all(
+//       faqs.map(async (faq, idx) => {
+//         const imgPrompt = `
+// Educational comic panel.
+// Theme: ${themePrompt}
+// Style: ${stylePrompt}
+
+// Panel 1: Student asks an educational question: "${faq.question}"
+// Panel 2: Teacher answers clearly: "${faq.answer}"
+//         `;
+
+//         const imgRes = await openai.images.generate({
+//           model: "gpt-image-1",
+//           prompt: imgPrompt,
+//           size: "1024x1536",
+//           n: 1,
+//         });
+
+//         let buffer;
+//         const imgData = imgRes.data[0];
+//         if (imgData.url) {
+//           const axiosRes = await axios.get(imgData.url, { responseType: "arraybuffer" });
+//           buffer = Buffer.from(axiosRes.data);
+//         } else if (imgData.b64_json) {
+//           buffer = Buffer.from(imgData.b64_json, "base64");
+//         }
+
+//         buffer = await sharp(buffer)
+//           .resize({ width: 1024 })
+//           .jpeg({ quality: 75 })
+//           .toBuffer();
+
+//         const fileName = `${Date.now()}_faq_page${idx + 1}.jpg`;
+//         const s3Upload = await upload_files("faqs", {
+//           name: fileName,
+//           data: buffer,
+//           mimetype: "image/jpeg",
+//         });
+
+//         const s3Key = `faqs/${fileName}`;
+
+//         const savedFAQ = await FAQ.create({
+//           comicId,
+//           question: faq.question,
+//           answer: faq.answer,
+//           imageUrl: s3Upload,
+//           s3Key,
+//         });
+
+//         return savedFAQ.toObject();
+//       })
+//     );
+
+//     res.json({ faqs: faqImages });
+//   } catch (err) {
+//     console.error("FAQ Error:", err);
+//     res.status(500).json({ error: "FAQ generation failed", details: err.message });
+//   }
+// };
+
+
 
 const generateFAQs = async (req, res) => {
   const { comicId } = req.body;
@@ -39,7 +162,7 @@ const generateFAQs = async (req, res) => {
     const comic = await Comic.findById(comicId).populate("styleId themeId subjectId");
     if (!comic) return res.status(404).json({ error: "Comic not found" });
 
-    // ✅ Prevent duplicates
+    // Prevent duplicates
     const existingFAQs = await FAQ.find({ comicId });
     if (existingFAQs.length > 0) {
       return res.json({ faqs: existingFAQs });
@@ -66,9 +189,9 @@ Guidelines:
 - FAQs must test conceptual understanding (definitions, reasoning, cause-effect, applications).
 - Questions must be directly related to "${comic.concept}" and "${comic.subject}".
 - ❌ Do NOT repeat information already covered in the comic storyline.
-- ✅ Focus on additional insights, deeper clarifications, or real-world applications.
-- Do NOT ask about characters, artwork, or dialogues.
-- Keep answers short and clear.
+- ❌ No questions about characters, artwork, or dialogues.
+- ✔️ Focus on deeper clarifications or real-world application.
+- Answers must be short.
 - Return ONLY valid JSON.
 
 Format:
@@ -96,12 +219,16 @@ Format:
     const faqImages = await Promise.all(
       faqs.map(async (faq, idx) => {
         const imgPrompt = `
-Educational comic panel.
+Create an educational diagram.
 Theme: ${themePrompt}
 Style: ${stylePrompt}
 
-Panel 1: Student asks an educational question: "${faq.question}"
-Panel 2: Teacher answers clearly: "${faq.answer}"
+Requirements:
+- Show ONLY diagrams (no humans, no characters).
+- Use flowcharts, labeled diagrams, concept maps, or clean infographics.
+- Visualize the concept from the question: "${faq.question}"
+- Illustrate or label the explanation: "${faq.answer}"
+- Clean academic style. School-friendly. High clarity.
         `;
 
         const imgRes = await openai.images.generate({
@@ -113,6 +240,7 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
 
         let buffer;
         const imgData = imgRes.data[0];
+
         if (imgData.url) {
           const axiosRes = await axios.get(imgData.url, { responseType: "arraybuffer" });
           buffer = Buffer.from(axiosRes.data);
@@ -153,18 +281,6 @@ Panel 2: Teacher answers clearly: "${faq.answer}"
   }
 };
 
-
-
-
-// const listFAQs = async (req, res) => {
-//   try {
-//     const { comicId } = req.params;
-//     const faqs = await FAQ.find({ comicId });
-//     res.json({ faqs });
-//   } catch (err) {
-//     res.status(500).json({ error: "Failed to fetch FAQs" });
-//   }
-// };
 
 
 const listFAQs = async (req, res) => {

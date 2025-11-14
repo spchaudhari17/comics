@@ -486,6 +486,30 @@ const sanitizeText = (text) => {
     return safeText;
 };
 
+
+const isDiagramContent = (text = "") => {
+    const diagramKeywords = [
+        "process", "cycle", "flow", "diagram", "chart", "structure",
+        "system", "life cycle", "workflow", "layers", "components",
+        "labeled", "map", "concept", "explain", "steps", "sequence"
+    ];
+
+    const lower = text.toLowerCase();
+    return diagramKeywords.some(word => lower.includes(word));
+};
+
+const getDiagramDetailBooster = () => `
+IMPORTANT: SINCE THIS IS A DIAGRAM, FOLLOW THIS STRICTLY:
+- Create a high-detail educational diagram.
+- Add clear labels, arrows, sections, and visual explanations.
+- Use boxes, nodes, labels, pointers, structured layout.
+- Make the diagram rich, complete, and deeply explanatory.
+- No humans, no scenes — ONLY diagram elements.
+- High clarity, school textbook–style visualization.
+`;
+
+
+
 // Retry-safe image generation
 const generateImageWithRetry = async (prompt, retries = 3) => {
     let currentPrompt = prompt;
@@ -535,6 +559,8 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
     throw new Error("Max retries exceeded for image generation");
 };
 
+
+
 // ---------------------- Main Image Generation ----------------------
 
 
@@ -545,33 +571,41 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //     try {
 //         const userId = req.user.login_data._id;
 
-//         // 🧮 Weekly limit check
-//         const oneWeekAgo = new Date();
-//         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-//         const comicCount = await Comic.countDocuments({
-//             user_id: userId,
-//             createdAt: { $gte: oneWeekAgo },
-//             pdfUrl: { $exists: true, $ne: null },
-//         });
+//         // 🧮 Weekly limit check (skipped for special user)
+//         const SPECIAL_USER_ID = "689cb1ca766520d85d519370";
 
-//         if (comicCount >= 5) {
-//             return res.status(403).json({
-//                 error:
-//                     "You have reached your weekly limit of 5 comics. Please wait until next week.",
+//         if (String(userId) !== SPECIAL_USER_ID) {
+//             const oneWeekAgo = new Date();
+//             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+//             const comicCount = await Comic.countDocuments({
+//                 user_id: userId,
+//                 createdAt: { $gte: oneWeekAgo },
+//                 pdfUrl: { $exists: true, $ne: null },
 //             });
+
+//             if (comicCount >= 5) {
+//                 return res.status(403).json({
+//                     error:
+//                         "You have reached your weekly limit of 5 comics. Please wait until next week.",
+//                 });
+//             }
+//         } else {
+//             console.log(`🆓 Unlimited comic generation enabled for special user: ${userId}`);
 //         }
 
+//         // 🧩 Fetch the comic & style prompt
 //         const comic = await Comic.findById(comicId).populate("styleId");
 //         if (!comic) return res.status(404).json({ error: "Comic not found" });
 
-//         const stylePrompt = comic.styleId.prompt;
+//         const stylePrompt = comic.styleId?.prompt || "";
 //         const characterReferences = {};
 //         const imageUrls = [];
 
-//         // 1️⃣ Fetch existing pages to avoid regenerating
+//         // 1️⃣ Fetch existing pages to skip regeneration
 //         const existingPages = await ComicPage.find({ comicId });
 //         const existingPageMap = new Map(
-//             existingPages.map(p => [p.pageNumber, p.imageUrl])
+//             existingPages.map((p) => [p.pageNumber, p.imageUrl])
 //         );
 
 //         for (const page of pages) {
@@ -582,34 +616,41 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                     imageUrls.push({
 //                         page: page.page,
 //                         imageUrl: existingPageMap.get(page.page),
-//                         skipped: true
+//                         skipped: true,
 //                     });
 //                     continue;
 //                 }
 
+//                 // 🧩 Skip empty panels
 //                 if (!Array.isArray(page.panels) || page.panels.length === 0) {
 //                     console.warn(`⚠️ Page ${page.page} has no panels — skipping.`);
 //                     imageUrls.push({ page: page.page, skipped: true });
 //                     continue;
 //                 }
 
-//                 // Build prompt
-//                 const pagePrompt = page.panels.map((p, idx) => {
-//                     const dialogues = Array.isArray(p.dialogue) ? p.dialogue : [];
-//                     const dialogueText = dialogues
-//                         .map((d) => {
-//                             if (d && d.character && !characterReferences[d.character]) {
-//                                 characterReferences[d.character] = null;
-//                             }
-//                             return d && d.character && d.text
-//                                 ? `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`
-//                                 : "";
-//                         })
-//                         .filter(Boolean)
-//                         .join(" ");
-//                     return `Panel ${idx + 1}: Scene: ${sanitizeText(p.scene || "")}. Caption: ${sanitizeText(p.caption || "")}. Dialogue: ${dialogueText}`;
-//                 }).join("\n");
+//                 // 🧠 Build prompt from panels
+//                 const pagePrompt = page.panels
+//                     .map((p, idx) => {
+//                         const dialogues = Array.isArray(p.dialogue) ? p.dialogue : [];
+//                         const dialogueText = dialogues
+//                             .map((d) => {
+//                                 if (d && d.character && !characterReferences[d.character]) {
+//                                     characterReferences[d.character] = null;
+//                                 }
+//                                 return d && d.character && d.text
+//                                     ? `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`
+//                                     : "";
+//                             })
+//                             .filter(Boolean)
+//                             .join(" ");
 
+//                         return `Panel ${idx + 1}: Scene: ${sanitizeText(
+//                             p.scene || ""
+//                         )}. Caption: ${sanitizeText(p.caption || "")}. Dialogue: ${dialogueText}`;
+//                     })
+//                     .join("\n");
+
+//                 // 👩‍🎨 Character references for consistency
 //                 let referencesText = "";
 //                 for (const [character, refUrl] of Object.entries(characterReferences)) {
 //                     referencesText += refUrl
@@ -617,6 +658,7 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                         : `Generate ${sanitizeText(character)} consistently across all pages.\n`;
 //                 }
 
+//                 // 🎨 Final AI prompt
 //                 const fullPrompt = `
 // Create an educational comic page suitable for children ages 6–12.
 // The content must be G-rated, safe, educational, positive, and friendly.
@@ -628,10 +670,14 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 // Page description:
 // ${pagePrompt}
 
-// Important: This comic is for educational purposes only. All characters are friendly and positive.
+// Important: This comic is for educational purposes only.
+// All characters are friendly and positive.
 // Generate safe, child-appropriate imagery only.
-//                 `;
+//         `;
 
+//                 console.log(`🎨 Generating image for page ${page.page}...`);
+
+//                 // 🧠 Generate image
 //                 const imageResponse = await generateImageWithRetry(fullPrompt);
 
 //                 if (!imageResponse.data || !imageResponse.data[0]) {
@@ -641,18 +687,23 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                 const imgData = imageResponse.data[0];
 //                 let buffer;
 
+//                 // 🖼️ Fetch or decode image
 //                 if (imgData.url) {
 //                     const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
 //                     buffer = Buffer.from(response.data);
 //                 } else if (imgData.b64_json) {
 //                     buffer = Buffer.from(imgData.b64_json, "base64");
+//                 } else {
+//                     throw new Error("Invalid image data format.");
 //                 }
 
+//                 // 🧩 Resize and optimize
 //                 buffer = await sharp(buffer)
 //                     .resize({ width: 1024 })
 //                     .jpeg({ quality: 75 })
 //                     .toBuffer();
 
+//                 // 🪣 Upload to S3
 //                 const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
 //                 const s3Upload = await upload_files("comics", {
 //                     name: fileName,
@@ -663,7 +714,7 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                 const imageUrl = s3Upload;
 //                 const s3Key = `comics/${fileName}`;
 
-//                 // Safe character reference update
+//                 // 👩‍🎨 Update character references
 //                 if (Array.isArray(page.panels)) {
 //                     page.panels.forEach((panel) => {
 //                         const dialogues = Array.isArray(panel.dialogue)
@@ -677,6 +728,7 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                     });
 //                 }
 
+//                 // 💾 Save ComicPage in DB
 //                 await ComicPage.findOneAndUpdate(
 //                     { comicId, pageNumber: page.page },
 //                     {
@@ -692,8 +744,10 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                 );
 
 //                 imageUrls.push({ page: page.page, imageUrl });
+
+//                 console.log(`✅ Page ${page.page} generated successfully.`);
 //             } catch (error) {
-//                 console.error(`Error generating image for page ${page.page}:`, error);
+//                 console.error(`❌ Error generating image for page ${page.page}:`, error);
 //                 imageUrls.push({
 //                     page: page.page,
 //                     error: true,
@@ -701,15 +755,17 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 //                 });
 //             }
 
-//             // Delay to prevent throttling
+//             // ⏱️ Delay between pages (1 sec)
 //             await new Promise((r) => setTimeout(r, 1000));
 //         }
 
+//         // 🚨 Check failed pages
 //         const failedPages = imageUrls.filter((r) => r.error);
 //         if (failedPages.length > 0) {
 //             console.warn(`⚠️ Failed to generate ${failedPages.length} pages`);
 //         }
 
+//         // ✅ Success response
 //         res.json({
 //             comicId,
 //             images: imageUrls,
@@ -728,222 +784,230 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 
 
 const generateComicImage = async (req, res) => {
-  const { comicId, pages } = req.body;
+    const { comicId, pages } = req.body;
 
-  try {
-    const userId = req.user.login_data._id;
+    try {
+        const userId = req.user.login_data._id;
 
-    // 🧮 Weekly limit check (skipped for special user)
-    const SPECIAL_USER_ID = "689cb1ca766520d85d519370";
+        // 🧮 Weekly limit check (skipped for special user)
+        const SPECIAL_USER_ID = "689cb1ca766520d85d519370";
 
-    if (String(userId) !== SPECIAL_USER_ID) {
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        if (String(userId) !== SPECIAL_USER_ID) {
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      const comicCount = await Comic.countDocuments({
-        user_id: userId,
-        createdAt: { $gte: oneWeekAgo },
-        pdfUrl: { $exists: true, $ne: null },
-      });
+            const comicCount = await Comic.countDocuments({
+                user_id: userId,
+                createdAt: { $gte: oneWeekAgo },
+                pdfUrl: { $exists: true, $ne: null },
+            });
 
-      if (comicCount >= 5) {
-        return res.status(403).json({
-          error:
-            "You have reached your weekly limit of 5 comics. Please wait until next week.",
-        });
-      }
-    } else {
-      console.log(`🆓 Unlimited comic generation enabled for special user: ${userId}`);
-    }
-
-    // 🧩 Fetch the comic & style prompt
-    const comic = await Comic.findById(comicId).populate("styleId");
-    if (!comic) return res.status(404).json({ error: "Comic not found" });
-
-    const stylePrompt = comic.styleId?.prompt || "";
-    const characterReferences = {};
-    const imageUrls = [];
-
-    // 1️⃣ Fetch existing pages to skip regeneration
-    const existingPages = await ComicPage.find({ comicId });
-    const existingPageMap = new Map(
-      existingPages.map((p) => [p.pageNumber, p.imageUrl])
-    );
-
-    for (const page of pages) {
-      try {
-        // 🧩 Skip if already generated
-        if (existingPageMap.has(page.page)) {
-          console.log(`✅ Skipping page ${page.page} (already exists)`);
-          imageUrls.push({
-            page: page.page,
-            imageUrl: existingPageMap.get(page.page),
-            skipped: true,
-          });
-          continue;
+            if (comicCount >= 5) {
+                return res.status(403).json({
+                    error:
+                        "You have reached your weekly limit of 5 comics. Please wait until next week.",
+                });
+            }
+        } else {
+            console.log(`🆓 Unlimited comic generation enabled for special user: ${userId}`);
         }
 
-        // 🧩 Skip empty panels
-        if (!Array.isArray(page.panels) || page.panels.length === 0) {
-          console.warn(`⚠️ Page ${page.page} has no panels — skipping.`);
-          imageUrls.push({ page: page.page, skipped: true });
-          continue;
-        }
+        // 🧩 Fetch the comic & style prompt
+        const comic = await Comic.findById(comicId).populate("styleId");
+        if (!comic) return res.status(404).json({ error: "Comic not found" });
 
-        // 🧠 Build prompt from panels
-        const pagePrompt = page.panels
-          .map((p, idx) => {
-            const dialogues = Array.isArray(p.dialogue) ? p.dialogue : [];
-            const dialogueText = dialogues
-              .map((d) => {
-                if (d && d.character && !characterReferences[d.character]) {
-                  characterReferences[d.character] = null;
+        const stylePrompt = comic.styleId?.prompt || "";
+        const characterReferences = {};
+        const imageUrls = [];
+
+        // 1️⃣ Fetch existing pages to skip regeneration
+        const existingPages = await ComicPage.find({ comicId });
+        const existingPageMap = new Map(
+            existingPages.map((p) => [p.pageNumber, p.imageUrl])
+        );
+
+        for (const page of pages) {
+            try {
+                // 🧩 Skip if already generated
+                if (existingPageMap.has(page.page)) {
+                    console.log(`✅ Skipping page ${page.page} (already exists)`);
+                    imageUrls.push({
+                        page: page.page,
+                        imageUrl: existingPageMap.get(page.page),
+                        skipped: true,
+                    });
+                    continue;
                 }
-                return d && d.character && d.text
-                  ? `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`
-                  : "";
-              })
-              .filter(Boolean)
-              .join(" ");
 
-            return `Panel ${idx + 1}: Scene: ${sanitizeText(
-              p.scene || ""
-            )}. Caption: ${sanitizeText(p.caption || "")}. Dialogue: ${dialogueText}`;
-          })
-          .join("\n");
+                // 🧩 Skip empty panels
+                if (!Array.isArray(page.panels) || page.panels.length === 0) {
+                    console.warn(`⚠️ Page ${page.page} has no panels — skipping.`);
+                    imageUrls.push({ page: page.page, skipped: true });
+                    continue;
+                }
 
-        // 👩‍🎨 Character references for consistency
-        let referencesText = "";
-        for (const [character, refUrl] of Object.entries(characterReferences)) {
-          referencesText += refUrl
-            ? `Use this reference image for ${sanitizeText(character)}: ${refUrl}\n`
-            : `Generate ${sanitizeText(character)} consistently across all pages.\n`;
-        }
+                // 🧠 Build prompt from panels
+                const pagePrompt = page.panels
+                    .map((p, idx) => {
+                        const dialogues = Array.isArray(p.dialogue) ? p.dialogue : [];
+                        const dialogueText = dialogues
+                            .map((d) => {
+                                if (d && d.character && !characterReferences[d.character]) {
+                                    characterReferences[d.character] = null;
+                                }
+                                return d && d.character && d.text
+                                    ? `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`
+                                    : "";
+                            })
+                            .filter(Boolean)
+                            .join(" ");
 
-        // 🎨 Final AI prompt
-        const fullPrompt = `
+                        return `Panel ${idx + 1}: Scene: ${sanitizeText(
+                            p.scene || ""
+                        )}. Caption: ${sanitizeText(p.caption || "")}. Dialogue: ${dialogueText}`;
+                    })
+                    .join("\n");
+
+                // 👀 Check if diagram page
+                let diagramBooster = "";
+                if (isDiagramContent(pagePrompt)) {
+                    console.log("📊 Diagram detected — adding detail booster!");
+                    diagramBooster = getDiagramDetailBooster();
+                }
+
+                // 👩‍🎨 Character references for consistency
+                let referencesText = "";
+                for (const [character, refUrl] of Object.entries(characterReferences)) {
+                    referencesText += refUrl
+                        ? `Use this reference image for ${sanitizeText(character)}: ${refUrl}\n`
+                        : `Generate ${sanitizeText(character)} consistently across all pages.\n`;
+                }
+
+                // 🎨 Final AI prompt
+                const fullPrompt = `
 Create an educational comic page suitable for children ages 6–12.
-The content must be G-rated, safe, educational, positive, and friendly.
-No violence, no scary elements, no inappropriate content.
+Content must be G-rated and fully child-safe.
+No violence, no scary content, no sensitive material.
 
 Style: ${stylePrompt}
 ${referencesText}
 
-Page description:
+${diagramBooster}
+
+PAGE DESCRIPTION:
 ${pagePrompt}
 
-Important: This comic is for educational purposes only.
+IMPORTANT:
+This is an educational comic.
 All characters are friendly and positive.
-Generate safe, child-appropriate imagery only.
+If this page contains a diagram, give detailed labeled explanations.
         `;
 
-        console.log(`🎨 Generating image for page ${page.page}...`);
+                console.log(`🎨 Generating image for page ${page.page}...`);
 
-        // 🧠 Generate image
-        const imageResponse = await generateImageWithRetry(fullPrompt);
+                // 🧠 Generate image
+                const imageResponse = await generateImageWithRetry(fullPrompt);
 
-        if (!imageResponse.data || !imageResponse.data[0]) {
-          throw new Error(`Image generation failed for page ${page.page}`);
+                if (!imageResponse.data || !imageResponse.data[0]) {
+                    throw new Error(`Image generation failed for page ${page.page}`);
+                }
+
+                const imgData = imageResponse.data[0];
+                let buffer;
+
+                // 🖼️ Fetch or decode image
+                if (imgData.url) {
+                    const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
+                    buffer = Buffer.from(response.data);
+                } else if (imgData.b64_json) {
+                    buffer = Buffer.from(imgData.b64_json, "base64");
+                } else {
+                    throw new Error("Invalid image data format.");
+                }
+
+                // 🧩 Resize and optimize
+                buffer = await sharp(buffer)
+                    .resize({ width: 1024 })
+                    .jpeg({ quality: 75 })
+                    .toBuffer();
+
+                // 🪣 Upload to S3
+                const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
+                const s3Upload = await upload_files("comics", {
+                    name: fileName,
+                    data: buffer,
+                    mimetype: "image/jpeg",
+                });
+
+                const imageUrl = s3Upload;
+                const s3Key = `comics/${fileName}`;
+
+                // 👩‍🎨 Update character references
+                if (Array.isArray(page.panels)) {
+                    page.panels.forEach((panel) => {
+                        const dialogues = Array.isArray(panel.dialogue)
+                            ? panel.dialogue
+                            : [];
+                        dialogues.forEach((d) => {
+                            if (d && d.character && !characterReferences[d.character]) {
+                                characterReferences[d.character] = imageUrl;
+                            }
+                        });
+                    });
+                }
+
+                // 💾 Save ComicPage in DB
+                await ComicPage.findOneAndUpdate(
+                    { comicId, pageNumber: page.page },
+                    {
+                        comicId,
+                        user_id: req.user.login_data._id,
+                        pageNumber: page.page,
+                        panels: page.panels,
+                        imageUrl,
+                        s3Key,
+                        createdAt: new Date(),
+                    },
+                    { upsert: true, new: true, setDefaultsOnInsert: true }
+                );
+
+                imageUrls.push({ page: page.page, imageUrl });
+
+                console.log(`✅ Page ${page.page} generated successfully.`);
+            } catch (error) {
+                console.error(`❌ Error generating image for page ${page.page}:`, error);
+                imageUrls.push({
+                    page: page.page,
+                    error: true,
+                    message: error.message,
+                });
+            }
+
+            await new Promise((r) => setTimeout(r, 1000));
         }
 
-        const imgData = imageResponse.data[0];
-        let buffer;
-
-        // 🖼️ Fetch or decode image
-        if (imgData.url) {
-          const response = await axios.get(imgData.url, { responseType: "arraybuffer" });
-          buffer = Buffer.from(response.data);
-        } else if (imgData.b64_json) {
-          buffer = Buffer.from(imgData.b64_json, "base64");
-        } else {
-          throw new Error("Invalid image data format.");
+        // 🚨 Check failed pages
+        const failedPages = imageUrls.filter((r) => r.error);
+        if (failedPages.length > 0) {
+            console.warn(`⚠️ Failed to generate ${failedPages.length} pages`);
         }
 
-        // 🧩 Resize and optimize
-        buffer = await sharp(buffer)
-          .resize({ width: 1024 })
-          .jpeg({ quality: 75 })
-          .toBuffer();
-
-        // 🪣 Upload to S3
-        const fileName = `comic_page${page.page}_${Date.now()}.jpg`;
-        const s3Upload = await upload_files("comics", {
-          name: fileName,
-          data: buffer,
-          mimetype: "image/jpeg",
-        });
-
-        const imageUrl = s3Upload;
-        const s3Key = `comics/${fileName}`;
-
-        // 👩‍🎨 Update character references
-        if (Array.isArray(page.panels)) {
-          page.panels.forEach((panel) => {
-            const dialogues = Array.isArray(panel.dialogue)
-              ? panel.dialogue
-              : [];
-            dialogues.forEach((d) => {
-              if (d && d.character && !characterReferences[d.character]) {
-                characterReferences[d.character] = imageUrl;
-              }
-            });
-          });
-        }
-
-        // 💾 Save ComicPage in DB
-        await ComicPage.findOneAndUpdate(
-          { comicId, pageNumber: page.page },
-          {
+        // ✅ Success response
+        res.json({
             comicId,
-            user_id: req.user.login_data._id,
-            pageNumber: page.page,
-            panels: page.panels,
-            imageUrl,
-            s3Key,
-            createdAt: new Date(),
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
-        );
-
-        imageUrls.push({ page: page.page, imageUrl });
-
-        console.log(`✅ Page ${page.page} generated successfully.`);
-      } catch (error) {
-        console.error(`❌ Error generating image for page ${page.page}:`, error);
-        imageUrls.push({
-          page: page.page,
-          error: true,
-          message: error.message,
+            images: imageUrls,
+            success: failedPages.length === 0,
+            failedPages: failedPages.map((f) => f.page),
         });
-      }
-
-      // ⏱️ Delay between pages (1 sec)
-      await new Promise((r) => setTimeout(r, 1000));
+    } catch (error) {
+        console.error("🔥 Image API Error:", error);
+        res.status(500).json({
+            error: "Image generation failed",
+            details: error.message,
+            code: error.code,
+        });
     }
-
-    // 🚨 Check failed pages
-    const failedPages = imageUrls.filter((r) => r.error);
-    if (failedPages.length > 0) {
-      console.warn(`⚠️ Failed to generate ${failedPages.length} pages`);
-    }
-
-    // ✅ Success response
-    res.json({
-      comicId,
-      images: imageUrls,
-      success: failedPages.length === 0,
-      failedPages: failedPages.map((f) => f.page),
-    });
-  } catch (error) {
-    console.error("🔥 Image API Error:", error);
-    res.status(500).json({
-      error: "Image generation failed",
-      details: error.message,
-      code: error.code,
-    });
-  }
 };
-
 
 
 
