@@ -165,7 +165,10 @@ const generateFAQs = async (req, res) => {
     // Prevent duplicates
     const existingFAQs = await FAQ.find({ comicId });
     if (existingFAQs.length > 0) {
-      return res.json({ faqs: existingFAQs });
+      return res.status(200).json({
+        alreadyExists: true,
+        faqs: existingFAQs,
+      });
     }
 
     const pages = JSON.parse(comic.prompt || "[]");

@@ -174,7 +174,10 @@ const generateDidYouKnow = async (req, res) => {
     // ✅ Prevent duplicates
     const existingFacts = await DidYouKnow.find({ comicId });
     if (existingFacts.length > 0) {
-      return res.json({ didYouKnow: existingFacts });
+      return res.status(200).json({
+        alreadyExists: true,
+        didYouKnow: existingFacts,
+      });
     }
 
     // Extract story text
