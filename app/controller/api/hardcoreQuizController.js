@@ -196,7 +196,8 @@ const generateHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // 🧩 Step 2: Extract safe story context (only educational text)
+    // 🧩 Step 2: Extract minimal reference context from script (no story use)
+    // Just use a short trimmed version to give GPT background if needed
     let storyContext = "";
     if (Array.isArray(script)) {
       storyContext = script
@@ -210,71 +211,123 @@ const generateHardcoreQuiz = async (req, res) => {
       storyContext = script || "";
     }
 
-    // Limit context to avoid overflow, but still detailed enough
-    const trimmedContext = storyContext.slice(0, 1500);
-
-    // 🧠 Step 3: STRICT script-based prompt (super improved)
     const prompt = `
-You are an advanced educational quiz creator.
+You are an expert educational content creator.
 
-Your rules:
-- All questions MUST be based ONLY on the comic script provided.
-- No external knowledge, no advanced theory, no off-topic content.
-- Questions must remain within the concept actually shown or implied in the script.
-- The script is your ONLY knowledge source.
-- You may create reasoning and application questions, but only within script boundaries.
+Your job is to create **Hardcore Quiz questions** that stay perfectly aligned with:
 
-Comic Script (your ONLY content source):
-"${trimmedContext}"
+1. The Subject → "${subject}"
+2. The Concept → "${concept}"
+3. The Grade Level → "${grade}"
+4. The Learning Boundaries defined by the comic summary
 
-Task:
-Create EXACTLY 8 multiple-choice questions based only on what the script teaches.
+---
 
-Difficulty pattern (mandatory):
-1. easy
-2. medium
-3. hard
-4. extreme
-5. easy
-6. medium
-7. hard
-8. extreme
+### 📘 COMIC SUMMARY (Use ONLY this as knowledge boundary)
+This summary reflects what students learned:
+${storyContext.slice(0, 900)}
 
-Requirements for each question:
-- Must connect directly to ideas or explanations found in the script.
-- 6–7 options per question.
-- Only one correct answer (must match one option exactly).
-- Include:
-  • "question"
-  • "options"
-  • "correctAnswer"
-  • "difficulty"
-  • "explanation" (must reference something from the script)
-  • "hint" (helpful but does not reveal answer)
+Use this to determine:
+- what depth the concept was covered in the comic
+- what examples or logic were introduced
+- what subtopics the student already understands
 
-Return ONLY a strict JSON array in this format:
+DO NOT introduce anything outside this comic coverage.
+
+---
+
+### 🎯 REQUIRED: TWO STRICT RULES  
+1️⃣ **Concept-Based**  
+- Every question must test reasoning about the SAME concept  
+- Do not include any unrelated topics or advanced external theories  
+- Do not exceed the grade-level depth
+
+2️⃣ **Comic-Aligned**  
+- Use the same conceptual flow the comic uses  
+- Only use knowledge the comic teaches (implicit or explicit)  
+- Don't use the story or characters  
+- Use scenes, examples, or situations *only as educational context*
+
+---
+
+### 🧠 GRADE-SPECIFIC INSTRUCTIONS  
+Make difficulty match the grade:
+
+- Grades 1–5 → concrete, simple logic, visual understanding  
+- Grades 6–8 → conceptual reasoning, why/how questions  
+- Grades 9–12 → application-based, multi-step reasoning  
+- UG/PG → deep analytical understanding (but ONLY within comic scope)
+
+DO NOT exceed the level appropriate for "${grade}".
+
+---
+
+### 🔥 Difficulty Pattern (Strict Order)
+1. easy  
+2. medium  
+3. hard  
+4. extreme  
+5. easy  
+6. medium  
+7. hard  
+8. extreme  
+
+Even the "extreme" questions must stay within the comic's covered depth.
+
+---
+
+### 📝 QUESTION REQUIREMENTS
+Each question must have:
+- 6–7 options  
+- exactly 1 correct answer  
+- difficulty label ("easy", "medium", "hard", "extreme")  
+- explanation (must match the comic’s teaching logic)  
+- hint (must help, not reveal answer)
+
+---
+
+### ❌ Forbidden
+- NO questions about characters or story plot  
+- NO fictional details  
+- NO topics beyond the comic’s subject/concept  
+- NO college-level theory if comic didn't cover it  
+- NO new formulas, new definitions, or outside-syllabus knowledge  
+
+### ✔ Allowed
+- Use conceptual examples implied by the panels  
+- Use logic/scenarios that match the comic’s explanation style  
+- Make harder questions by increasing reasoning, not new topics
+
+---
+
+### 📤 Final Output  
+Return ONLY a valid JSON array with EXACTLY 8 items.
+
+Format:
 [
   {
-    "question": "string",
-    "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"],
-    "correctAnswer": "string",
-    "difficulty": "easy|medium|hard|extreme",
-    "explanation": "string",
-    "hint": "string"
+    "question": "",
+    "options": ["","","","","",""],
+    "correctAnswer": "",
+    "difficulty": "",
+    "explanation": "",
+    "hint": ""
   }
 ]
 `;
 
 
-    // 🧠 Step 4: Generate quiz
+
+
+    // 🧩 Step 4: Generate quiz via OpenAI
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: "Return only strict valid JSON, no markdown." },
         { role: "user", content: prompt },
       ],
-      temperature: 0.6,
-      max_tokens: 2000,
+      temperature: 0.7,
+      max_tokens: 1500,
     });
 
     let raw = response.choices[0].message.content.trim();
@@ -292,17 +345,17 @@ Return ONLY a strict JSON array in this format:
       });
     }
 
-    // 🧩 Step 5: Create quiz document
+    // 🧩 Step 5: Create new quiz
     const quiz = await HardcoreQuiz.create({
       comicId,
       user_id: req.user.login_data._id,
       status: "draft",
-      mode: "adaptive",
+      mode: "adaptive", // adaptive quiz
     });
 
     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
 
-    // 🧩 Step 6: Save questions
+    // 🧩 Step 6: Save questions in DB
     const savedQuestions = [];
     for (const q of questions) {
       const newQ = await HardcoreQuizQuestion.create({
@@ -320,14 +373,13 @@ Return ONLY a strict JSON array in this format:
     quiz.questions = savedQuestions;
     await quiz.save();
 
-    // 🧩 Step 7: Send response
+    // 🧩 Step 7: Response
     res.json({
-      message: "Script-based adaptive quiz created successfully.",
+      message: "Concept-based adaptive quiz successfully created (easy → extreme).",
       quizId: quiz._id,
       questions,
       alreadyExists: false,
     });
-
   } catch (error) {
     console.error("Adaptive Quiz Generation Error:", error);
     res.status(500).json({
@@ -336,6 +388,9 @@ Return ONLY a strict JSON array in this format:
     });
   }
 };
+
+
+
 
 
 const getHardcoreQuizByComic = async (req, res) => {
