@@ -204,18 +204,33 @@ const refinePrompt = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
 
-        // 🧮 Weekly limit
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        const seriesCount = await ComicSeries.countDocuments({
-            user_id: userId,
-            createdAt: { $gte: oneWeekAgo }
-        });
-        if (seriesCount >= 5) {
-            return res.status(403).json({
-                error: "You have reached your weekly limit of 5 new series. Please wait until next week."
+        const SPECIAL_USERS = [
+            "691ad59476da00fb43b139e6",
+            "689cb1ca766520d85d519370"
+        ];
+
+        const isSpecialUser = SPECIAL_USERS.includes(userId.toString());
+
+        if (isSpecialUser) {
+            console.log("Special user detected → unlimited series generation");
+        } else {
+            // 🧮 Normal weekly limit check
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+            const seriesCount = await ComicSeries.countDocuments({
+                user_id: userId,
+                createdAt: { $gte: oneWeekAgo }
             });
+
+            if (seriesCount >= 5) {
+                return res.status(403).json({
+                    error: "You have reached your weekly limit of 5 new series. Please wait until next week."
+                });
+            }
         }
+
+
 
         // 🧩 Core setup
         const cleanConcept = concept.trim();
@@ -789,28 +804,32 @@ const generateComicImage = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
 
-        // 🧮 Weekly limit check (skipped for special user)
-        const SPECIAL_USER_ID = "689cb1ca766520d85d519370";
+        const SPECIAL_USERS = [
+            "691ad59476da00fb43b139e6",
+            "689cb1ca766520d85d519370"
+        ];
 
-        if (String(userId) !== SPECIAL_USER_ID) {
+        const isSpecialUser = SPECIAL_USERS.includes(String(userId));
+
+        if (!isSpecialUser) {
             const oneWeekAgo = new Date();
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
             const comicCount = await Comic.countDocuments({
                 user_id: userId,
                 createdAt: { $gte: oneWeekAgo },
-                pdfUrl: { $exists: true, $ne: null },
+                pdfUrl: { $exists: true, $ne: null }
             });
 
             if (comicCount >= 5) {
                 return res.status(403).json({
-                    error:
-                        "You have reached your weekly limit of 5 comics. Please wait until next week.",
+                    error: "You have reached your weekly limit of 5 comics. Please wait until next week."
                 });
             }
         } else {
             console.log(`🆓 Unlimited comic generation enabled for special user: ${userId}`);
         }
+
 
         // 🧩 Fetch the comic & style prompt
         const comic = await Comic.findById(comicId).populate("styleId");
