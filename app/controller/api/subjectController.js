@@ -733,10 +733,119 @@ const updateSubject = async (req, res) => {
 // };
 
 // perfect working on countries
+// const getConceptsBySubject = async (req, res) => {
+//   try {
+//     const { subjectId } = req.params;
+//     const { country } = req.query; // optional query param
+
+//     // 🔍 1. Validate subject
+//     const subject = await Subject.findById(subjectId);
+//     if (!subject) {
+//       return res.status(404).json({ error: "Subject not found" });
+//     }
+
+//     // 🧠 2. Build aggregation pipeline
+//     const pipeline = [
+//       {
+//         $match: {
+//           status: "approved",
+//           subjectId: new mongoose.Types.ObjectId(subjectId)
+//         }
+//       },
+//     ];
+
+//     // 🧩 3. Country filter (using 'countries' array)
+//     if (country && country.trim() !== "") {
+//       pipeline.push({
+//         $match: {
+//           $expr: {
+//             $or: [
+//               { $in: [country.trim(), "$countries"] },
+//               { $in: ["ALL", "$countries"] }
+//             ]
+//           }
+//         }
+//       });
+//     }
+
+//     // 🧱 4. Group by concept & theme
+//     pipeline.push({
+//       $group: {
+//         _id: {
+//           conceptId: "$conceptId",
+//           themeId: "$themeId"
+//         },
+//         countries: { $addToSet: "$countries" }, // keep list of countries where comic exists
+//         comicCount: { $sum: 1 }
+//       }
+//     });
+
+//     // 🔍 5. Join Concept info
+//     pipeline.push(
+//       {
+//         $lookup: {
+//           from: "concepts",
+//           localField: "_id.conceptId",
+//           foreignField: "_id",
+//           as: "conceptData"
+//         }
+//       },
+//       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
+
+//       // 🔍 6. Join Theme info
+//       {
+//         $lookup: {
+//           from: "themes",
+//           localField: "_id.themeId",
+//           foreignField: "_id",
+//           as: "themeData"
+//         }
+//       },
+//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
+
+//       // 🧩 7. Project final output
+//       {
+//         $project: {
+//           _id: 0,
+//           conceptId: "$conceptData._id",
+//           conceptName: "$conceptData.name",
+//           themeId: "$themeData._id",
+//           themeName: "$themeData.name",
+//           countries: 1,
+//           comicCount: 1
+//         }
+//       },
+
+//       // 🧩 8. Sort neatly
+//       {
+//         $sort: {
+//           conceptName: 1,
+//           themeName: 1
+//         }
+//       }
+//     );
+
+//     // 🧠 9. Execute pipeline
+//     const result = await Comic.aggregate(pipeline);
+
+//     // ✅ 10. Response
+//     res.json({
+//       subject: subject.name,
+//       countryFilter: country || "All",
+//       totalConcepts: result.length,
+//       concepts: result
+//     });
+//   } catch (error) {
+//     console.error("❌ Error fetching concepts:", error);
+//     res.status(500).json({ error: "Failed to fetch concepts" });
+//   }
+// };
+
+
 const getConceptsBySubject = async (req, res) => {
   try {
     const { subjectId } = req.params;
-    const { country } = req.query; // optional query param
+    const { country, grade } = req.query; // 👈 grade added
 
     // 🔍 1. Validate subject
     const subject = await Subject.findById(subjectId);
@@ -744,66 +853,76 @@ const getConceptsBySubject = async (req, res) => {
       return res.status(404).json({ error: "Subject not found" });
     }
 
-    // 🧠 2. Build aggregation pipeline
+    // 🧠 2. Base pipeline
     const pipeline = [
       {
         $match: {
           status: "approved",
-          subjectId: new mongoose.Types.ObjectId(subjectId)
-        }
+          subjectId: new mongoose.Types.ObjectId(subjectId),
+        },
       },
     ];
 
-    // 🧩 3. Country filter (using 'countries' array)
+    // 🧩 3. Country filter
     if (country && country.trim() !== "") {
       pipeline.push({
         $match: {
           $expr: {
             $or: [
-              { $in: [country.trim(), "$countries"] },
-              { $in: ["ALL", "$countries"] }
-            ]
-          }
-        }
+              { $in: [country.trim().toUpperCase(), "$countries"] },
+              { $in: ["ALL", "$countries"] },
+            ],
+          },
+        },
       });
     }
 
-    // 🧱 4. Group by concept & theme
+    // 🎓 4. Grade filter (NEW)
+    if (grade && grade.trim() !== "") {
+      pipeline.push({
+        $match: {
+          grade: { $regex: new RegExp(`^${grade.trim()}$`, "i") },
+        },
+      });
+    }
+
+    // 🧱 5. Group by concept & theme
     pipeline.push({
       $group: {
         _id: {
           conceptId: "$conceptId",
-          themeId: "$themeId"
+          themeId: "$themeId",
         },
-        countries: { $addToSet: "$countries" }, // keep list of countries where comic exists
-        comicCount: { $sum: 1 }
-      }
+        countries: { $addToSet: "$countries" },
+        grades: { $addToSet: "$grade" }, // 👈 grade list (optional)
+        comicCount: { $sum: 1 },
+      },
     });
 
-    // 🔍 5. Join Concept info
+    // 🔍 6. Join Concept info
     pipeline.push(
       {
         $lookup: {
           from: "concepts",
           localField: "_id.conceptId",
           foreignField: "_id",
-          as: "conceptData"
-        }
+          as: "conceptData",
+        },
       },
       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
 
-      // 🔍 6. Join Theme info
+      // 🔍 7. Join Theme
       {
         $lookup: {
           from: "themes",
           localField: "_id.themeId",
           foreignField: "_id",
-          as: "themeData"
-        }
+          as: "themeData",
+        },
       },
       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
 
-      // 🧩 7. Project final output
+      // 🧩 8. Final projection
       {
         $project: {
           _id: 0,
@@ -812,29 +931,32 @@ const getConceptsBySubject = async (req, res) => {
           themeId: "$themeData._id",
           themeName: "$themeData.name",
           countries: 1,
-          comicCount: 1
-        }
+          grades: 1,     // 👈 helpful for FE
+          comicCount: 1,
+        },
       },
 
-      // 🧩 8. Sort neatly
+      // 🧩 9. Sort neatly
       {
         $sort: {
           conceptName: 1,
-          themeName: 1
-        }
+          themeName: 1,
+        },
       }
     );
 
-    // 🧠 9. Execute pipeline
+    // 🧠 10. Execute
     const result = await Comic.aggregate(pipeline);
 
-    // ✅ 10. Response
+    // ✅ Response
     res.json({
       subject: subject.name,
-      countryFilter: country || "All",
+      countryFilter: country || "ALL",
+      gradeFilter: grade || "ALL",
       totalConcepts: result.length,
-      concepts: result
+      concepts: result,
     });
+
   } catch (error) {
     console.error("❌ Error fetching concepts:", error);
     res.status(500).json({ error: "Failed to fetch concepts" });
