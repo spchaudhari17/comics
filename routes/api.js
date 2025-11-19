@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails } = require('../app/controller/api/admin/adminComicController');
@@ -83,6 +83,7 @@ router.get("/user/comic-didyouknow/:comicId", listDidYouKnow);
 
 router.get("/user/comics", listComics);
 router.get("/user/comics/:id", getComic);
+router.get("/user/listComicsforPublic", listComicsforPublic);
 router.post("/user/deleteComic", authentication, deleteComic);
 router.post("/user/submit-quiz", authentication, submitQuiz);
 

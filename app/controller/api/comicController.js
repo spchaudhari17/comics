@@ -1188,6 +1188,67 @@ const listComics = async (req, res) => {
 };
 
 
+const listComicsforPublic = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 5;
+        const skip = (page - 1) * limit;
+
+        const { country, grade, subjectId, concept } = req.query;
+
+        const matchStage = { status: "approved" };
+
+        if (country && country !== "ALL") matchStage.country = country.toUpperCase();
+        if (grade) matchStage.grade = grade;
+        if (subjectId) matchStage.subjectId = new mongoose.Types.ObjectId(subjectId);
+        if (concept) matchStage.concept = { $regex: concept.trim(), $options: "i" };
+
+        const comics = await Comic.aggregate([
+            { $match: matchStage },
+            { $sort: { createdAt: -1 } },
+            { $skip: skip },
+            { $limit: limit },
+
+            {
+                $lookup: {
+                    from: "subjects",
+                    localField: "subjectId",
+                    foreignField: "_id",
+                    as: "subjectData"
+                }
+            },
+            { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
+
+            {
+                $project: {
+                    title: 1,
+                    concept: 1,
+                    grade: 1,
+                    country: 1,
+                    subject: "$subjectData.name",
+                    subjectId: "$subjectData._id",
+                    createdAt: 1
+                }
+            }
+        ]);
+
+        const total = await Comic.countDocuments(matchStage);
+
+        res.json({
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            totalComics: total,
+            comics
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to list comics" });
+    }
+};
+
+
 
 
 
@@ -1572,5 +1633,5 @@ const updateCountryForSeries = async (req, res) => {
 
 module.exports = {
     refinePrompt, generateComicImage, generateComicPDF, listComics,
-    getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries
+    getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic
 };
