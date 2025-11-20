@@ -23,7 +23,9 @@ var UserSchema = new mongoose.Schema({
         school: String,
         year: String,
         class: String,
-        section: String
+        section: String,
+        rollNo: String,
+        country: { type: String },
     },
     plain_password: { type: String, default: "" }, // for teacher reference (students' visible password)
 

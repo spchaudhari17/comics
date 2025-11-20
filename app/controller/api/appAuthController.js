@@ -145,8 +145,34 @@ const bulkRegister = async (req, res) => {
 
     let createdUsers = [];
 
+    // ⭐ GRADE MAPPING FUNCTION
+    const getGradeName = (cls) => {
+      const num = parseInt(cls);
+
+      if (!isNaN(num)) {
+        if (num === 1) return "1st Standard";
+        if (num === 2) return "2nd Standard";
+        if (num === 3) return "3rd Standard";
+        if (num === 4) return "4th Standard";
+        if (num === 5) return "5th Standard";
+        if (num === 6) return "6th Standard";
+        if (num === 7) return "7th Standard";
+        if (num === 8) return "8th Standard";
+        if (num === 9) return "9th Standard";
+        if (num === 10) return "10th Standard";
+        if (num === 11) return "11th Standard";
+        if (num === 12) return "12th Standard";
+      }
+
+      if (cls.toString().toUpperCase() === "UG") return "UG";
+      if (cls.toString().toUpperCase() === "PG") return "PG";
+
+      return "Unknown";
+    };
+
+
     for (const row of data) {
-      const { School, Year, Class, Section, ["Roll No."]: RollNo } = row;
+      const { School, Year, Class, Section, ["Roll No."]: RollNo, Country } = row;
       if (!School || !Year || !Class || !Section || !RollNo) continue;
 
       // ✅ Follow institutional username rule
@@ -164,17 +190,26 @@ const bulkRegister = async (req, res) => {
       const exists = await Users.findOne({ username: username.toLowerCase() });
       if (exists) continue;
 
+      const gradeName = getGradeName(Class);
+      const countryCode = Country?.trim().toUpperCase() || "IN";
+
       const newUser = new Users({
         username: username.toLowerCase(),
         password: passwordHash,
         plain_password: randomPassword,
         userType: "student",
         createdBy: teacherId,
+
+        grade: gradeName,
+        country: countryCode,
+
         classInfo: {
           school: schoolCode,
           year: yearCode,
           class: classCode,
           section: sectionCode,
+          rollNo: rollCode,
+          country: countryCode,
         },
         is_verify: 1,
       });
@@ -188,6 +223,9 @@ const bulkRegister = async (req, res) => {
         year: yearCode,
         class: classCode,
         section: sectionCode,
+        rollNo: rollCode,
+        country: countryCode,
+        grade: gradeName,
         id: saved._id,
       });
     }
