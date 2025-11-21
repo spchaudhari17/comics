@@ -801,8 +801,8 @@ const submitHardcoreQuiz = async (req, res) => {
       message: !isCorrect
         ? "Wrong answer! You lost all coins."
         : hasAttemptedAllQuestion
-        ? "Congrats! All questions completed. Rewards merged!"
-        : "Correct answer! Continue...",
+          ? "Congrats! All questions completed. Rewards merged!"
+          : "Correct answer! Continue...",
 
       result: {
         questionId,
@@ -842,6 +842,7 @@ const finishHardcoreQuiz = async (req, res) => {
       return res.status(404).json({ error: "Hardcore Quiz not found" });
     }
 
+    // Find active submission
     let submission = await HardcoreQuizSubmission.findOne({
       quizId,
       userId,
@@ -855,7 +856,7 @@ const finishHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // agar pehle hi merge kar chuke ho
+    // Already merged earlier
     if (submission.hasMergedToWallet) {
       submission.isActive = false;
       submission.isFinished = true;
@@ -868,7 +869,7 @@ const finishHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // agar koi answer nahi diya tha
+    // If no answers
     if (!submission.answers || submission.answers.length === 0) {
       submission.isActive = false;
       submission.isFinished = true;
@@ -878,17 +879,18 @@ const finishHardcoreQuiz = async (req, res) => {
       await submission.save();
 
       return res.json({
-        message: "Quiz finished with no answers. No rewards earned.",
+        message: "No answers given. No rewards earned.",
         coinsEarned: 0,
         expEarned: 0,
       });
     }
 
-    // yaha: kuch answers diye hain, and now quitting voluntarily
+    // Merge ONLY current attempt coins
     const user = await User.findById(userId);
+
     user.coins += submission.coinsEarned;
     user.exp += submission.expEarned;
-    user.gems = getGemsFromCoins(user.coins);
+    user.gems = Math.floor(user.coins / 1800);
     await user.save();
 
     submission.isActive = false;
@@ -896,15 +898,17 @@ const finishHardcoreQuiz = async (req, res) => {
     submission.hasMergedToWallet = true;
     await submission.save();
 
+    // remaining chances = 2 attempts only
     const finishedCount = await HardcoreQuizSubmission.countDocuments({
       userId,
       quizId,
       isFinished: true,
     });
+
     const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
 
     res.json({
-      message: "Quiz finished. Rewards merged successfully.",
+      message: "Attempt finished. Rewards merged successfully.",
       coinsEarned: submission.coinsEarned,
       expEarned: submission.expEarned,
       currentScore: submission.score,
