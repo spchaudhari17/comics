@@ -12,169 +12,6 @@ const openai = new OpenAI({
 });
 
 
-
-// const generateHardcoreQuiz = async (req, res) => {
-//   const { comicId, script, subject, concept, grade } = req.body;
-
-//   try {
-//     // 🧠 Step 1: Check if quiz already exists
-//     const existingQuiz = await HardcoreQuiz.findOne({ comicId })
-//       .populate({
-//         path: "questions",
-//         select: "question options correctAnswer difficulty explanation hint",
-//       })
-//       .lean();
-
-//     if (existingQuiz) {
-//       return res.status(200).json({
-//         message: "Adaptive quiz already exists for this comic.",
-//         quizId: existingQuiz._id,
-//         quiz: existingQuiz,
-//         alreadyExists: true,
-//       });
-//     }
-
-//     // 🧩 Step 2: Extract minimal reference context from script (no story use)
-//     // Just use a short trimmed version to give GPT background if needed
-//     let storyContext = "";
-//     if (Array.isArray(script)) {
-//       storyContext = script
-//         .map((page) =>
-//           page.panels
-//             .map((p) => `${p.caption || ""}`)
-//             .join(" ")
-//         )
-//         .join(" ");
-//     } else {
-//       storyContext = script || "";
-//     }
-
-//     const prompt = `
-// You are an advanced educational content creator specializing in adaptive learning.
-
-// Context:
-// - Subject: ${subject || "General Knowledge"}
-// - Concept: ${concept || ""}
-// - Grade Level: ${grade || "School Level"}
-// - Reference (optional): ${storyContext.slice(0, 500)}  // for context only, ignore storylines or characters.
-
-// Your task:
-// Generate **8 conceptual multiple-choice questions** testing deep understanding of the concept "${concept}" under the subject "${subject}". 
-
-// Each question must assess reasoning, application, or critical thinking — not memory recall.
-
-// Questions must be created in **two rounds**, each round containing one of each difficulty:
-// - Round 1:
-//   1. easy
-//   2. medium
-//   3. hard
-//   4. extreme
-// - Round 2:
-//   5. easy
-//   6. medium
-//   7. hard
-//   8. extreme
-
-// Guidelines:
-// - Base all questions strictly on the **concept and subject**, not on any story or characters.
-// - Avoid asking about comic scenes, dialogues, or fictional details.
-// - Each question must have **6–7 options** with exactly **one correct answer**.
-// - Difficulty progression must strictly follow: easy → medium → hard → extreme → easy → medium → hard → extreme.
-// - Include these fields for each question:
-//   • "question": the actual question text  
-//   • "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"]  
-//   • "correctAnswer": one string matching exactly one of the options  
-//   • "difficulty": one of ["easy","medium","hard","extreme"]  
-//   • "explanation": a short reasoning of why the correct answer is right  
-//   • "hint": a small tip that helps but doesn’t reveal the answer  
-
-// Return only **valid JSON array**, following the required 8-question order.
-
-// Format:
-// [
-//   {
-//     "question": "string",
-//     "options": ["opt1","opt2","opt3","opt4","opt5","opt6","opt7"],
-//     "correctAnswer": "string",
-//     "difficulty": "easy|medium|hard|extreme",
-//     "explanation": "string",
-//     "hint": "string"
-//   }
-// ]
-// `;
-
-
-//     // 🧩 Step 4: Generate quiz via OpenAI
-//     const response = await openai.chat.completions.create({
-//       model: "gpt-4o",
-//       messages: [
-//         { role: "system", content: "Return only strict valid JSON, no markdown." },
-//         { role: "user", content: prompt },
-//       ],
-//       temperature: 0.7,
-//       max_tokens: 1500,
-//     });
-
-//     let raw = response.choices[0].message.content.trim();
-//     if (raw.startsWith("```")) raw = raw.replace(/```json|```/g, "").trim();
-
-//     let questions;
-//     try {
-//       questions = JSON.parse(raw);
-//       if (!Array.isArray(questions)) throw new Error("Invalid JSON array");
-//     } catch (err) {
-//       return res.status(500).json({
-//         error: "Invalid JSON from OpenAI",
-//         details: err.message,
-//         raw,
-//       });
-//     }
-
-//     // 🧩 Step 5: Create new quiz
-//     const quiz = await HardcoreQuiz.create({
-//       comicId,
-//       user_id: req.user.login_data._id,
-//       status: "draft",
-//       mode: "adaptive", // adaptive quiz
-//     });
-
-//     await Comic.findByIdAndUpdate(comicId, { hasHardcoreQuiz: true });
-
-//     // 🧩 Step 6: Save questions in DB
-//     const savedQuestions = [];
-//     for (const q of questions) {
-//       const newQ = await HardcoreQuizQuestion.create({
-//         quizId: quiz._id,
-//         question: q.question,
-//         options: q.options,
-//         correctAnswer: q.correctAnswer,
-//         difficulty: q.difficulty,
-//         explanation: q.explanation,
-//         hint: q.hint,
-//       });
-//       savedQuestions.push(newQ._id);
-//     }
-
-//     quiz.questions = savedQuestions;
-//     await quiz.save();
-
-//     // 🧩 Step 7: Response
-//     res.json({
-//       message: "Concept-based adaptive quiz successfully created (easy → extreme).",
-//       quizId: quiz._id,
-//       questions,
-//       alreadyExists: false,
-//     });
-//   } catch (error) {
-//     console.error("Adaptive Quiz Generation Error:", error);
-//     res.status(500).json({
-//       error: "Failed to generate adaptive quiz",
-//       details: error.message,
-//     });
-//   }
-// };
-
-
 const generateHardcoreQuiz = async (req, res) => {
   const { comicId, script, subject, concept, grade } = req.body;
 
@@ -391,7 +228,147 @@ Format:
 
 
 
+// const getHardcoreQuizByComic = async (req, res) => {
+//   try {
+//     const { id } = req.params; // comicId
+//     const userId = req.query.userId || req.params.userId;
 
+//     const quiz = await HardcoreQuiz.findOne({ comicId: id })
+//       .read("primary")
+//       .populate({ path: "questions", options: { lean: true } })
+//       .lean();
+
+//     if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
+
+//     let hasAttempted = false;
+//     let hasAttemptedAllQuestion = false;
+//     let hasHardCoreChanceLeft = 2;
+//     let activeSubmission = null;
+//     let attemptedAnswers = {};
+//     let attemptNumber = 1;
+
+//     if (userId) {
+//       const userObjectId = new mongoose.Types.ObjectId(userId);
+
+//       const todayStart = new Date();
+//       todayStart.setHours(0, 0, 0, 0);
+
+//       const todayEnd = new Date();
+//       todayEnd.setHours(23, 59, 59, 999);
+
+//       const submissions = await HardcoreQuizSubmission.find({
+//         quizId: quiz._id,
+//         userId: userObjectId,
+//       })
+//         .sort({ createdAt: -1 })
+//         .lean();
+
+//       if (submissions.length > 0) hasAttempted = true;
+
+//       activeSubmission = submissions.find((s) => s.isActive) || null;
+
+//       const finishedAttemptsToday = submissions.filter((s) =>
+//         s.isFinished &&
+//         s.createdAt >= todayStart &&
+//         s.createdAt <= todayEnd
+//       ).length;
+
+//       // ------------- FIX: Award 0 chances if user already completed all questions correctly ------------------
+//       const latestFinished = submissions.find((s) => s.isFinished);
+
+//       if (
+//         latestFinished &&
+//         latestFinished.answers.length === quiz.questions.length &&
+//         latestFinished.answers.every((a) => a.isCorrect)
+//       ) {
+//         hasAttemptedAllQuestion = true;
+//         hasHardCoreChanceLeft = 0;  // IMPORTANT FIX
+//       } else {
+//         // Otherwise follow daily 2 attempts rule
+//         hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttemptsToday);
+//       }
+
+//       // Determine attempt number
+//       if (activeSubmission) {
+//         attemptNumber = activeSubmission.attemptNumber;
+//       } else if (hasAttemptedAllQuestion) {
+//         attemptNumber = latestFinished.attemptNumber; // locked
+//       } else if (finishedAttemptsToday > 0 && finishedAttemptsToday < 2) {
+//         attemptNumber = finishedAttemptsToday + 1;
+//       } else if (finishedAttemptsToday >= 2) {
+//         attemptNumber = 2;
+//       } else {
+//         attemptNumber = 1;
+//       }
+
+//       // Merge attempted answers for UI
+//       for (const sub of submissions) {
+//         for (const ans of sub.answers || []) {
+//           attemptedAnswers[ans.questionId.toString()] = {
+//             selectedAnswer: ans.selectedAnswer,
+//             isCorrect: ans.isCorrect,
+//             coins: ans.coins,
+//             exp: ans.exp,
+//           };
+//         }
+//       }
+//     }
+
+//     const questionsWithAttemptStatus = quiz.questions.map((q) => {
+//       const attempt = attemptedAnswers[q._id.toString()];
+//       return {
+//         ...q,
+//         locked: false,
+//         hasAttempted: !!attempt,
+//         selectedAnswer: attempt ? attempt.selectedAnswer : null,
+//         isCorrect: attempt ? attempt.isCorrect : null,
+//         coins: attempt ? attempt.coins : 0,
+//         exp: attempt ? attempt.exp : 0,
+//       };
+//     });
+
+//     const comic = await Comic.findById(id);
+//     let showAdsHardcoreQuiz = true;
+
+//     if (comic?.subjectId) {
+//       const subject = await Subject.findById(comic.subjectId);
+//       showAdsHardcoreQuiz = subject ? subject.showAdsHardcoreQuiz : true;
+//     }
+
+//     const quizWithAds = {
+//       ...quiz,
+//       questions: questionsWithAttemptStatus,
+//       showAdsHardcoreQuiz,
+//       showInterestialAds: showAdsHardcoreQuiz,
+//     };
+
+//     return res.json({
+//       quiz: quizWithAds,
+//       hasAttempted,
+//       hasAttemptedAllQuestion,
+//       hasHardCoreChanceLeft,
+//       attemptNumber,
+//       activeSubmission: activeSubmission
+//         ? {
+//           _id: activeSubmission._id,
+//           attemptNumber: activeSubmission.attemptNumber,
+//           score: activeSubmission.score,
+//           coinsEarned: activeSubmission.coinsEarned,
+//           expEarned: activeSubmission.expEarned,
+//           answers: activeSubmission.answers.map((a) => ({
+//             questionId: a.questionId,
+//             isCorrect: a.isCorrect,
+//             selectedAnswer: a.selectedAnswer,
+//           })),
+//           isActive: activeSubmission.isActive,
+//         }
+//         : null,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error fetching Hardcore Quiz:", error);
+//     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
+//   }
+// };
 
 const getHardcoreQuizByComic = async (req, res) => {
   try {
@@ -403,7 +380,9 @@ const getHardcoreQuizByComic = async (req, res) => {
       .populate({ path: "questions", options: { lean: true } })
       .lean();
 
-    if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
+    if (!quiz) {
+      return res.status(404).json({ error: "Hardcore Quiz not found" });
+    }
 
     let hasAttempted = false;
     let hasAttemptedAllQuestion = false;
@@ -414,12 +393,6 @@ const getHardcoreQuizByComic = async (req, res) => {
 
     if (userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
-
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
 
       const submissions = await HardcoreQuizSubmission.find({
         quizId: quiz._id,
@@ -432,13 +405,9 @@ const getHardcoreQuizByComic = async (req, res) => {
 
       activeSubmission = submissions.find((s) => s.isActive) || null;
 
-      const finishedAttemptsToday = submissions.filter((s) =>
-        s.isFinished &&
-        s.createdAt >= todayStart &&
-        s.createdAt <= todayEnd
-      ).length;
+      const finishedAttempts = submissions.filter((s) => s.isFinished).length;
 
-      // ------------- FIX: Award 0 chances if user already completed all questions correctly ------------------
+      // kisi bhi attempt me agar user ne sare questions sahi kiye hon
       const latestFinished = submissions.find((s) => s.isFinished);
 
       if (
@@ -447,26 +416,21 @@ const getHardcoreQuizByComic = async (req, res) => {
         latestFinished.answers.every((a) => a.isCorrect)
       ) {
         hasAttemptedAllQuestion = true;
-        hasHardCoreChanceLeft = 0;  // IMPORTANT FIX
+        hasHardCoreChanceLeft = 0; // perfect ho gaya, ab aur attempt nahi
       } else {
-        // Otherwise follow daily 2 attempts rule
-        hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttemptsToday);
+        hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttempts);
       }
 
-      // Determine attempt number
+      // attempt number decide karna
       if (activeSubmission) {
         attemptNumber = activeSubmission.attemptNumber;
-      } else if (hasAttemptedAllQuestion) {
-        attemptNumber = latestFinished.attemptNumber; // locked
-      } else if (finishedAttemptsToday > 0 && finishedAttemptsToday < 2) {
-        attemptNumber = finishedAttemptsToday + 1;
-      } else if (finishedAttemptsToday >= 2) {
-        attemptNumber = 2;
+      } else if (hasAttemptedAllQuestion && latestFinished) {
+        attemptNumber = latestFinished.attemptNumber;
       } else {
-        attemptNumber = 1;
+        attemptNumber = Math.min(2, finishedAttempts + 1); // 1 ya 2
       }
 
-      // Merge attempted answers for UI
+      // UI ke liye attempted answers collect karo
       for (const sub of submissions) {
         for (const ans of sub.answers || []) {
           attemptedAnswers[ans.questionId.toString()] = {
@@ -535,11 +499,157 @@ const getHardcoreQuizByComic = async (req, res) => {
   }
 };
 
-
-
-
 const COINS_PER_GEM = 1800;
 const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
+
+// perfect working
+// const submitHardcoreQuiz = async (req, res) => {
+//   try {
+//     const { quizId, questionId, selectedAnswer, doubleChoice } = req.body;
+//     const userId = req.user.login_data._id;
+
+//     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+//     if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
+
+//     const question = quiz.questions.find(q => q._id.toString() === questionId);
+//     if (!question)
+//       return res.status(404).json({ error: "Question not found in this quiz" });
+
+//     const todayStart = new Date();
+//     todayStart.setHours(0, 0, 0, 0);
+//     const todayEnd = new Date();
+//     todayEnd.setHours(23, 59, 59, 999);
+
+//     // 🔍 Find or create submission
+//     let submission = await HardcoreQuizSubmission.findOne({
+//       quizId,
+//       userId,
+//       isActive: true,
+//     });
+
+//     if (!submission) {
+//       const todaySubs = await HardcoreQuizSubmission.find({
+//         userId,
+//         quizId,
+//         createdAt: { $gte: todayStart, $lte: todayEnd },
+//       });
+//       const finishedToday = todaySubs.filter(s => s.isFinished).length;
+//       if (finishedToday >= 2) {
+//         return res.status(403).json({
+//           error: true,
+//           message: "You have exceeded daily limit (2 attempts).",
+//         });
+//       }
+
+//       submission = await HardcoreQuizSubmission.create({
+//         quizId,
+//         userId,
+//         attemptNumber: finishedToday + 1,
+//         answers: [],
+//         score: 0,
+//         coinsEarned: 0,
+//         expEarned: 0,
+//         currentMultiplier: 1,
+//         isActive: true,
+//       });
+//     }
+
+//     // 🚫 Check if question already attempted
+//     const alreadyAttempted = submission.answers.some(a => a.questionId.toString() === questionId);
+//     if (alreadyAttempted) {
+//       return res.status(400).json({ error: true, message: "Already attempted this question." });
+//     }
+
+//     // 🎯 Evaluate answer
+//     const isCorrect = question.correctAnswer === selectedAnswer;
+//     let coins = 0, exp = 0;
+
+//     if (isCorrect) {
+//       coins = 40 * submission.currentMultiplier;
+//       exp = 20 * submission.currentMultiplier;
+
+//       submission.score += 1;
+//       submission.coinsEarned += coins;
+//       submission.expEarned += exp;
+
+//       if (doubleChoice) submission.currentMultiplier *= 2;
+//     } else {
+//       // ❌ Wrong → Lose everything
+//       submission.isActive = false;
+//       submission.isFinished = true;
+//       submission.coinsEarned = 0;
+//       submission.expEarned = 0;
+//       submission.currentMultiplier = 1;
+//     }
+
+//     // 🧩 Save answer
+//     submission.answers.push({ questionId, selectedAnswer, isCorrect, coins, exp });
+//     await submission.save();
+
+//     // 🏁 If all questions correct → merge to user wallet
+//     let hasAttemptedAllQuestion = false;
+
+//     if (submission.answers.length >= quiz.questions.length && isCorrect) {
+//       submission.isActive = false;
+//       submission.isFinished = true;
+//       hasAttemptedAllQuestion = true;
+
+//       if (!submission.hasMergedToWallet) {
+//         const user = await User.findById(userId);
+//         user.coins += submission.coinsEarned;
+//         user.exp += submission.expEarned;
+//         user.gems = getGemsFromCoins(user.coins);
+//         await user.save();
+
+//         submission.hasMergedToWallet = true;
+//       }
+
+//       await submission.save();
+//     }
+
+//     // ❌ If user failed mid-way → don't merge anything
+//     if (!isCorrect) {
+//       submission.hasMergedToWallet = true;
+//       await submission.save();
+//     }
+
+//     // 🔁 Check remaining daily chances
+//     const totalFinishedAttempts = await HardcoreQuizSubmission.countDocuments({
+//       userId,
+//       quizId,
+//       isFinished: true,
+//       createdAt: { $gte: todayStart, $lte: todayEnd },
+//     });
+//     const hasHardCoreChanceLeft = totalFinishedAttempts < 2 ? 1 : 0;
+
+//     res.json({
+//       message: !isCorrect
+//         ? "Wrong answer! You lost all coins."
+//         : hasAttemptedAllQuestion
+//           ? "Congrats! You won and coins merged successfully."
+//           : "Correct answer! Keep going.",
+//       result: {
+//         questionId,
+//         isCorrect,
+//         correctAnswer: question.correctAnswer,
+//         coins,
+//         exp,
+//       },
+//       currentScore: submission.score,
+//       totalQuestions: quiz.questions.length,
+//       coinsEarned: submission.coinsEarned,
+//       expEarned: submission.expEarned,
+//       hasHardCoreChanceLeft,
+//       hasAttemptedAllQuestion,
+//     });
+//   } catch (error) {
+//     console.error("❌ Submit Hardcore Quiz Error:", error);
+//     res.status(500).json({
+//       error: "Failed to submit hardcore question",
+//       details: error.message,
+//     });
+//   }
+// };
 
 const submitHardcoreQuiz = async (req, res) => {
   try {
@@ -547,18 +657,46 @@ const submitHardcoreQuiz = async (req, res) => {
     const userId = req.user.login_data._id;
 
     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
-    if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
+    if (!quiz) {
+      return res.status(404).json({ error: "Hardcore Quiz not found" });
+    }
 
-    const question = quiz.questions.find(q => q._id.toString() === questionId);
-    if (!question)
-      return res.status(404).json({ error: "Question not found in this quiz" });
+    const question = quiz.questions.find(
+      (q) => q._id.toString() === questionId
+    );
+    if (!question) {
+      return res
+        .status(404)
+        .json({ error: "Question not found in this quiz" });
+    }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    // 🔐 TOTAL LIMIT = 2 attempts for this quiz
+    const allSubs = await HardcoreQuizSubmission.find({ userId, quizId });
+    const finishedAttempts = allSubs.filter((s) => s.isFinished).length;
 
-    // 🔍 Find or create submission
+    if (finishedAttempts >= 2) {
+      return res.status(403).json({
+        error: true,
+        message: "You have used all 2 attempts for this quiz.",
+      });
+    }
+
+    // ❌ check: ye question kabhi pehle attempt hua hai kya? (any attempt)
+    const attemptedQuestionIds = new Set();
+    for (const sub of allSubs) {
+      for (const ans of sub.answers || []) {
+        attemptedQuestionIds.add(ans.questionId.toString());
+      }
+    }
+
+    if (attemptedQuestionIds.has(questionId.toString())) {
+      return res.status(400).json({
+        error: true,
+        message: "You have already attempted this question.",
+      });
+    }
+
+    // 🔍 Active submission dhoondo, nahi ho to naya attempt
     let submission = await HardcoreQuizSubmission.findOne({
       quizId,
       userId,
@@ -566,41 +704,25 @@ const submitHardcoreQuiz = async (req, res) => {
     });
 
     if (!submission) {
-      const todaySubs = await HardcoreQuizSubmission.find({
-        userId,
-        quizId,
-        createdAt: { $gte: todayStart, $lte: todayEnd },
-      });
-      const finishedToday = todaySubs.filter(s => s.isFinished).length;
-      if (finishedToday >= 2) {
-        return res.status(403).json({
-          error: true,
-          message: "You have exceeded daily limit (2 attempts).",
-        });
-      }
-
       submission = await HardcoreQuizSubmission.create({
         quizId,
         userId,
-        attemptNumber: finishedToday + 1,
+        attemptNumber: finishedAttempts + 1, // 1 ya 2
         answers: [],
         score: 0,
         coinsEarned: 0,
         expEarned: 0,
         currentMultiplier: 1,
         isActive: true,
+        isFinished: false,
+        hasMergedToWallet: false,
       });
     }
 
-    // 🚫 Check if question already attempted
-    const alreadyAttempted = submission.answers.some(a => a.questionId.toString() === questionId);
-    if (alreadyAttempted) {
-      return res.status(400).json({ error: true, message: "Already attempted this question." });
-    }
-
-    // 🎯 Evaluate answer
+    // EVALUATE ANSWER
     const isCorrect = question.correctAnswer === selectedAnswer;
-    let coins = 0, exp = 0;
+    let coins = 0;
+    let exp = 0;
 
     if (isCorrect) {
       coins = 40 * submission.currentMultiplier;
@@ -610,23 +732,32 @@ const submitHardcoreQuiz = async (req, res) => {
       submission.coinsEarned += coins;
       submission.expEarned += exp;
 
-      if (doubleChoice) submission.currentMultiplier *= 2;
+      if (doubleChoice) {
+        submission.currentMultiplier *= 2; // next question double
+      }
     } else {
-      // ❌ Wrong → Lose everything
+      // ❌ WRONG ANSWER → poora attempt fail ho gaya
       submission.isActive = false;
       submission.isFinished = true;
       submission.coinsEarned = 0;
       submission.expEarned = 0;
       submission.currentMultiplier = 1;
+      // hasMergedToWallet YAHAN MAT CHANGE KARNA
     }
 
-    // 🧩 Save answer
-    submission.answers.push({ questionId, selectedAnswer, isCorrect, coins, exp });
+    // answer push karo
+    submission.answers.push({
+      questionId,
+      selectedAnswer,
+      isCorrect,
+      coins,
+      exp,
+    });
     await submission.save();
 
-    // 🏁 If all questions correct → merge to user wallet
     let hasAttemptedAllQuestion = false;
 
+    // 🏁 CASE: is attempt me saare questions sahi ho gaye (single clean run)
     if (submission.answers.length >= quiz.questions.length && isCorrect) {
       submission.isActive = false;
       submission.isFinished = true;
@@ -634,31 +765,24 @@ const submitHardcoreQuiz = async (req, res) => {
 
       if (!submission.hasMergedToWallet) {
         const user = await User.findById(userId);
+
         user.coins += submission.coinsEarned;
         user.exp += submission.expEarned;
         user.gems = getGemsFromCoins(user.coins);
         await user.save();
 
         submission.hasMergedToWallet = true;
+        await submission.save();
       }
-
-      await submission.save();
     }
 
-    // ❌ If user failed mid-way → don't merge anything
-    if (!isCorrect) {
-      submission.hasMergedToWallet = true;
-      await submission.save();
-    }
-
-    // 🔁 Check remaining daily chances
-    const totalFinishedAttempts = await HardcoreQuizSubmission.countDocuments({
+    // remaining attempts (max 2)
+    const finishedCount = await HardcoreQuizSubmission.countDocuments({
       userId,
       quizId,
       isFinished: true,
-      createdAt: { $gte: todayStart, $lte: todayEnd },
     });
-    const hasHardCoreChanceLeft = totalFinishedAttempts < 2 ? 1 : 0;
+    const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
 
     res.json({
       message: !isCorrect
@@ -691,6 +815,94 @@ const submitHardcoreQuiz = async (req, res) => {
 
 
 
+const finishHardcoreQuiz = async (req, res) => {
+  try {
+    const { quizId } = req.body;
+    const userId = req.user.login_data._id;
+
+    const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+    if (!quiz) {
+      return res.status(404).json({ error: "Hardcore Quiz not found" });
+    }
+
+    let submission = await HardcoreQuizSubmission.findOne({
+      quizId,
+      userId,
+      isActive: true,
+    });
+
+    if (!submission) {
+      return res.status(400).json({
+        error: true,
+        message: "No active hardcore quiz attempt found.",
+      });
+    }
+
+    // agar pehle hi merge kar chuke ho
+    if (submission.hasMergedToWallet) {
+      submission.isActive = false;
+      submission.isFinished = true;
+      await submission.save();
+
+      return res.json({
+        message: "Quiz already finished and rewards merged.",
+        coinsEarned: submission.coinsEarned,
+        expEarned: submission.expEarned,
+      });
+    }
+
+    // agar koi answer nahi diya tha
+    if (!submission.answers || submission.answers.length === 0) {
+      submission.isActive = false;
+      submission.isFinished = true;
+      submission.coinsEarned = 0;
+      submission.expEarned = 0;
+      submission.hasMergedToWallet = true;
+      await submission.save();
+
+      return res.json({
+        message: "Quiz finished with no answers. No rewards earned.",
+        coinsEarned: 0,
+        expEarned: 0,
+      });
+    }
+
+    // yaha: kuch answers diye hain, and now quitting voluntarily
+    const user = await User.findById(userId);
+    user.coins += submission.coinsEarned;
+    user.exp += submission.expEarned;
+    user.gems = getGemsFromCoins(user.coins);
+    await user.save();
+
+    submission.isActive = false;
+    submission.isFinished = true;
+    submission.hasMergedToWallet = true;
+    await submission.save();
+
+    const finishedCount = await HardcoreQuizSubmission.countDocuments({
+      userId,
+      quizId,
+      isFinished: true,
+    });
+    const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
+
+    res.json({
+      message: "Quiz finished. Rewards merged successfully.",
+      coinsEarned: submission.coinsEarned,
+      expEarned: submission.expEarned,
+      currentScore: submission.score,
+      totalQuestions: quiz.questions.length,
+      hasHardCoreChanceLeft,
+    });
+  } catch (error) {
+    console.error("❌ Finish Hardcore Quiz Error:", error);
+    res.status(500).json({
+      error: "Failed to finish hardcore quiz",
+      details: error.message,
+    });
+  }
+};
+
 
 
 
@@ -701,58 +913,6 @@ const POWER_CARD_COSTS = {
   reduceOptions: 400,
   changeQuestion: 600,
 };
-
-// const buyPowerCard = async (req, res) => {
-//   try {
-//     const { powerType, quantity = 1 } = req.body;
-//     const userId = req.user.login_data._id;
-
-//     // 🧠 Validate input key
-//     if (!POWER_CARD_COSTS[powerType]) {
-//       return res.status(400).json({
-//         error: true,
-//         message: "Invalid power card type.",
-//       });
-//     }
-
-//     const user = await User.findById(userId);
-//     if (!user)
-//       return res.status(404).json({ error: true, message: "User not found" });
-
-//     const cost = POWER_CARD_COSTS[powerType] * quantity;
-
-//     if (user.coins < cost) {
-//       return res.status(400).json({
-//         error: true,
-//         message: `Not enough coins. You need ${cost} coins.`,
-//       });
-//     }
-
-//     // 🪙 Deduct coins and add the card(s)
-//     user.coins -= cost;
-//     // user.gems = getGemsFromCoins(user.coins);
-//     user.powerCards[powerType] =
-//       (user.powerCards[powerType] || 0) + quantity;
-
-//     await user.save();
-
-//     res.json({
-//       message: `Purchased ${quantity} ${powerType} power card(s) successfully.`,
-//       powerType,
-//       quantity,
-//       cost,
-//       wallet: { coins: user.coins, gems: user.gems },
-//       powerCards: user.powerCards,
-//     });
-//   } catch (error) {
-//     console.error("Buy Power Card Error:", error);
-//     res.status(500).json({
-//       error: true,
-//       message: "Failed to buy power card",
-//       details: error.message,
-//     });
-//   }
-// };
 
 const buyPowerCard = async (req, res) => {
   try {
@@ -979,102 +1139,6 @@ const getPowerCards = async (req, res) => {
 
 
 // ----------------------------------------
-
-// const buyHardcoreQuestion = async (req, res) => {
-//   try {
-//     const { quizId, questionId } = req.body;
-//     const userId = req.user.login_data._id;
-
-//     // 1️⃣ Fetch user & quiz
-//     const user = await User.findById(userId);
-//     if (!user)
-//       return res.status(404).json({ error: true, message: "User not found" });
-
-//     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
-//     if (!quiz)
-//       return res.status(404).json({ error: true, message: "Quiz not found" });
-
-//     // 2️⃣ Check across all submissions (not just active)
-//     const previousUnlock = await HardcoreQuizSubmission.findOne({
-//       userId,
-//       quizId,
-//       unlockedQuestions: { $in: [questionId] },
-//     });
-
-//     if (previousUnlock) {
-//       return res.status(400).json({
-//         error: true,
-//         message: "This question is already purchased.",
-//       });
-//     }
-
-//     // 2️⃣ Get or create submission
-//     let submission = await HardcoreQuizSubmission.findOne({
-//       userId,
-//       quizId,
-//       isActive: true,
-//     });
-
-//     if (!submission) {
-//       submission = await HardcoreQuizSubmission.create({
-//         quizId,
-//         userId,
-//         answers: [],
-//         unlockedQuestions: [],
-//         score: 0,
-//         coinsEarned: 0,
-//         expEarned: 0,
-//         isActive: true,
-//       });
-//     }
-
-//     // 3️⃣ Already unlocked?
-//     if (submission.unlockedQuestions?.includes(questionId)) {
-//       return res.json({ message: "Question already purchased." });
-//     }
-
-//     // 4️⃣ Check gems
-//     if (user.gems < 1) {
-//       return res.status(400).json({
-//         error: true,
-//         message: "Not enough gems. 1 gem required to buy this question.",
-//       });
-//     }
-
-//     // 5️⃣ Deduct gem
-//     user.gems -= 1;
-//     await user.save();
-
-//     // 6️⃣ Mark question as unlocked
-//     submission.unlockedQuestions.push(questionId);
-//     await submission.save();
-
-//     // 7️⃣ Return purchased question details
-//     const boughtQuestion = quiz.questions.find(
-//       (q) => q._id.toString() === questionId
-//     );
-
-//     res.json({
-//       success: true,
-//       message: "Question purchased successfully.",
-//       unlockedQuestion: {
-//         _id: boughtQuestion._id,
-//         question: boughtQuestion.question,
-//         options: boughtQuestion.options,
-//         difficulty: boughtQuestion.difficulty,
-//         correctAnswer: boughtQuestion.correctAnswer,
-//       },
-//       remainingGems: user.gems,
-//     });
-//   } catch (error) {
-//     console.error("❌ Buy Question Error:", error);
-//     res.status(500).json({
-//       error: true,
-//       message: "Failed to purchase question",
-//       details: error.message,
-//     });
-//   }
-// };
 
 
 const buyHardcoreQuestion = async (req, res) => {
@@ -1346,6 +1410,6 @@ const getAllBoughtQuestions = async (req, res) => {
 
 
 module.exports = {
-  generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz,
+  generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, finishHardcoreQuiz,
   buyPowerCard, usePowerCard, getPowerCards, buyGems, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions
 };

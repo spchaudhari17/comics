@@ -15,7 +15,7 @@ const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = re
 const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject, getAllSubjectsForWeb } = require('../app/controller/api/subjectController');
 const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList, resetStudentPassword, deleteStudent, deleteAllStudents } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
-const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard, buyGems, unlockHardcoreQuestion, getUnlockedQuestions, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions } = require('../app/controller/api/hardcoreQuizController');
+const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard, buyGems, unlockHardcoreQuestion, getUnlockedQuestions, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions, finishHardcoreQuiz } = require('../app/controller/api/hardcoreQuizController');
 const { getAllCountries } = require('../app/controller/api/countryController');
 
 
@@ -116,6 +116,7 @@ router.get("/user/comic/:id/hardcore-quiz/:userId", getHardcoreQuizByComic);
 // Get Hardcore Quiz for a Comic (without userId)
 router.get("/user/comic/:id/hardcore-quiz", getHardcoreQuizByComic);
 router.post("/user/submit-hardcore-quiz", authentication, submitHardcoreQuiz);
+router.post("/user/finish-hardcore-quiz", authentication, finishHardcoreQuiz);
 
 
 router.post("/user/buyPowerCard", authentication, buyPowerCard);
