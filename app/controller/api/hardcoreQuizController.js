@@ -651,27 +651,26 @@ const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
 //   }
 // };
 
+
 const submitHardcoreQuiz = async (req, res) => {
   try {
     const { quizId, questionId, selectedAnswer, doubleChoice } = req.body;
     const userId = req.user.login_data._id;
 
-    // find quiz
     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
     if (!quiz)
       return res.status(404).json({ error: "Hardcore Quiz not found" });
 
-    // find question
     const question = quiz.questions.find(
       (q) => q._id.toString() === questionId
     );
     if (!question)
-      return res.status(404).json({ error: "Question not found in quiz" });
+      return res.status(404).json({ error: "Question not in quiz" });
 
-    // find all submissions
+    // Fetch all submissions
     const allSubs = await HardcoreQuizSubmission.find({ userId, quizId });
 
-    // limit = 2 finished attempts only
+    // Total finished attempts
     const finishedAttempts = allSubs.filter((s) => s.isFinished).length;
     if (finishedAttempts >= 2) {
       return res.status(403).json({
@@ -680,14 +679,13 @@ const submitHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // find active submission
+    // Find active attempt OR create a new one
     let submission = await HardcoreQuizSubmission.findOne({
       quizId,
       userId,
       isActive: true,
     });
 
-    // if no active → create new attempt
     if (!submission) {
       submission = await HardcoreQuizSubmission.create({
         quizId,
@@ -704,18 +702,18 @@ const submitHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // ❌ BLOCK only SAME ATTEMPT duplicate question
+    // ❌ Block only same attempt repeat
     const sameAttemptCheck = submission.answers.some(
       (a) => a.questionId.toString() === questionId
     );
     if (sameAttemptCheck) {
       return res.status(400).json({
         error: true,
-        message: "Already attempted this question in this attempt.",
+        message: "This question was already attempted in this attempt.",
       });
     }
 
-    // 🎯 evaluate answer
+    // Evaluate answer
     const isCorrect = question.correctAnswer === selectedAnswer;
     let coins = 0;
     let exp = 0;
@@ -730,7 +728,7 @@ const submitHardcoreQuiz = async (req, res) => {
 
       if (doubleChoice) submission.currentMultiplier *= 2;
     } else {
-      // ❌ WRONG ANSWER → entire attempt fail
+      // ❌ Wrong → whole attempt fails
       submission.isActive = false;
       submission.isFinished = true;
       submission.coinsEarned = 0;
@@ -738,7 +736,7 @@ const submitHardcoreQuiz = async (req, res) => {
       submission.currentMultiplier = 1;
     }
 
-    // save answer
+    // Save answer
     submission.answers.push({
       questionId,
       selectedAnswer,
@@ -746,47 +744,65 @@ const submitHardcoreQuiz = async (req, res) => {
       coins,
       exp,
     });
-
     await submission.save();
+
+    // ----------------------------------------------
+    // 🔥 NEW MERGE LOGIC (YOUR REQUIRED LOGIC)
+    // Merge when ALL UNIQUE QUESTIONS across attempts are done.
+    // ----------------------------------------------
+
+    const allSubsAfter = await HardcoreQuizSubmission.find({ userId, quizId });
+
+    const uniqueAttempted = new Set();
+    for (const sub of allSubsAfter) {
+      for (const ans of sub.answers || []) {
+        uniqueAttempted.add(ans.questionId.toString());
+      }
+    }
+
+    // Include current question also
+    uniqueAttempted.add(questionId.toString());
+
+    const isAllCompleted =
+      uniqueAttempted.size === quiz.questions.length && isCorrect;
 
     let hasAttemptedAllQuestion = false;
 
-    // 🏁 AUTO MERGE on perfect attempt
-    if (
-      isCorrect &&
-      submission.answers.length >= quiz.questions.length
-    ) {
+    if (isAllCompleted) {
       submission.isActive = false;
       submission.isFinished = true;
       hasAttemptedAllQuestion = true;
 
+      // Only latest attempt coins merge
       if (!submission.hasMergedToWallet) {
         const user = await User.findById(userId);
-        user.coins += submission.coinsEarned;
+
+        user.coins += submission.coinsEarned; // attempt-2 coins only
         user.exp += submission.expEarned;
-        user.gems = Math.floor(user.coins / 1800);
+        user.gems = getGemsFromCoins(user.coins);
+
         await user.save();
 
         submission.hasMergedToWallet = true;
+        await submission.save();
       }
-
-      await submission.save();
     }
 
-    // remaining attempts
+    // Remaining attempts
     const finalFinished = await HardcoreQuizSubmission.countDocuments({
       userId,
       quizId,
       isFinished: true,
     });
+
     const hasHardCoreChanceLeft = finalFinished < 2 ? 1 : 0;
 
     res.json({
       message: !isCorrect
         ? "Wrong answer! You lost all coins."
         : hasAttemptedAllQuestion
-        ? "Congrats! You won full rewards."
-        : "Correct answer! Keep going.",
+        ? "Congrats! All questions completed. Rewards merged!"
+        : "Correct answer! Continue...",
 
       result: {
         questionId,
@@ -811,6 +827,7 @@ const submitHardcoreQuiz = async (req, res) => {
     });
   }
 };
+
 
 
 
