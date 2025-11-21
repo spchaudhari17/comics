@@ -47,27 +47,7 @@ const authentication = async (req, res, next) => {
                                 auth: {}
                             });
                         }
-
-                        // ✅ Banned user check here
-                        if (isUserExist.is_banned) {
-                            if (isUserExist.ban_expiry && isUserExist.ban_expiry > Date.now()) {
-                                return res.status(403).send({
-                                    error: true,
-                                    message: `You are temporarily banned until ${isUserExist.ban_expiry}`,
-                                    message_desc: `You are temporarily banned until ${isUserExist.ban_expiry}`,
-                                    data: {},
-                                    auth: {}
-                                });
-                            } else {
-                                return res.status(403).send({
-                                    error: true,
-                                    message: "You are permanently banned from the platform",
-                                    message_desc: "You are permanently banned from the platform",
-                                    data: {},
-                                    auth: {}
-                                });
-                            }
-                        }
+                
 
                         if (isUserExist.is_verify == 0 && isUserExist.signup_type == 'Normal') {
                             return res.send({

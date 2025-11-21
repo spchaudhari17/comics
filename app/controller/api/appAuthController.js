@@ -14,7 +14,7 @@ const BASE_URL = process.env.BASE_URL;
 
 
 const signupWithUsername = async (req, res) => {
-  let { firstname = '', lastname = '', password = '', username = '', age = null, grade = '', country = '' } = req.body;
+  let { firstname = '', lastname = '', password = '', username = '', age = null, grade = '', country = '', userType = '' } = req.body;
 
   if (username.trim() === '') {
     return res.send({ error: true, status: 201, message: "Username is required." });
@@ -39,18 +39,19 @@ const signupWithUsername = async (req, res) => {
       age,
       grade,
       country,
-      is_verify: 1  // ✅ App flow mein OTP skip
+      userType: "student",
+      is_verify: 1  // App flow mein OTP skip
     });
 
     const savedUser = await userSignup.save();
 
-    // ✅ Signup ke baad fresh user data fetch karo (password/otp exclude karke)
+    // Signup ke baad fresh user data fetch karo (password/otp exclude karke)
     const login_data = await Users.findOne(
       { _id: savedUser._id },
       { password: 0, otp: 0, login_location: 0 }
     );
 
-    // ✅ JWT me pura login_data daalo (web jaisa)
+    // JWT me pura login_data daalo (web jaisa)
     const token = jwt.sign({ login_data }, process.env.JWTKEY, {
       algorithm: "HS256",
       expiresIn: '180d',

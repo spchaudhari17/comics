@@ -11,6 +11,7 @@ const HardcoreQuiz = require("../../../models/HardcoreQuiz");
 const DidYouKnow = require("../../../models/DidYouKnow");
 const Quiz = require("../../../models/Quiz");
 const FAQ = require("../../../models/FAQ");
+const User = require("../../../models/User");
 
 
 const openai = new OpenAI({
@@ -19,18 +20,7 @@ const openai = new OpenAI({
 
 
 
-// const listAllComicsAdmin = async (req, res) => {
-//   try {
-//     const comics = await Comic.find({ comicStatus: "published" }, "-prompt")
-//       .populate("user_id", "name email userType firstname")
-//       .sort({ createdAt: -1 });
 
-//     res.json({ comics });
-//   } catch (error) {
-//     console.error("Admin list comics error:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
 
 const listAllComicsAdmin = async (req, res) => {
   try {
@@ -182,10 +172,75 @@ const approveComicStatusAdmin = async (req, res) => {
 };
 
 
+const assignModeratorRole = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).send({ error: true, message: "User ID is required" });
+    }
+
+    const adminUser = await User.findById(req.user.login_data._id);
+
+    if (!adminUser || adminUser.userType !== 'admin') {
+      return res.status(403).send({ error: true, message: "Unauthorized action" });
+    }
+
+    const user = await User.findById(user_id);
+
+    if (!user) {
+      return res.status(404).send({ error: true, message: "User not found" });
+    }
+
+    // Toggle userType logic
+    const newUserType = user.userType === 'moderator' ? 'user' : 'moderator';
+    user.userType = newUserType;
+
+    await user.save();
+
+    return res.status(200).send({
+      error: false,
+      message: `User type updated to ${newUserType}`,
+      data: user,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send({ error: true, message: "An error occurred" });
+  }
+};
+
+const deleteUser = async (req, res) => {
+
+
+  try {
+
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.send({ error: true, status: 400, message: "User ID is required." });
+    }
+
+    const isDeleted = await User.deleteOne({ "_id": user_id })
+
+    if (isDeleted) {
+
+      return res.send({ "error": false, "status": 200, "message": "Account Deleted successfully." })
+
+    } else {
+
+      return res.send({ "error": true, "status": 201, "message": "An error has occured." })
+    }
+
+  } catch (e) {
+
+    return res.send({ "error": true, "status": 201, "message": "Something went wrong." + e })
+  }
+
+}
 
 
 
-module.exports = { approveComicStatusAdmin, listAllComicsAdmin, getAdminComicDetails }
+module.exports = { approveComicStatusAdmin, listAllComicsAdmin, getAdminComicDetails, assignModeratorRole, deleteUser }
 
 
 

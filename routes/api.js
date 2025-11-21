@@ -5,7 +5,7 @@ const multer = require('multer');
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
-const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails } = require('../app/controller/api/admin/adminComicController');
+const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
 const { submitQuiz } = require('../app/controller/api/submitQuizController');
 const { getAllUsers } = require('../app/controller/api/admin/userController');
@@ -98,9 +98,11 @@ router.patch("/user/add-gems", authentication, addGems);
 
 router.get("/admin/comics", authentication, listAllComicsAdmin);
 router.post("/admin/comics/status", authentication, approveComicStatusAdmin);
-router.get("/admin/getAllUsers", getAllUsers);
-router.get("/admin/comics/:id", getAdminComicDetails);
-router.put("/admin/update-country", updateCountryForSeries);
+router.get("/admin/getAllUsers", authentication, getAllUsers);
+router.get("/admin/comics/:id", authentication, getAdminComicDetails);
+router.put("/admin/update-country", authentication, updateCountryForSeries);
+router.post("/admin/assign-moderator", authentication, assignModeratorRole);
+router.post("/admin/deleteUser", authentication, deleteUser)
 
 //******************************** quiz routes routes started from here ***************************** */
 
