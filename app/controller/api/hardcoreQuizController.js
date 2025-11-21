@@ -656,58 +656,43 @@ const submitHardcoreQuiz = async (req, res) => {
     const { quizId, questionId, selectedAnswer, doubleChoice } = req.body;
     const userId = req.user.login_data._id;
 
+    // find quiz
     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
-    if (!quiz) {
+    if (!quiz)
       return res.status(404).json({ error: "Hardcore Quiz not found" });
-    }
 
+    // find question
     const question = quiz.questions.find(
       (q) => q._id.toString() === questionId
     );
-    if (!question) {
-      return res
-        .status(404)
-        .json({ error: "Question not found in this quiz" });
-    }
+    if (!question)
+      return res.status(404).json({ error: "Question not found in quiz" });
 
-    // 🔐 TOTAL LIMIT = 2 attempts for this quiz
+    // find all submissions
     const allSubs = await HardcoreQuizSubmission.find({ userId, quizId });
-    const finishedAttempts = allSubs.filter((s) => s.isFinished).length;
 
+    // limit = 2 finished attempts only
+    const finishedAttempts = allSubs.filter((s) => s.isFinished).length;
     if (finishedAttempts >= 2) {
       return res.status(403).json({
         error: true,
-        message: "You have used all 2 attempts for this quiz.",
+        message: "You have used all 2 attempts.",
       });
     }
 
-    // ❌ check: ye question kabhi pehle attempt hua hai kya? (any attempt)
-    const attemptedQuestionIds = new Set();
-    for (const sub of allSubs) {
-      for (const ans of sub.answers || []) {
-        attemptedQuestionIds.add(ans.questionId.toString());
-      }
-    }
-
-    if (attemptedQuestionIds.has(questionId.toString())) {
-      return res.status(400).json({
-        error: true,
-        message: "You have already attempted this question.",
-      });
-    }
-
-    // 🔍 Active submission dhoondo, nahi ho to naya attempt
+    // find active submission
     let submission = await HardcoreQuizSubmission.findOne({
       quizId,
       userId,
       isActive: true,
     });
 
+    // if no active → create new attempt
     if (!submission) {
       submission = await HardcoreQuizSubmission.create({
         quizId,
         userId,
-        attemptNumber: finishedAttempts + 1, // 1 ya 2
+        attemptNumber: finishedAttempts + 1,
         answers: [],
         score: 0,
         coinsEarned: 0,
@@ -719,7 +704,18 @@ const submitHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // EVALUATE ANSWER
+    // ❌ BLOCK only SAME ATTEMPT duplicate question
+    const sameAttemptCheck = submission.answers.some(
+      (a) => a.questionId.toString() === questionId
+    );
+    if (sameAttemptCheck) {
+      return res.status(400).json({
+        error: true,
+        message: "Already attempted this question in this attempt.",
+      });
+    }
+
+    // 🎯 evaluate answer
     const isCorrect = question.correctAnswer === selectedAnswer;
     let coins = 0;
     let exp = 0;
@@ -732,20 +728,17 @@ const submitHardcoreQuiz = async (req, res) => {
       submission.coinsEarned += coins;
       submission.expEarned += exp;
 
-      if (doubleChoice) {
-        submission.currentMultiplier *= 2; // next question double
-      }
+      if (doubleChoice) submission.currentMultiplier *= 2;
     } else {
-      // ❌ WRONG ANSWER → poora attempt fail ho gaya
+      // ❌ WRONG ANSWER → entire attempt fail
       submission.isActive = false;
       submission.isFinished = true;
       submission.coinsEarned = 0;
       submission.expEarned = 0;
       submission.currentMultiplier = 1;
-      // hasMergedToWallet YAHAN MAT CHANGE KARNA
     }
 
-    // answer push karo
+    // save answer
     submission.answers.push({
       questionId,
       selectedAnswer,
@@ -753,43 +746,48 @@ const submitHardcoreQuiz = async (req, res) => {
       coins,
       exp,
     });
+
     await submission.save();
 
     let hasAttemptedAllQuestion = false;
 
-    // 🏁 CASE: is attempt me saare questions sahi ho gaye (single clean run)
-    if (submission.answers.length >= quiz.questions.length && isCorrect) {
+    // 🏁 AUTO MERGE on perfect attempt
+    if (
+      isCorrect &&
+      submission.answers.length >= quiz.questions.length
+    ) {
       submission.isActive = false;
       submission.isFinished = true;
       hasAttemptedAllQuestion = true;
 
       if (!submission.hasMergedToWallet) {
         const user = await User.findById(userId);
-
         user.coins += submission.coinsEarned;
         user.exp += submission.expEarned;
-        user.gems = getGemsFromCoins(user.coins);
+        user.gems = Math.floor(user.coins / 1800);
         await user.save();
 
         submission.hasMergedToWallet = true;
-        await submission.save();
       }
+
+      await submission.save();
     }
 
-    // remaining attempts (max 2)
-    const finishedCount = await HardcoreQuizSubmission.countDocuments({
+    // remaining attempts
+    const finalFinished = await HardcoreQuizSubmission.countDocuments({
       userId,
       quizId,
       isFinished: true,
     });
-    const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
+    const hasHardCoreChanceLeft = finalFinished < 2 ? 1 : 0;
 
     res.json({
       message: !isCorrect
         ? "Wrong answer! You lost all coins."
         : hasAttemptedAllQuestion
-          ? "Congrats! You won and coins merged successfully."
-          : "Correct answer! Keep going.",
+        ? "Congrats! You won full rewards."
+        : "Correct answer! Keep going.",
+
       result: {
         questionId,
         isCorrect,
@@ -797,6 +795,7 @@ const submitHardcoreQuiz = async (req, res) => {
         coins,
         exp,
       },
+
       currentScore: submission.score,
       totalQuestions: quiz.questions.length,
       coinsEarned: submission.coinsEarned,
@@ -804,14 +803,15 @@ const submitHardcoreQuiz = async (req, res) => {
       hasHardCoreChanceLeft,
       hasAttemptedAllQuestion,
     });
-  } catch (error) {
-    console.error("❌ Submit Hardcore Quiz Error:", error);
+  } catch (err) {
+    console.error("❌ Submit Hardcore Quiz Error:", err);
     res.status(500).json({
-      error: "Failed to submit hardcore question",
-      details: error.message,
+      error: "Failed to submit question",
+      details: err.message,
     });
   }
 };
+
 
 
 
