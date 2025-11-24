@@ -846,6 +846,105 @@ const submitHardcoreQuiz = async (req, res) => {
 
 
 
+// const finishHardcoreQuiz = async (req, res) => {
+//   try {
+//     const { quizId } = req.body;
+//     const userId = req.user.login_data._id;
+
+//     const quiz = await HardcoreQuiz.findById(quizId).populate("questions");
+//     if (!quiz) {
+//       return res.status(404).json({ error: "Hardcore Quiz not found" });
+//     }
+
+//     // Find active submission
+//     let submission = await HardcoreQuizSubmission.findOne({
+//       quizId,
+//       userId,
+//       isActive: true,
+//     });
+
+//     if (!submission) {
+//       return res.status(400).json({
+//         error: true,
+//         message: "No active hardcore quiz attempt found.",
+//       });
+//     }
+
+//     // Already merged earlier
+//     if (submission.hasMergedToWallet) {
+//       submission.isActive = false;
+//       submission.isFinished = true;
+//       await submission.save();
+
+//       return res.json({
+//         message: "Quiz already finished and rewards merged.",
+//         coinsEarned: submission.coinsEarned,
+//         expEarned: submission.expEarned,
+//       });
+//     }
+
+//     // If no answers
+//     if (!submission.answers || submission.answers.length === 0) {
+//       submission.isActive = false;
+//       submission.isFinished = true;
+//       submission.coinsEarned = 0;
+//       submission.expEarned = 0;
+//       submission.hasMergedToWallet = true;
+//       await submission.save();
+
+//       return res.json({
+//         message: "No answers given. No rewards earned.",
+//         coinsEarned: 0,
+//         expEarned: 0,
+//       });
+//     }
+
+//     // Merge ONLY current attempt coins
+//     const user = await User.findById(userId);
+
+//     user.coins += submission.coinsEarned;
+//     user.exp += submission.expEarned;
+//     user.gems = Math.floor(user.coins / 1800);
+//     await user.save();
+
+//     submission.isActive = false;
+//     submission.isFinished = true;
+//     submission.hasMergedToWallet = true;
+//     await submission.save();
+
+//     // remaining chances = 2 attempts only
+//     const finishedCount = await HardcoreQuizSubmission.countDocuments({
+//       userId,
+//       quizId,
+//       isFinished: true,
+//     });
+
+//     // const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
+
+//     const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId, quizId });
+//     const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+
+//     const hasHardCoreChanceLeft = finishedCount < allowedAttempts ? 1 : 0;
+
+
+//     res.json({
+//       message: "Attempt finished. Rewards merged successfully.",
+//       coinsEarned: submission.coinsEarned,
+//       expEarned: submission.expEarned,
+//       currentScore: submission.score,
+//       totalQuestions: quiz.questions.length,
+//       hasHardCoreChanceLeft,
+//     });
+//   } catch (error) {
+//     console.error("❌ Finish Hardcore Quiz Error:", error);
+//     res.status(500).json({
+//       error: "Failed to finish hardcore quiz",
+//       details: error.message,
+//     });
+//   }
+// };
+
+
 const finishHardcoreQuiz = async (req, res) => {
   try {
     const { quizId } = req.body;
@@ -856,21 +955,31 @@ const finishHardcoreQuiz = async (req, res) => {
       return res.status(404).json({ error: "Hardcore Quiz not found" });
     }
 
-    // Find active submission
+    // 1️⃣ Try to find ACTIVE submission
     let submission = await HardcoreQuizSubmission.findOne({
       quizId,
       userId,
       isActive: true,
     });
 
+    // 2️⃣ If no active submission, check if there is any finished but unmerged attempt
     if (!submission) {
-      return res.status(400).json({
-        error: true,
-        message: "No active hardcore quiz attempt found.",
-      });
+      submission = await HardcoreQuizSubmission.findOne({
+        quizId,
+        userId,
+        isFinished: true,
+        hasMergedToWallet: false,
+      }).sort({ createdAt: -1 });
+
+      if (!submission) {
+        return res.status(400).json({
+          error: true,
+          message: "No active or pending hardcore quiz attempt found.",
+        });
+      }
     }
 
-    // Already merged earlier
+    // 3️⃣ If already merged earlier
     if (submission.hasMergedToWallet) {
       submission.isActive = false;
       submission.isFinished = true;
@@ -883,7 +992,7 @@ const finishHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // If no answers
+    // 4️⃣ If no answers given → no rewards
     if (!submission.answers || submission.answers.length === 0) {
       submission.isActive = false;
       submission.isFinished = true;
@@ -899,7 +1008,7 @@ const finishHardcoreQuiz = async (req, res) => {
       });
     }
 
-    // Merge ONLY current attempt coins
+    // 5️⃣ Merge ONLY current attempt coins/exp to user wallet
     const user = await User.findById(userId);
 
     user.coins += submission.coinsEarned;
@@ -912,20 +1021,17 @@ const finishHardcoreQuiz = async (req, res) => {
     submission.hasMergedToWallet = true;
     await submission.save();
 
-    // remaining chances = 2 attempts only
+    // 6️⃣ Remaining chances based on per-user allowedAttempts
     const finishedCount = await HardcoreQuizSubmission.countDocuments({
       userId,
       quizId,
       isFinished: true,
     });
 
-    // const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
-
     const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId, quizId });
     const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
 
     const hasHardCoreChanceLeft = finishedCount < allowedAttempts ? 1 : 0;
-
 
     res.json({
       message: "Attempt finished. Rewards merged successfully.",
@@ -943,6 +1049,8 @@ const finishHardcoreQuiz = async (req, res) => {
     });
   }
 };
+
+
 
 
 const increaseUserHardcoreAttempts = async (req, res) => {
