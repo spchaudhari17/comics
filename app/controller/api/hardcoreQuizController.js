@@ -228,7 +228,6 @@ Format:
 };
 
 
-
 // const getHardcoreQuizByComic = async (req, res) => {
 //   try {
 //     const { id } = req.params; // comicId
@@ -239,7 +238,9 @@ Format:
 //       .populate({ path: "questions", options: { lean: true } })
 //       .lean();
 
-//     if (!quiz) return res.status(404).json({ error: "Hardcore Quiz not found" });
+//     if (!quiz) {
+//       return res.status(404).json({ error: "Hardcore Quiz not found" });
+//     }
 
 //     let hasAttempted = false;
 //     let hasAttemptedAllQuestion = false;
@@ -250,12 +251,6 @@ Format:
 
 //     if (userId) {
 //       const userObjectId = new mongoose.Types.ObjectId(userId);
-
-//       const todayStart = new Date();
-//       todayStart.setHours(0, 0, 0, 0);
-
-//       const todayEnd = new Date();
-//       todayEnd.setHours(23, 59, 59, 999);
 
 //       const submissions = await HardcoreQuizSubmission.find({
 //         quizId: quiz._id,
@@ -268,13 +263,9 @@ Format:
 
 //       activeSubmission = submissions.find((s) => s.isActive) || null;
 
-//       const finishedAttemptsToday = submissions.filter((s) =>
-//         s.isFinished &&
-//         s.createdAt >= todayStart &&
-//         s.createdAt <= todayEnd
-//       ).length;
+//       const finishedAttempts = submissions.filter((s) => s.isFinished).length;
 
-//       // ------------- FIX: Award 0 chances if user already completed all questions correctly ------------------
+//       // kisi bhi attempt me agar user ne sare questions sahi kiye hon
 //       const latestFinished = submissions.find((s) => s.isFinished);
 
 //       if (
@@ -283,26 +274,26 @@ Format:
 //         latestFinished.answers.every((a) => a.isCorrect)
 //       ) {
 //         hasAttemptedAllQuestion = true;
-//         hasHardCoreChanceLeft = 0;  // IMPORTANT FIX
+//         hasHardCoreChanceLeft = 0; // perfect ho gaya, ab aur attempt nahi
 //       } else {
-//         // Otherwise follow daily 2 attempts rule
-//         hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttemptsToday);
+//         // hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttempts);
+//         const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId: userObjectId, quizId: quiz._id });
+//         const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+
+//         hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
+
 //       }
 
-//       // Determine attempt number
+//       // attempt number decide karna
 //       if (activeSubmission) {
 //         attemptNumber = activeSubmission.attemptNumber;
-//       } else if (hasAttemptedAllQuestion) {
-//         attemptNumber = latestFinished.attemptNumber; // locked
-//       } else if (finishedAttemptsToday > 0 && finishedAttemptsToday < 2) {
-//         attemptNumber = finishedAttemptsToday + 1;
-//       } else if (finishedAttemptsToday >= 2) {
-//         attemptNumber = 2;
+//       } else if (hasAttemptedAllQuestion && latestFinished) {
+//         attemptNumber = latestFinished.attemptNumber;
 //       } else {
-//         attemptNumber = 1;
+//         attemptNumber = Math.min(2, finishedAttempts + 1); // 1 ya 2
 //       }
 
-//       // Merge attempted answers for UI
+//       // UI ke liye attempted answers collect karo
 //       for (const sub of submissions) {
 //         for (const ans of sub.answers || []) {
 //           attemptedAnswers[ans.questionId.toString()] = {
@@ -371,6 +362,7 @@ Format:
 //   }
 // };
 
+
 const getHardcoreQuizByComic = async (req, res) => {
   try {
     const { id } = req.params; // comicId
@@ -395,6 +387,7 @@ const getHardcoreQuizByComic = async (req, res) => {
     if (userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
 
+      // Fetch all submissions of this user for this quiz
       const submissions = await HardcoreQuizSubmission.find({
         quizId: quiz._id,
         userId: userObjectId,
@@ -404,39 +397,43 @@ const getHardcoreQuizByComic = async (req, res) => {
 
       if (submissions.length > 0) hasAttempted = true;
 
+      // Active attempt (if exists)
       activeSubmission = submissions.find((s) => s.isActive) || null;
 
+      // Count finished attempts
       const finishedAttempts = submissions.filter((s) => s.isFinished).length;
 
-      // kisi bhi attempt me agar user ne sare questions sahi kiye hon
-      const latestFinished = submissions.find((s) => s.isFinished);
+      // Fetch per-user allowed attempts
+      const userAttempt = await HardcoreQuizUserAttempt.findOne({
+        userId: userObjectId,
+        quizId: quiz._id,
+      });
 
-      if (
-        latestFinished &&
-        latestFinished.answers.length === quiz.questions.length &&
-        latestFinished.answers.every((a) => a.isCorrect)
-      ) {
-        hasAttemptedAllQuestion = true;
-        hasHardCoreChanceLeft = 0; // perfect ho gaya, ab aur attempt nahi
-      } else {
-        // hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttempts);
-        const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId: userObjectId, quizId: quiz._id });
-        const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+      const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
 
-        hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
-
+      // ⭐ CHECK: Has user attempted ALL questions? (correct/incorrect doesn't matter)
+      let uniqueAttempted = new Set();
+      for (const sub of submissions) {
+        for (const ans of sub.answers || []) {
+          uniqueAttempted.add(ans.questionId.toString());
+        }
       }
 
-      // attempt number decide karna
+      if (uniqueAttempted.size === quiz.questions.length) {
+        hasAttemptedAllQuestion = true;
+      }
+
+      // ⭐ Calculate chances left
+      hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
+
+      // ⭐ Attempt number logic
       if (activeSubmission) {
         attemptNumber = activeSubmission.attemptNumber;
-      } else if (hasAttemptedAllQuestion && latestFinished) {
-        attemptNumber = latestFinished.attemptNumber;
       } else {
-        attemptNumber = Math.min(2, finishedAttempts + 1); // 1 ya 2
+        attemptNumber = finishedAttempts + 1;
       }
 
-      // UI ke liye attempted answers collect karo
+      // ⭐ Collect all attempted answers (UI purpose)
       for (const sub of submissions) {
         for (const ans of sub.answers || []) {
           attemptedAnswers[ans.questionId.toString()] = {
@@ -449,6 +446,7 @@ const getHardcoreQuizByComic = async (req, res) => {
       }
     }
 
+    // Attach attempt status per question
     const questionsWithAttemptStatus = quiz.questions.map((q) => {
       const attempt = attemptedAnswers[q._id.toString()];
       return {
@@ -462,6 +460,7 @@ const getHardcoreQuizByComic = async (req, res) => {
       };
     });
 
+    // Check ads settings
     const comic = await Comic.findById(id);
     let showAdsHardcoreQuiz = true;
 
@@ -504,6 +503,10 @@ const getHardcoreQuizByComic = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch hardcore quiz" });
   }
 };
+
+
+
+
 
 const COINS_PER_GEM = 1800;
 const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);

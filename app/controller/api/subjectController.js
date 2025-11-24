@@ -9,6 +9,7 @@ const UserSubjectPriority = require("../../models/UserSubjectPriority");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
 const ComicView = require("../../models/ComicView");
+const HardcoreQuizUserAttempt = require("../../models/HardcoreQuizUserAttempt");
 
 const createSubject = async (req, res) => {
   try {
@@ -964,7 +965,6 @@ const getConceptsBySubject = async (req, res) => {
 };
 
 
-
 // const getComicsByConcept = async (req, res) => {
 //   try {
 //     const conceptId = req.params.conceptId;
@@ -977,13 +977,13 @@ const getConceptsBySubject = async (req, res) => {
 
 //     // 🧠 Base match query
 //     const matchQuery = {
-//       status: "approved",                 // ✅ approved only
-//       comicStatus: "published",           // ✅ published only
-//       pdfUrl: { $exists: true, $ne: "" }, // ✅ pdfUrl must exist and not be empty
+//       status: "approved",
+//       comicStatus: "published",
+//       pdfUrl: { $exists: true, $ne: "" },
 //       conceptId: new mongoose.Types.ObjectId(conceptId),
 //     };
 
-//     // 🌍 Country filter using "countries" array
+//     // 🌍 Country filter (countries array)
 //     if (country && country.trim() !== "") {
 //       matchQuery.$expr = {
 //         $or: [
@@ -998,12 +998,15 @@ const getConceptsBySubject = async (req, res) => {
 //       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
 //     }
 
-//     // 🔹 Fetch comics with lookups
+//     // ---------------------------------------------------------------------
+//     // 🚀 STEP 1: Fetch comics with all lookups
+//     // ---------------------------------------------------------------------
 //     let comics = await Comic.aggregate([
 //       { $match: matchQuery },
 //       { $sort: { partNumber: 1 } },
 //       { $skip: skip },
 //       { $limit: limit },
+
 //       { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
 //       { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
 //       { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
@@ -1012,6 +1015,7 @@ const getConceptsBySubject = async (req, res) => {
 //       { $lookup: { from: "themes", localField: "themeId", foreignField: "_id", as: "themeData" } },
 //       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
 //       { $lookup: { from: "comicpages", localField: "_id", foreignField: "comicId", as: "pages" } },
+
 //       {
 //         $addFields: {
 //           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
@@ -1035,13 +1039,15 @@ const getConceptsBySubject = async (req, res) => {
 //       },
 //     ]);
 
-//     // ✅ Step 2 — Add attempt data if user logged in
+//     // ---------------------------------------------------------------------
+//     // 🚀 STEP 2: User-based Attempt Details
+//     // ---------------------------------------------------------------------
 //     if (userId) {
 //       const userObjectId = new mongoose.Types.ObjectId(userId);
 //       const comicIds = comics.map((c) => c._id);
 
 //       const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
-//       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+//       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId questions");
 
 //       const normalSubmissions = await QuizSubmission.find(
 //         { quizId: { $in: quizzes.map((q) => q._id) }, userId: userObjectId },
@@ -1055,22 +1061,27 @@ const getConceptsBySubject = async (req, res) => {
 //         .sort({ createdAt: -1 })
 //         .lean();
 
+//       // Group submissions by quiz
 //       const submissionsByQuiz = {};
 //       hardcoreSubmissions.forEach((s) => {
-//         if (!submissionsByQuiz[s.quizId.toString()]) {
-//           submissionsByQuiz[s.quizId.toString()] = [];
-//         }
-//         submissionsByQuiz[s.quizId.toString()].push(s);
+//         const id = s.quizId.toString();
+//         if (!submissionsByQuiz[id]) submissionsByQuiz[id] = [];
+//         submissionsByQuiz[id].push(s);
 //       });
 
 //       const attemptedQuizIds = new Set(normalSubmissions.map((s) => s.quizId.toString()));
 
+//       // ---------------------------------------------------------------------
+//       // 🚀 STEP 3: Loop Through Comics & Attach Attempt Data
+//       // ---------------------------------------------------------------------
 //       comics.forEach((comic) => {
 //         const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
 //         const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
 
+//         // Normal quiz
 //         comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
 
+//         // Hardcore quiz
 //         if (hardcoreQuiz) {
 //           const quizId = hardcoreQuiz._id.toString();
 //           const submissions = submissionsByQuiz[quizId] || [];
@@ -1087,18 +1098,33 @@ const getConceptsBySubject = async (req, res) => {
 //               s.createdAt <= todayEnd
 //           ).length;
 
-//           const hasHardCoreChanceLeft = finishedAttemptsToday >= 2 ? 0 : 1;
+//           // Detect perfect completion
+//           const latestFinished = submissions.find((s) => s.isFinished);
 
+//           const hasAttemptedAllQuestion =
+//             latestFinished &&
+//             latestFinished.answers.length === hardcoreQuiz.questions.length &&
+//             latestFinished.answers.every((a) => a.isCorrect);
+
+//           let hasHardCoreChanceLeft = 0;
 //           let attemptNumber = 1;
-//           if (finishedAttemptsToday >= 2) attemptNumber = 2;
-//           else if (finishedAttemptsToday === 1) attemptNumber = 2;
-//           else attemptNumber = 1;
+
+//           if (hasAttemptedAllQuestion) {
+//             // User already won
+//             hasHardCoreChanceLeft = 0;
+//             attemptNumber = latestFinished.attemptNumber;
+//           } else {
+//             // Normal daily 2 attempts
+//             hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttemptsToday);
+//             attemptNumber = Math.min(2, finishedAttemptsToday + 1);
+//           }
 
 //           const activeSubmission = submissions.find((s) => s.isActive) || null;
 
 //           comic.hasAttemptedHardcore = submissions.length > 0;
-//           comic.attemptNumber = attemptNumber;
+//           comic.hasAttemptedAllQuestion = hasAttemptedAllQuestion;
 //           comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
+//           comic.attemptNumber = attemptNumber;
 //           comic.activeSubmission = activeSubmission
 //             ? {
 //               _id: activeSubmission._id,
@@ -1109,29 +1135,36 @@ const getConceptsBySubject = async (req, res) => {
 //               isActive: activeSubmission.isActive,
 //             }
 //             : null;
+
 //         } else {
 //           comic.hasAttemptedHardcore = false;
-//           comic.attemptNumber = 0;
+//           comic.hasAttemptedAllQuestion = false;
 //           comic.hasHardCoreChanceLeft = 0;
+//           comic.attemptNumber = 0;
 //           comic.activeSubmission = null;
 //         }
 //       });
+
 //     } else {
+//       // User not logged in
 //       comics.forEach((comic) => {
 //         comic.hasAttempted = false;
 //         comic.hasAttemptedHardcore = false;
+//         comic.hasAttemptedAllQuestion = false;
 //         comic.attemptNumber = 0;
 //         comic.hasHardCoreChanceLeft = 0;
 //         comic.activeSubmission = null;
 //       });
 //     }
 
-//     // 🧩 Series open logic
+//     // ---------------------------------------------------------------------
+//     // 🚀 STEP 4: Apply Series Opening Logic
+//     // ---------------------------------------------------------------------
 //     comics = comics.sort((a, b) => {
-//       const aSeries = a.seriesId ? a.seriesId.toString() : "";
-//       const bSeries = b.seriesId ? b.seriesId.toString() : "";
-//       if (aSeries === bSeries) return a.partNumber - b.partNumber;
-//       return aSeries.localeCompare(bSeries);
+//       const aS = a.seriesId ? a.seriesId.toString() : "";
+//       const bS = b.seriesId ? b.seriesId.toString() : "";
+//       if (aS === bS) return a.partNumber - b.partNumber;
+//       return aS.localeCompare(bS);
 //     });
 
 //     const seriesGroups = {};
@@ -1143,23 +1176,14 @@ const getConceptsBySubject = async (req, res) => {
 
 //     Object.values(seriesGroups).forEach((seriesComics) => {
 //       seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-//       if (seriesComics.length === 1) {
-//         seriesComics[0].isOpen = true;
-//       } else {
-//         seriesComics.forEach((comic) => {
-//           if (comic.partNumber === 1) {
-//             comic.isOpen = true;
-//           } else {
-//             const prevComic = seriesComics.find(
-//               (c) => c.partNumber === comic.partNumber - 1
-//             );
-//             comic.isOpen = prevComic && prevComic.hasAttempted ? true : false;
-//           }
-//         });
-//       }
+//       seriesComics.forEach((comic, idx) => {
+//         comic.isOpen = idx === 0 ? true : seriesComics[idx - 1].hasAttempted;
+//       });
 //     });
 
-//     // 🧮 Count total comics (same filter)
+//     // ---------------------------------------------------------------------
+//     // 🚀 STEP 5: Count Total Comics
+//     // ---------------------------------------------------------------------
 //     const totalComics = await Comic.countDocuments({
 //       status: "approved",
 //       comicStatus: "published",
@@ -1174,7 +1198,9 @@ const getConceptsBySubject = async (req, res) => {
 //       }),
 //     });
 
-//     // ✅ Response
+//     // ---------------------------------------------------------------------
+//     // 🚀 FINAL RESPONSE
+//     // ---------------------------------------------------------------------
 //     res.json({
 //       conceptId,
 //       country: country || "ALL",
@@ -1185,11 +1211,14 @@ const getConceptsBySubject = async (req, res) => {
 //       totalComics,
 //       comics,
 //     });
+
 //   } catch (error) {
 //     console.error("❌ Error fetching comics by concept:", error);
 //     res.status(500).json({ error: "Failed to fetch comics" });
 //   }
 // };
+
+
 
 const getComicsByConcept = async (req, res) => {
   try {
@@ -1201,7 +1230,7 @@ const getComicsByConcept = async (req, res) => {
     const country = req.query.country;
     const grade = req.query.grade;
 
-    // 🧠 Base match query
+    // Base match query
     const matchQuery = {
       status: "approved",
       comicStatus: "published",
@@ -1209,7 +1238,6 @@ const getComicsByConcept = async (req, res) => {
       conceptId: new mongoose.Types.ObjectId(conceptId),
     };
 
-    // 🌍 Country filter (countries array)
     if (country && country.trim() !== "") {
       matchQuery.$expr = {
         $or: [
@@ -1219,14 +1247,13 @@ const getComicsByConcept = async (req, res) => {
       };
     }
 
-    // 🎓 Grade filter
     if (grade && grade.trim() !== "") {
       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
     }
 
-    // ---------------------------------------------------------------------
-    // 🚀 STEP 1: Fetch comics with all lookups
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // STEP 1: Fetch comics + required lookups
+    // -------------------------------------------------------------
     let comics = await Comic.aggregate([
       { $match: matchQuery },
       { $sort: { partNumber: 1 } },
@@ -1265,18 +1292,18 @@ const getComicsByConcept = async (req, res) => {
       },
     ]);
 
-    // ---------------------------------------------------------------------
-    // 🚀 STEP 2: User-based Attempt Details
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // STEP 2: User-based quiz + hardcore quiz status
+    // -------------------------------------------------------------
     if (userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
       const comicIds = comics.map((c) => c._id);
 
-      const quizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
+      const normalQuizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId questions");
 
       const normalSubmissions = await QuizSubmission.find(
-        { quizId: { $in: quizzes.map((q) => q._id) }, userId: userObjectId },
+        { quizId: { $in: normalQuizzes.map((q) => q._id) }, userId: userObjectId },
         "quizId"
       );
 
@@ -1287,7 +1314,7 @@ const getComicsByConcept = async (req, res) => {
         .sort({ createdAt: -1 })
         .lean();
 
-      // Group submissions by quiz
+      // Group hardcore submissions
       const submissionsByQuiz = {};
       hardcoreSubmissions.forEach((s) => {
         const id = s.quizId.toString();
@@ -1297,95 +1324,82 @@ const getComicsByConcept = async (req, res) => {
 
       const attemptedQuizIds = new Set(normalSubmissions.map((s) => s.quizId.toString()));
 
-      // ---------------------------------------------------------------------
-      // 🚀 STEP 3: Loop Through Comics & Attach Attempt Data
-      // ---------------------------------------------------------------------
-      comics.forEach((comic) => {
-        const quiz = quizzes.find((q) => q.comicId.toString() === comic._id.toString());
+      // -------------------------------------------------------------
+      // STEP 3: Attach hardcore attempt info
+      // -------------------------------------------------------------
+      for (const comic of comics) {
         const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
+        const normalQuiz = normalQuizzes.find((nq) => nq.comicId.toString() === comic._id.toString());
 
-        // Normal quiz
-        comic.hasAttempted = quiz ? attemptedQuizIds.has(quiz._id.toString()) : false;
+        comic.hasAttempted = normalQuiz
+          ? attemptedQuizIds.has(normalQuiz._id.toString())
+          : false;
 
-        // Hardcore quiz
-        if (hardcoreQuiz) {
-          const quizId = hardcoreQuiz._id.toString();
-          const submissions = submissionsByQuiz[quizId] || [];
-
-          const todayStart = new Date();
-          todayStart.setHours(0, 0, 0, 0);
-          const todayEnd = new Date();
-          todayEnd.setHours(23, 59, 59, 999);
-
-          const finishedAttemptsToday = submissions.filter(
-            (s) =>
-              s.isFinished &&
-              s.createdAt >= todayStart &&
-              s.createdAt <= todayEnd
-          ).length;
-
-          // Detect perfect completion
-          const latestFinished = submissions.find((s) => s.isFinished);
-
-          const hasAttemptedAllQuestion =
-            latestFinished &&
-            latestFinished.answers.length === hardcoreQuiz.questions.length &&
-            latestFinished.answers.every((a) => a.isCorrect);
-
-          let hasHardCoreChanceLeft = 0;
-          let attemptNumber = 1;
-
-          if (hasAttemptedAllQuestion) {
-            // User already won
-            hasHardCoreChanceLeft = 0;
-            attemptNumber = latestFinished.attemptNumber;
-          } else {
-            // Normal daily 2 attempts
-            hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttemptsToday);
-            attemptNumber = Math.min(2, finishedAttemptsToday + 1);
-          }
-
-          const activeSubmission = submissions.find((s) => s.isActive) || null;
-
-          comic.hasAttemptedHardcore = submissions.length > 0;
-          comic.hasAttemptedAllQuestion = hasAttemptedAllQuestion;
-          comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
-          comic.attemptNumber = attemptNumber;
-          comic.activeSubmission = activeSubmission
-            ? {
-              _id: activeSubmission._id,
-              attemptNumber: activeSubmission.attemptNumber,
-              score: activeSubmission.score,
-              coinsEarned: activeSubmission.coinsEarned,
-              expEarned: activeSubmission.expEarned,
-              isActive: activeSubmission.isActive,
-            }
-            : null;
-
-        } else {
+        if (!hardcoreQuiz) {
           comic.hasAttemptedHardcore = false;
           comic.hasAttemptedAllQuestion = false;
           comic.hasHardCoreChanceLeft = 0;
           comic.attemptNumber = 0;
           comic.activeSubmission = null;
+          continue;
         }
-      });
 
-    } else {
-      // User not logged in
-      comics.forEach((comic) => {
-        comic.hasAttempted = false;
-        comic.hasAttemptedHardcore = false;
-        comic.hasAttemptedAllQuestion = false;
-        comic.attemptNumber = 0;
-        comic.hasHardCoreChanceLeft = 0;
-        comic.activeSubmission = null;
-      });
+        const quizId = hardcoreQuiz._id.toString();
+        const submissions = submissionsByQuiz[quizId] || [];
+
+        // Get user-specific allowed attempts
+        const userAttempt = await HardcoreQuizUserAttempt.findOne({
+          userId: userObjectId,
+          quizId: hardcoreQuiz._id,
+        });
+
+        const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+
+        // Count finished attempts
+        const finishedAttempts = submissions.filter((s) => s.isFinished).length;
+
+        // ⭐ Check ALL QUESTIONS attempted (correct/incorrect allowed)
+        let uniqueAttempted = new Set();
+        submissions.forEach((s) => {
+          (s.answers || []).forEach((ans) => {
+            uniqueAttempted.add(ans.questionId.toString());
+          });
+        });
+
+        const hasAttemptedAllQuestion =
+          uniqueAttempted.size === hardcoreQuiz.questions.length;
+
+        // ⭐ Chance left calculation
+        const hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
+
+        // ⭐ Active submission
+        const activeSubmission = submissions.find((s) => s.isActive) || null;
+
+        // ⭐ Attempt number
+        const attemptNumber = activeSubmission
+          ? activeSubmission.attemptNumber
+          : finishedAttempts + 1;
+
+        comic.hasAttemptedHardcore = submissions.length > 0;
+        comic.hasAttemptedAllQuestion = hasAttemptedAllQuestion;
+        comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
+        comic.attemptNumber = attemptNumber;
+        comic.activeSubmission = activeSubmission
+          ? {
+            _id: activeSubmission._id,
+            attemptNumber: activeSubmission.attemptNumber,
+            score: activeSubmission.score,
+            coinsEarned: activeSubmission.coinsEarned,
+            expEarned: activeSubmission.expEarned,
+            isActive: activeSubmission.isActive,
+          }
+          : null;
+      }
     }
 
-    // ---------------------------------------------------------------------
-    // 🚀 STEP 4: Apply Series Opening Logic
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // STEP 4: Series opening logic
+    // -------------------------------------------------------------
     comics = comics.sort((a, b) => {
       const aS = a.seriesId ? a.seriesId.toString() : "";
       const bS = b.seriesId ? b.seriesId.toString() : "";
@@ -1400,33 +1414,21 @@ const getComicsByConcept = async (req, res) => {
       seriesGroups[key].push(comic);
     });
 
-    Object.values(seriesGroups).forEach((seriesComics) => {
-      seriesComics.sort((a, b) => a.partNumber - b.partNumber);
-      seriesComics.forEach((comic, idx) => {
-        comic.isOpen = idx === 0 ? true : seriesComics[idx - 1].hasAttempted;
+    Object.values(seriesGroups).forEach((group) => {
+      group.sort((a, b) => a.partNumber - b.partNumber);
+      group.forEach((comic, idx) => {
+        comic.isOpen = idx === 0 ? true : group[idx - 1].hasAttempted;
       });
     });
 
-    // ---------------------------------------------------------------------
-    // 🚀 STEP 5: Count Total Comics
-    // ---------------------------------------------------------------------
-    const totalComics = await Comic.countDocuments({
-      status: "approved",
-      comicStatus: "published",
-      pdfUrl: { $exists: true, $ne: "" },
-      conceptId: new mongoose.Types.ObjectId(conceptId),
-      ...(grade && { grade: { $regex: new RegExp(`^${grade.trim()}$`, "i") } }),
-      ...(country && {
-        $or: [
-          { countries: country.trim().toUpperCase() },
-          { countries: "ALL" },
-        ],
-      }),
-    });
+    // -------------------------------------------------------------
+    // STEP 5: Count total
+    // -------------------------------------------------------------
+    const totalComics = await Comic.countDocuments(matchQuery);
 
-    // ---------------------------------------------------------------------
-    // 🚀 FINAL RESPONSE
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // FINAL RESPONSE
+    // -------------------------------------------------------------
     res.json({
       conceptId,
       country: country || "ALL",
@@ -1437,7 +1439,6 @@ const getComicsByConcept = async (req, res) => {
       totalComics,
       comics,
     });
-
   } catch (error) {
     console.error("❌ Error fetching comics by concept:", error);
     res.status(500).json({ error: "Failed to fetch comics" });
