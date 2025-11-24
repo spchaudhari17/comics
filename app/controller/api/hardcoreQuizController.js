@@ -6,6 +6,7 @@ const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
 const { default: mongoose } = require("mongoose");
 const User = require("../../models/User");
 const Subject = require("../../models/Subject");
+const HardcoreQuizUserAttempt = require("../../models/HardcoreQuizUserAttempt");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -418,7 +419,12 @@ const getHardcoreQuizByComic = async (req, res) => {
         hasAttemptedAllQuestion = true;
         hasHardCoreChanceLeft = 0; // perfect ho gaya, ab aur attempt nahi
       } else {
-        hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttempts);
+        // hasHardCoreChanceLeft = Math.max(0, 2 - finishedAttempts);
+        const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId: userObjectId, quizId: quiz._id });
+        const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+
+        hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
+
       }
 
       // attempt number decide karna
@@ -670,9 +676,12 @@ const submitHardcoreQuiz = async (req, res) => {
     // Fetch all submissions
     const allSubs = await HardcoreQuizSubmission.find({ userId, quizId });
 
+    const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId, quizId });
+    const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+
     // Total finished attempts
     const finishedAttempts = allSubs.filter((s) => s.isFinished).length;
-    if (finishedAttempts >= 2) {
+    if (finishedAttempts >= allowedAttempts) {
       return res.status(403).json({
         error: true,
         message: "You have used all 2 attempts.",
@@ -795,7 +804,9 @@ const submitHardcoreQuiz = async (req, res) => {
       isFinished: true,
     });
 
-    const hasHardCoreChanceLeft = finalFinished < 2 ? 1 : 0;
+    // const hasHardCoreChanceLeft = finalFinished < 2 ? 1 : 0;
+    const hasHardCoreChanceLeft = finalFinished < allowedAttempts ? 1 : 0;
+
 
     res.json({
       message: !isCorrect
@@ -905,7 +916,13 @@ const finishHardcoreQuiz = async (req, res) => {
       isFinished: true,
     });
 
-    const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
+    // const hasHardCoreChanceLeft = finishedCount < 2 ? 1 : 0;
+
+    const userAttempt = await HardcoreQuizUserAttempt.findOne({ userId, quizId });
+    const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
+
+    const hasHardCoreChanceLeft = finishedCount < allowedAttempts ? 1 : 0;
+
 
     res.json({
       message: "Attempt finished. Rewards merged successfully.",
@@ -925,6 +942,33 @@ const finishHardcoreQuiz = async (req, res) => {
 };
 
 
+const increaseUserHardcoreAttempts = async (req, res) => {
+  try {
+    const { quizId } = req.body;
+    const userId = req.user.login_data._id;
+
+    let record = await HardcoreQuizUserAttempt.findOne({ userId, quizId });
+
+    if (!record) {
+      record = await HardcoreQuizUserAttempt.create({
+        userId,
+        quizId,
+        allowedAttempts: 3   // default 2 + 1
+      });
+    } else {
+      record.allowedAttempts += 1;
+      await record.save();
+    }
+
+    res.json({
+      message: "User attempts increased!",
+      allowedAttempts: record.allowedAttempts
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
 
 
@@ -1431,6 +1475,6 @@ const getAllBoughtQuestions = async (req, res) => {
 
 
 module.exports = {
-  generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, finishHardcoreQuiz,
+  generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, finishHardcoreQuiz, increaseUserHardcoreAttempts,
   buyPowerCard, usePowerCard, getPowerCards, buyGems, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions
 };
