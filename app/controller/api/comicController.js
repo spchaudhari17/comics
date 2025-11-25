@@ -20,6 +20,7 @@ const HardcoreQuizQuestion = require("../../models/HardcoreQuizQuestion");
 const Subject = require("../../models/Subject");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const Quiz = require("../../models/Quiz");
+const ComicView = require("../../models/ComicView");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -1579,6 +1580,50 @@ const updateCountryForSeries = async (req, res) => {
 
 
 
+const addComicView = async (req, res) => {
+    try {
+        const { comicId } = req.body;
+        const userId = req.user.login_data._id;
+
+        if (!comicId) {
+            return res.status(400).json({ error: "comicId is required" });
+        }
+
+        // 1️⃣ Check if this user has already viewed this comic
+        const alreadyViewed = await ComicView.findOne({ comicId, userId });
+
+        if (alreadyViewed) {
+            return res.json({
+                message: "Already viewed by this user",
+                alreadyViewed: true,
+            });
+        }
+
+        // 2️⃣ Save view
+        await ComicView.create({ comicId, userId });
+
+        // 3️⃣ Increase total_view by +1
+        await Comic.findByIdAndUpdate(
+            comicId,
+            { $inc: { total_view: 1 } }
+        );
+
+        return res.json({
+            message: "Unique view counted",
+            viewedNow: true,
+        });
+
+    } catch (error) {
+        console.error("❌ Unique View Error:", error);
+        res.status(500).json({
+            error: "Failed to update view",
+            details: error.message,
+        });
+    }
+};
+
+
+
 
 // const generateComicThumbnail = async (req, res) => {
 
@@ -1632,6 +1677,6 @@ const updateCountryForSeries = async (req, res) => {
 
 
 module.exports = {
-    refinePrompt, generateComicImage, generateComicPDF, listComics,
+    refinePrompt, generateComicImage, generateComicPDF, listComics, addComicView,
     getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic
 };

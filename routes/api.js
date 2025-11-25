@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser } = require('../app/controller/api/admin/adminComicController');
@@ -17,6 +17,8 @@ const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getSt
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
 const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard, buyGems, unlockHardcoreQuestion, getUnlockedQuestions, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions, finishHardcoreQuiz, increaseUserHardcoreAttempts } = require('../app/controller/api/hardcoreQuizController');
 const { getAllCountries } = require('../app/controller/api/countryController');
+const { getChildActivity } = require('../app/controller/api/getChildActivity');
+const { addChild, getMyChildren, removeChild } = require('../app/controller/api/parentController');
 
 
 //******************************** routes started from here ***************************** */
@@ -85,6 +87,8 @@ router.get("/user/comics", listComics);
 router.get("/user/comics/:id", getComic);
 router.get("/user/listComicsforPublic", listComicsforPublic);
 router.post("/user/deleteComic", authentication, deleteComic);
+router.post("/user/comic-view", authentication, addComicView);
+
 router.post("/user/submit-quiz", authentication, submitQuiz);
 
 router.get("/user/concepts-by-subject/:subjectId", getConceptsBySubject);
@@ -92,6 +96,11 @@ router.get("/user/concepts/:conceptId/comics", getComicsByConcept);
 router.patch("/user/add-coins", authentication, addCoins);
 router.patch("/user/add-gems", authentication, addGems);
 
+//******************************** admin routes routes started from here ***************************** */
+router.post("/user/child-activity", authentication, getChildActivity);
+router.post("/user/parent-add-child", authentication, addChild);
+router.get("/user/parent-my-children", authentication, getMyChildren);
+router.post("/user/parent-remove-children", authentication, removeChild);
 
 
 //******************************** admin routes routes started from here ***************************** */
