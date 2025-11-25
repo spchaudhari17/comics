@@ -102,7 +102,7 @@ const signupWithEmail = async (req, res) => {
             mobileNumber: mobileNumber,
             device_type: device_type,
             device_udid: device_udid,
-            // userType: userType,
+            userType: userType,
         });
 
         var isSaved = await userSignup.save();
