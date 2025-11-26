@@ -638,223 +638,18 @@ const updateSubject = async (req, res) => {
 
 
 
-// perfect working on country
-// const getConceptsBySubject = async (req, res) => {
-//   try {
-//     const { subjectId } = req.params;
-//     const { country } = req.query; // <-- 🆕 optional query param
-
-//     // 🔍 1. Validate subject
-//     const subject = await Subject.findById(subjectId);
-//     if (!subject) {
-//       return res.status(404).json({ error: "Subject not found" });
-//     }
-
-//     // 🧩 2. Build match condition dynamically
-//     const matchStage = {
-//       status: "approved",
-//       subjectId: new mongoose.Types.ObjectId(subjectId),
-//     };
-
-//     if (country && country.trim() !== "") {
-//       matchStage.country = country.trim();
-//     }
-
-//     // 🧠 3. Aggregate
-//     const result = await Comic.aggregate([
-//       { $match: matchStage },
-
-//       {
-//         $group: {
-//           _id: {
-//             conceptId: "$conceptId",
-//             themeId: "$themeId",
-//             country: "$country", // 🆕 group by country too
-//           },
-//           comicCount: { $sum: 1 },
-//         },
-//       },
-
-//       // 🔍 Join Concept info
-//       {
-//         $lookup: {
-//           from: "concepts",
-//           localField: "_id.conceptId",
-//           foreignField: "_id",
-//           as: "conceptData",
-//         },
-//       },
-//       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
-
-//       // 🔍 Join Theme info
-//       {
-//         $lookup: {
-//           from: "themes",
-//           localField: "_id.themeId",
-//           foreignField: "_id",
-//           as: "themeData",
-//         },
-//       },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-
-//       // 🧩 4. Project final output
-//       {
-//         $project: {
-//           _id: 0,
-//           conceptId: "$conceptData._id",
-//           conceptName: "$conceptData.name",
-//           themeId: "$themeData._id",
-//           themeName: "$themeData.name",
-//           country: "$_id.country", // 🆕 include country
-//           comicCount: 1,
-//         },
-//       },
-
-//       // 🧩 5. Sort neatly
-//       {
-//         $sort: {
-//           conceptName: 1,
-//           themeName: 1,
-//           country: 1,
-//         },
-//       },
-//     ]);
-
-//     // ✅ 6. Response
-//     res.json({
-//       subject: subject.name,
-//       countryFilter: country || "All",
-//       totalConcepts: result.length,
-//       concepts: result,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching concepts:", error);
-//     res.status(500).json({ error: "Failed to fetch concepts" });
-//   }
-// };
-
-// perfect working on countries
-// const getConceptsBySubject = async (req, res) => {
-//   try {
-//     const { subjectId } = req.params;
-//     const { country } = req.query; // optional query param
-
-//     // 🔍 1. Validate subject
-//     const subject = await Subject.findById(subjectId);
-//     if (!subject) {
-//       return res.status(404).json({ error: "Subject not found" });
-//     }
-
-//     // 🧠 2. Build aggregation pipeline
-//     const pipeline = [
-//       {
-//         $match: {
-//           status: "approved",
-//           subjectId: new mongoose.Types.ObjectId(subjectId)
-//         }
-//       },
-//     ];
-
-//     // 🧩 3. Country filter (using 'countries' array)
-//     if (country && country.trim() !== "") {
-//       pipeline.push({
-//         $match: {
-//           $expr: {
-//             $or: [
-//               { $in: [country.trim(), "$countries"] },
-//               { $in: ["ALL", "$countries"] }
-//             ]
-//           }
-//         }
-//       });
-//     }
-
-//     // 🧱 4. Group by concept & theme
-//     pipeline.push({
-//       $group: {
-//         _id: {
-//           conceptId: "$conceptId",
-//           themeId: "$themeId"
-//         },
-//         countries: { $addToSet: "$countries" }, // keep list of countries where comic exists
-//         comicCount: { $sum: 1 }
-//       }
-//     });
-
-//     // 🔍 5. Join Concept info
-//     pipeline.push(
-//       {
-//         $lookup: {
-//           from: "concepts",
-//           localField: "_id.conceptId",
-//           foreignField: "_id",
-//           as: "conceptData"
-//         }
-//       },
-//       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
-
-//       // 🔍 6. Join Theme info
-//       {
-//         $lookup: {
-//           from: "themes",
-//           localField: "_id.themeId",
-//           foreignField: "_id",
-//           as: "themeData"
-//         }
-//       },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-
-//       // 🧩 7. Project final output
-//       {
-//         $project: {
-//           _id: 0,
-//           conceptId: "$conceptData._id",
-//           conceptName: "$conceptData.name",
-//           themeId: "$themeData._id",
-//           themeName: "$themeData.name",
-//           countries: 1,
-//           comicCount: 1
-//         }
-//       },
-
-//       // 🧩 8. Sort neatly
-//       {
-//         $sort: {
-//           conceptName: 1,
-//           themeName: 1
-//         }
-//       }
-//     );
-
-//     // 🧠 9. Execute pipeline
-//     const result = await Comic.aggregate(pipeline);
-
-//     // ✅ 10. Response
-//     res.json({
-//       subject: subject.name,
-//       countryFilter: country || "All",
-//       totalConcepts: result.length,
-//       concepts: result
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching concepts:", error);
-//     res.status(500).json({ error: "Failed to fetch concepts" });
-//   }
-// };
-
-
 const getConceptsBySubject = async (req, res) => {
   try {
     const { subjectId } = req.params;
-    const { country, grade } = req.query; // 👈 grade added
+    const { country, grade } = req.query; // grade added
 
-    // 🔍 1. Validate subject
+    //  1. Validate subject
     const subject = await Subject.findById(subjectId);
     if (!subject) {
       return res.status(404).json({ error: "Subject not found" });
     }
 
-    // 🧠 2. Base pipeline
+    //  2. Base pipeline
     const pipeline = [
       {
         $match: {
@@ -864,7 +659,7 @@ const getConceptsBySubject = async (req, res) => {
       },
     ];
 
-    // 🧩 3. Country filter
+    //  3. Country filter
     if (country && country.trim() !== "") {
       pipeline.push({
         $match: {
@@ -878,7 +673,7 @@ const getConceptsBySubject = async (req, res) => {
       });
     }
 
-    // 🎓 4. Grade filter (NEW)
+    //  4. Grade filter (NEW)
     if (grade && grade.trim() !== "") {
       pipeline.push({
         $match: {
@@ -887,7 +682,7 @@ const getConceptsBySubject = async (req, res) => {
       });
     }
 
-    // 🧱 5. Group by concept & theme
+    // 5. Group by concept & theme
     pipeline.push({
       $group: {
         _id: {
@@ -895,12 +690,15 @@ const getConceptsBySubject = async (req, res) => {
           themeId: "$themeId",
         },
         countries: { $addToSet: "$countries" },
-        grades: { $addToSet: "$grade" }, // 👈 grade list (optional)
+        grades: { $addToSet: "$grade" }, // grade list (optional)
         comicCount: { $sum: 1 },
+
+        // Sum of all comics' total_view
+        totalViews: { $sum: "$total_view" }
       },
     });
 
-    // 🔍 6. Join Concept info
+    //  6. Join Concept info
     pipeline.push(
       {
         $lookup: {
@@ -912,7 +710,7 @@ const getConceptsBySubject = async (req, res) => {
       },
       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
 
-      // 🔍 7. Join Theme
+      // 7. Join Theme
       {
         $lookup: {
           from: "themes",
@@ -923,7 +721,7 @@ const getConceptsBySubject = async (req, res) => {
       },
       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
 
-      // 🧩 8. Final projection
+      // 8. Final projection
       {
         $project: {
           _id: 0,
@@ -932,8 +730,9 @@ const getConceptsBySubject = async (req, res) => {
           themeId: "$themeData._id",
           themeName: "$themeData.name",
           countries: 1,
-          grades: 1,     // 👈 helpful for FE
+          grades: 1,     // helpful for FE
           comicCount: 1,
+          totalViews: 1,
         },
       },
 
@@ -949,7 +748,7 @@ const getConceptsBySubject = async (req, res) => {
     // 🧠 10. Execute
     const result = await Comic.aggregate(pipeline);
 
-    // ✅ Response
+    //  Response
     res.json({
       subject: subject.name,
       countryFilter: country || "ALL",
@@ -959,236 +758,12 @@ const getConceptsBySubject = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Error fetching concepts:", error);
+    console.error(" Error fetching concepts:", error);
     res.status(500).json({ error: "Failed to fetch concepts" });
   }
 };
 
 
-// const getComicsByConcept = async (req, res) => {
-//   try {
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-//     const userId = req.query.userId;
-//     const country = req.query.country;
-//     const grade = req.query.grade;
-
-//     // Base match query
-//     const matchQuery = {
-//       status: "approved",
-//       comicStatus: "published",
-//       pdfUrl: { $exists: true, $ne: "" },
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     };
-
-//     if (country && country.trim() !== "") {
-//       matchQuery.$expr = {
-//         $or: [
-//           { $in: [country.trim().toUpperCase(), "$countries"] },
-//           { $in: ["ALL", "$countries"] },
-//         ],
-//       };
-//     }
-
-//     if (grade && grade.trim() !== "") {
-//       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 1: Fetch comics + required lookups
-//     // -------------------------------------------------------------
-//     let comics = await Comic.aggregate([
-//       { $match: matchQuery },
-//       { $sort: { partNumber: 1 } },
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
-//       { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
-//       { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
-//       { $lookup: { from: "subjects", localField: "subjectId", foreignField: "_id", as: "subjectData" } },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-//       { $lookup: { from: "themes", localField: "themeId", foreignField: "_id", as: "themeData" } },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-//       { $lookup: { from: "comicpages", localField: "_id", foreignField: "comicId", as: "pages" } },
-
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subject: "$subjectData.name",
-//           theme: "$themeData.name",
-//         },
-//       },
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           hardcoreQuizData: 0,
-//           pages: 0,
-//           subjectData: 0,
-//           themeData: 0,
-//           prompt: 0,
-//         },
-//       },
-//     ]);
-
-//     // -------------------------------------------------------------
-//     // STEP 2: User-based quiz + hardcore quiz status
-//     // -------------------------------------------------------------
-//     if (userId) {
-//       const userObjectId = new mongoose.Types.ObjectId(userId);
-//       const comicIds = comics.map((c) => c._id);
-
-//       const normalQuizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
-//       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId questions");
-
-//       const normalSubmissions = await QuizSubmission.find(
-//         { quizId: { $in: normalQuizzes.map((q) => q._id) }, userId: userObjectId },
-//         "quizId"
-//       );
-
-//       const hardcoreSubmissions = await HardcoreQuizSubmission.find({
-//         quizId: { $in: hardcoreQuizzes.map((hq) => hq._id) },
-//         userId: userObjectId,
-//       })
-//         .sort({ createdAt: -1 })
-//         .lean();
-
-//       // Group hardcore submissions
-//       const submissionsByQuiz = {};
-//       hardcoreSubmissions.forEach((s) => {
-//         const id = s.quizId.toString();
-//         if (!submissionsByQuiz[id]) submissionsByQuiz[id] = [];
-//         submissionsByQuiz[id].push(s);
-//       });
-
-//       const attemptedQuizIds = new Set(normalSubmissions.map((s) => s.quizId.toString()));
-
-//       // -------------------------------------------------------------
-//       // STEP 3: Attach hardcore attempt info
-//       // -------------------------------------------------------------
-//       for (const comic of comics) {
-//         const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
-//         const normalQuiz = normalQuizzes.find((nq) => nq.comicId.toString() === comic._id.toString());
-
-//         comic.hasAttempted = normalQuiz
-//           ? attemptedQuizIds.has(normalQuiz._id.toString())
-//           : false;
-
-//         if (!hardcoreQuiz) {
-//           comic.hasAttemptedHardcore = false;
-//           comic.hasAttemptedAllQuestion = false;
-//           comic.hasHardCoreChanceLeft = 0;
-//           comic.attemptNumber = 0;
-//           comic.activeSubmission = null;
-//           continue;
-//         }
-
-//         const quizId = hardcoreQuiz._id.toString();
-//         const submissions = submissionsByQuiz[quizId] || [];
-
-//         // Get user-specific allowed attempts
-//         const userAttempt = await HardcoreQuizUserAttempt.findOne({
-//           userId: userObjectId,
-//           quizId: hardcoreQuiz._id,
-//         });
-
-//         const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
-
-//         // Count finished attempts
-//         const finishedAttempts = submissions.filter((s) => s.isFinished).length;
-
-//         // ⭐ Check ALL QUESTIONS attempted (correct/incorrect allowed)
-//         let uniqueAttempted = new Set();
-//         submissions.forEach((s) => {
-//           (s.answers || []).forEach((ans) => {
-//             uniqueAttempted.add(ans.questionId.toString());
-//           });
-//         });
-
-//         const hasAttemptedAllQuestion =
-//           uniqueAttempted.size === hardcoreQuiz.questions.length;
-
-//         // ⭐ Chance left calculation
-//         const hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
-
-//         // ⭐ Active submission
-//         const activeSubmission = submissions.find((s) => s.isActive) || null;
-
-//         // ⭐ Attempt number
-//         const attemptNumber = activeSubmission
-//           ? activeSubmission.attemptNumber
-//           : finishedAttempts + 1;
-
-//         comic.hasAttemptedHardcore = submissions.length > 0;
-//         comic.hasAttemptedAllQuestion = hasAttemptedAllQuestion;
-//         comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
-//         comic.attemptNumber = attemptNumber;
-//         comic.activeSubmission = activeSubmission
-//           ? {
-//             _id: activeSubmission._id,
-//             attemptNumber: activeSubmission.attemptNumber,
-//             score: activeSubmission.score,
-//             coinsEarned: activeSubmission.coinsEarned,
-//             expEarned: activeSubmission.expEarned,
-//             isActive: activeSubmission.isActive,
-//           }
-//           : null;
-//       }
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 4: Series opening logic
-//     // -------------------------------------------------------------
-//     comics = comics.sort((a, b) => {
-//       const aS = a.seriesId ? a.seriesId.toString() : "";
-//       const bS = b.seriesId ? b.seriesId.toString() : "";
-//       if (aS === bS) return a.partNumber - b.partNumber;
-//       return aS.localeCompare(bS);
-//     });
-
-//     const seriesGroups = {};
-//     comics.forEach((comic) => {
-//       const key = comic.seriesId ? comic.seriesId.toString() : "no-series";
-//       if (!seriesGroups[key]) seriesGroups[key] = [];
-//       seriesGroups[key].push(comic);
-//     });
-
-//     Object.values(seriesGroups).forEach((group) => {
-//       group.sort((a, b) => a.partNumber - b.partNumber);
-//       group.forEach((comic, idx) => {
-//         comic.isOpen = idx === 0 ? true : group[idx - 1].hasAttempted;
-//       });
-//     });
-
-//     // -------------------------------------------------------------
-//     // STEP 5: Count total
-//     // -------------------------------------------------------------
-//     const totalComics = await Comic.countDocuments(matchQuery);
-
-//     // -------------------------------------------------------------
-//     // FINAL RESPONSE
-//     // -------------------------------------------------------------
-//     res.json({
-//       conceptId,
-//       country: country || "ALL",
-//       grade: grade || "ALL",
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching comics by concept:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
 
 
 const getComicsByConcept = async (req, res) => {
@@ -1359,13 +934,13 @@ const getComicsByConcept = async (req, res) => {
 
         comic.activeSubmission = activeSubmission
           ? {
-              _id: activeSubmission._id,
-              attemptNumber: activeSubmission.attemptNumber,
-              score: activeSubmission.score,
-              coinsEarned: activeSubmission.coinsEarned,
-              expEarned: activeSubmission.expEarned,
-              isActive: activeSubmission.isActive,
-            }
+            _id: activeSubmission._id,
+            attemptNumber: activeSubmission.attemptNumber,
+            score: activeSubmission.score,
+            coinsEarned: activeSubmission.coinsEarned,
+            expEarned: activeSubmission.expEarned,
+            isActive: activeSubmission.isActive,
+          }
           : null;
       }
     }
