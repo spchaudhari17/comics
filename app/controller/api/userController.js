@@ -730,287 +730,70 @@ const deletePic = async (req, res) => {
 
 
 
-// const profileDetails = async (req, res) => {
-//     try {
-//         let userId = req.user.login_data._id;
+const changePassword = async (req, res) => {
 
-//         // ✅ User profile basic info
-//         const userDetails = await Users.aggregate([
-//             {
-//                 $match: { _id: new mongoose.Types.ObjectId(userId) }
-//             },
-//             {
-//                 $project: {
-//                     _id: 1,
-//                     email: 1,
-//                     username: 1,
-//                     email_verified_at: 1,
-//                     profile_pic: 1,
-//                     created_at: "$createdAt",
-//                     updated_at: "$updatedAt"
-//                 }
-//             }
-//         ]);
 
-//         if (!userDetails || userDetails.length === 0) {
-//             return res.send({
-//                 error: true,
-//                 status: 201,
-//                 message: "User not found",
-//                 message_desc: "No user found with this id",
-//                 data: {}
-//             });
-//         }
+    try {
 
-//         // ✅ Total unique quizzes attempted (not counting repeats)
-//         const quizzesTaken = await QuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             { $group: { _id: "$quizId" } }
-//         ]);
-//         const totalQuizzesTaken = quizzesTaken.length;
+        const { old_password = '', password = '' } = req.body
+        const userId = req.user.login_data._id;
+        const email = req.user.login_data.email;
 
-//         // ✅ Comics completed (unique comicId from attempted quizzes)
-//         const comicsCompleted = await QuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             {
-//                 $lookup: {
-//                     from: "quizzes", // Quiz collection name
-//                     localField: "quizId",
-//                     foreignField: "_id",
-//                     as: "quizData"
-//                 }
-//             },
-//             { $unwind: "$quizData" },
-//             {
-//                 $group: {
-//                     _id: "$quizData.comicId"
-//                 }
-//             }
-//         ]);
-//         const numberOfComicsCompleted = comicsCompleted.length;
+        if (old_password == '') {
 
-//         // ✅ Total coins earned = total correct answers
-//         const submissions = await QuizSubmission.find({ userId });
-//         let correctAnswers = 0;
-//         submissions.forEach(sub => {
-//             sub.answers.forEach(ans => {
-//                 if (ans.isCorrect) correctAnswers++;
-//             });
-//         });
-//         const totalCoinsEarned = correctAnswers;
+            return res.send({ "error": true, 'status': 201, "message": "Old password is required.", "message_desc": "Old password is required." })
 
-//         // ✅ Final profile response
-//         const profile = {
-//             ...userDetails[0],
-//             number_of_comics_completed: numberOfComicsCompleted,
-//             total_quizzes_taken: totalQuizzesTaken,
-//             total_coins_earned: totalCoinsEarned,
-//             total_gems_earned: 0 // agar future me logic aayega to update karna
-//         };
+        }
 
-//         return res.send({
-//             error: false,
-//             status: 200,
-//             message: "Success.",
-//             message_desc: "Success",
-//             data: profile
-//         });
-//     } catch (e) {
-//         console.error("Profile Details Error:", e);
-//         return res.send({
-//             error: true,
-//             status: 500,
-//             message: "Something went wrong.",
-//             message_desc: "Unhandled exception: " + e,
-//             data: {}
-//         });
-//     }
-// };
+        if (password == '') {
+
+            return res.send({ "error": true, 'status': 201, "message": "Password is required.", "message_desc": "Password is required." })
+
+        }
+
+
+        const data = await Users.findOne({ "_id": userId })
+
+        if (!data) {
+            return res.send({ "error": true, 'status': 201, "message": "Email not register with us.", "message_desc": "Email not register with us." })
+        }
+
+        if (data.length < 1) {
+            return res.send({ "error": true, 'status': 201, "message": "Email not register with us.", "message_desc": "Email not register with us." })
+        }
+
+        const isCorrect = await bcrypt.compare(old_password, data.password)
+        const isSamePassword = await bcrypt.compare(password, data.password)
+
+        if (!isCorrect) {
+            return res.send({ "error": true, 'status': 201, "message": "Incorrect old password.", "message_desc": "Incorrect old password." })
+        }
+
+        if (isSamePassword) {
+            return res.send({ "error": true, 'status': 201, "message": "New password can not be same as old password.", "message_desc": "New password can not be same as old password." })
+        }
+
+        var passwordHash = await bcrypt.hashSync(password, 12)
+
+        const isupdated = await Users.updateOne({ email }, { $set: { password: passwordHash } });
+
+
+        if (isupdated) {
+            return res.send({ "error": false, 'status': 200, "message": "Password changed successfully.", "message_desc": "Password changed successfully." })
+        } else {
+            return res.send({ "error": true, 'status': 201, "message": "An error has occured.", "message_desc": "An error has occured." })
+        }
+
+    } catch (e) {
+
+        return res.send({ "error": true, 'status': 201, "message": "Something went wrong." + e, "message_desc": "Something went wrong." })
+    }
+
+}
+
 
 const COINS_PER_GEM = 1800;
 const getGemsFromCoins = (coins) => Math.floor(coins / COINS_PER_GEM);
-
-
-
-
-// const profileDetails = async (req, res) => {
-//     try {
-//         const userId = req.user.login_data._id;
-
-//         // 1️⃣ Fetch user
-//         const user = await Users.findById(userId).lean();
-//         if (!user) {
-//             return res.status(404).json({
-//                 error: true,
-//                 status: 404,
-//                 message: "User not found",
-//                 message_desc: "No user found with this ID",
-//                 data: {},
-//             });
-//         }
-
-//         // 2️⃣ Total unique quizzes attempted
-//         const quizzesTaken = await QuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             { $group: { _id: "$quizId" } },
-//         ]);
-//         const totalQuizzesPlayed = quizzesTaken.length;
-
-//         // 3️⃣ Total unique comics completed
-//         const comicsCompleted = await QuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             {
-//                 $lookup: {
-//                     from: "quizzes",
-//                     localField: "quizId",
-//                     foreignField: "_id",
-//                     as: "quizData",
-//                 },
-//             },
-//             { $unwind: "$quizData" },
-//             { $group: { _id: "$quizData.comicId" } },
-//         ]);
-//         const topicsCompleted = comicsCompleted.length;
-
-//         // 4️⃣ Compute correct answers, accuracy, avg time, highest streak
-//         const submissions = await QuizSubmission.find({ userId }).lean();
-//         let correctAnswers = 0;
-//         let totalQuestions = 0;
-//         let totalTime = 0;
-//         let highestStreak = 0;
-
-//         submissions.forEach((sub) => {
-//             let streak = 0;
-//             sub.answers.forEach((ans) => {
-//                 totalQuestions++;
-//                 if (ans.timeTaken) totalTime += ans.timeTaken;
-//                 if (ans.isCorrect) {
-//                     correctAnswers++;
-//                     streak++;
-//                     if (streak > highestStreak) highestStreak = streak;
-//                 } else {
-//                     streak = 0;
-//                 }
-//             });
-//         });
-
-//         const accuracyRate =
-//             totalQuestions > 0 ? ((correctAnswers / totalQuestions) * 100).toFixed(1) : 0;
-//         const avgResponseTime =
-//             totalQuestions > 0 ? (totalTime / totalQuestions).toFixed(1) : 0;
-
-//         // 5️⃣ Hardcore stats
-//         const hardcoreAttempts = await HardcoreQuizSubmission.countDocuments({ userId });
-//         const hardcoreSubs = await HardcoreQuizSubmission.find({ userId }).lean();
-//         let doubleOrNothingWins = 0;
-//         let totalHardcoreRounds = 0;
-
-//         hardcoreSubs.forEach((sub) => {
-//             totalHardcoreRounds++;
-//             if (sub.coinsEarned > 0) doubleOrNothingWins++;
-//         });
-
-//         const doubleOrNothingSuccessRate =
-//             totalHardcoreRounds > 0
-//                 ? ((doubleOrNothingWins / totalHardcoreRounds) * 100).toFixed(1)
-//                 : 0;
-
-//         // 6️⃣ Toughest Question Beaten
-//         const toughest = await HardcoreQuizSubmission.aggregate([
-//             { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-//             { $unwind: "$answers" },
-//             { $match: { "answers.isCorrect": true } },
-//             {
-//                 $lookup: {
-//                     from: "hardcorequizquestions",
-//                     localField: "answers.questionId",
-//                     foreignField: "_id",
-//                     as: "questionData",
-//                 },
-//             },
-//             { $unwind: "$questionData" },
-//             { $sort: { "questionData.difficulty": -1 } },
-//             { $limit: 1 },
-//             { $project: { "questionData.difficulty": 1 } },
-//         ]);
-
-//         const toughestQuestionBeaten =
-//             toughest.length > 0 ? toughest[0].questionData.difficulty : "N/A";
-
-//         // 7️⃣ Calculate live gems
-//         const liveGems = user.gems
-
-//         // 8️⃣ Prepare myStats object
-//         const myStats = {
-//             total_quizzes_played: totalQuizzesPlayed,
-//             correct_answers: correctAnswers,
-//             accuracy_rate: Number(accuracyRate),
-//             average_response_time: Number(avgResponseTime),
-//             highest_streak: highestStreak,
-//             topics_completed: topicsCompleted,
-//             campaign_levels_unlocked: topicsCompleted,
-//             hardcore_mode_attempts: hardcoreAttempts,
-//             double_or_nothing_success_rate: Number(doubleOrNothingSuccessRate),
-//             toughest_question_beaten: toughestQuestionBeaten,
-//             best_performance: `${accuracyRate}% accuracy, ${highestStreak} streak`,
-//         };
-
-//         // 9️⃣ Prepare myCards
-//         const myCards = {
-//             hint: user.powerCards?.hint || 0,
-//             timeExtend: user.powerCards?.timeExtend || 0,
-//             reduceOptions: user.powerCards?.reduceOptions || 0,
-//             changeQuestion: user.powerCards?.changeQuestion || 0,
-//         };
-
-//         // 🔟 Final flat response with myStats nested
-//         const profile = {
-//             _id: user._id,
-//             username: user.username,
-//             email: user.email,
-//             email_verified_at: user.email_verified_at || null,
-//             profile_pic: user.profile_pic || "",
-//             created_at: user.createdAt,
-//             updated_at: user.updatedAt,
-
-//             // 📊 Basic stats
-//             total_quizzes_taken: totalQuizzesPlayed,
-//             number_of_comics_completed: topicsCompleted,
-
-//             // 🪙 Wallet
-//             coins: user.coins,
-//             exp: user.exp,
-//             gems: liveGems,
-
-//             // 🧾 Totals
-//             total_coins_earned: user.coins,
-//             total_exp_earned: user.exp,
-//             total_gems_earned: liveGems,
-
-//             // 📊 My Stats (nested)
-//             myStats,
-
-//             // 🎴 My Power Cards
-//             my_cards: myCards,
-//         };
-
-//         return res.status(200).json({
-//             error: false,
-//             status: 200,
-//             message: "Profile fetched successfully",
-//             data: profile,
-//         });
-//     } catch (error) {
-//         console.error("❌ Profile Details Error:", error);
-//         return res.status(500).json({
-//             error: true,
-//             status: 500,
-//             message: "Something went wrong.",
-//             message_desc: "Unhandled exception: " + error.message,
-//             data: {},
-//         });
-//     }
-// };
 
 
 const profileDetails = async (req, res) => {
@@ -1416,5 +1199,5 @@ const addGems = async (req, res) => {
 
 module.exports = {
     signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys,
-    updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems
+    updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword
 }
