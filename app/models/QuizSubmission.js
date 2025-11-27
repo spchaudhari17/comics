@@ -18,7 +18,8 @@ const QuizSubmissionSchema = new Schema({
   score: { type: Number, default: 0 },
   coinsEarned: { type: Number, default: 0 }, // total
   expEarned: { type: Number, default: 0 },   // total
-  submittedAt: { type: Date, default: Date.now }
+  submittedAt: { type: Date, default: Date.now },
+  isDoubleRewardApplied: { type: Boolean, default: false },
 });
 
 module.exports = mongoose.model("QuizSubmission", QuizSubmissionSchema);

@@ -3,52 +3,6 @@ const QuizQuestion = require("../../models/QuizQuestion");
 const QuizSubmission = require("../../models/QuizSubmission");
 const User = require("../../models/User");
 
-// const submitQuiz = async (req, res) => {
-//   try {
-//     const { quizId, answers } = req.body; 
-
-
-//     const userId = req.user.login_data._id;
-
-
-//     const quiz = await Quiz.findById(quizId).populate("questions");
-//     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
-
-//     let score = 0;
-//     const evaluatedAnswers = answers.map(ans => {
-//       const q = quiz.questions.find(q => q._id.toString() === ans.questionId);
-//       const isCorrect = q?.correctAnswer === ans.selectedAnswer;
-//       if (isCorrect) score++;
-//       return {
-//         questionId: ans.questionId,
-//         selectedAnswer: ans.selectedAnswer,
-//         isCorrect
-//       };
-//     });
-
-
-//     const submission = await QuizSubmission.create({
-//       quizId,
-//       userId,
-//       answers: evaluatedAnswers,
-//       score
-//     });
-
-//     res.json({
-//       message: "Quiz submitted successfully",
-//       score,
-//       total: quiz.questions.length,
-//       submission
-//     });
-//   } catch (error) {
-//     console.error("Submit Quiz Error:", error);
-//     res.status(500).json({ error: "Failed to submit quiz" });
-//   }
-// };
-
-
-
-// utils/rewardUtils.js
 
 // 1️⃣ Base reward table
 const rewardTable = {
@@ -92,90 +46,6 @@ const calculateGemReward = (previousCoins, newTotalCoins) => {
   return newGems - prevGems; // new gems earned this time
 };
 
-
-
-
-// old working magar har attempt ko coins badenge
-// const submitQuiz = async (req, res) => {
-//   try {
-//     const { quizId, answers } = req.body;
-//     const userId = req.user.login_data._id;
-
-//     const quiz = await Quiz.findById(quizId).populate("questions");
-//     if (!quiz) return res.status(404).json({ error: "Quiz not found" });
-
-//     let score = 0;
-//     let totalCoins = 0;
-//     let totalExp = 0;
-
-//     // ✅ Evaluate answers
-//     const evaluatedAnswers = answers.map(ans => {
-//       const q = quiz.questions.find(q => q._id.toString() === ans.questionId);
-//       if (!q) return null;
-
-//       const isCorrect = q.correctAnswer === ans.selectedAnswer;
-//       const timeTaken = Math.round(ans.timeTaken || 0);
-
-//       const { coins, exp } = calculateReward(q.difficulty, timeTaken, isCorrect);
-
-//       if (isCorrect) {
-//         score++;
-//         totalCoins += coins;
-//         totalExp += exp;
-//       }
-
-//       return {
-//         questionId: ans.questionId,
-//         selectedAnswer: ans.selectedAnswer,
-//         isCorrect,
-//         timeTaken,
-//         coins,
-//         exp
-//       };
-//     }).filter(Boolean);
-
-//     // ✅ Save submission
-//     const submission = await QuizSubmission.create({
-//       quizId,
-//       userId,
-//       answers: evaluatedAnswers,
-//       score,
-//       coinsEarned: totalCoins,
-//       expEarned: totalExp,
-//     });
-
-//     // ✅ Update user wallet
-//     const user = await User.findById(userId);
-//     if (!user) return res.status(404).json({ error: "User not found" });
-
-//     // Add earned rewards
-//     user.coins += totalCoins;
-//     user.exp += totalExp;
-
-//     // ✅ Gems = coins / 1800 (live recalculation)
-//     user.gems = getGemsFromCoins(user.coins);
-
-//     await user.save();
-
-//     res.json({
-//       message: "Quiz submitted successfully",
-//       score,
-//       total: quiz.questions.length,
-//       coinsEarned: totalCoins,
-//       expEarned: totalExp,
-//       currentWallet: {
-//         coins: user.coins,
-//         exp: user.exp,
-//         gems: user.gems
-//       },
-//       submission
-//     });
-
-//   } catch (error) {
-//     console.error("❌ Submit Quiz Error:", error);
-//     res.status(500).json({ error: "Failed to submit quiz" });
-//   }
-// };
 
 
 const submitQuiz = async (req, res) => {
@@ -297,5 +167,143 @@ const submitQuiz = async (req, res) => {
 };
 
 
+// for kitne bi baar api ko call karega tab hai double coins add hote rayenge
+// const doubleRewards = async (req, res) => {
+//   try {
+//     const { quizId } = req.body;
+//     const userId = req.user.login_data._id;
 
-module.exports = { submitQuiz }
+//     // 1️⃣ Find previous submission
+//     const submission = await QuizSubmission.findOne({ quizId, userId });
+
+//     if (!submission) {
+//       return res.status(400).json({
+//         error: true,
+//         message: "Quiz not attempted yet. Cannot double rewards."
+//       });
+//     }
+
+//     // 2️⃣ Calculate double rewards
+//     const doubleScore = submission.score * 2;
+//     const doubleCoins = submission.coinsEarned * 2;
+//     const doubleExp = submission.expEarned * 2;
+
+//     // 3️⃣ Update user wallet
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: "User not found" });
+//     }
+
+//     // Add double rewards into wallet
+//     user.coins += doubleCoins;
+//     user.exp += doubleExp;
+
+//     // Update gems
+//     const prevGems = user.gems;
+
+//     await user.save();
+
+//     // 4️⃣ Update submission (optional: mark as doubled)
+//     submission.score = doubleScore;
+//     submission.coinsEarned += doubleCoins;
+//     submission.expEarned += doubleExp;
+//     submission.isDoubleRewardApplied = true;
+//     await submission.save();
+
+//     // 5️⃣ Return new wallet & doubled rewards
+//     return res.json({
+//       message: "Rewards doubled successfully!",
+//       doubled: {
+//         score: doubleScore,
+//         coins: doubleCoins,
+//         exp: doubleExp,
+//         newGemsEarned: user.gems - prevGems
+//       },
+//       currentWallet: {
+//         coins: user.coins,
+//         exp: user.exp,
+//         gems: user.gems
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error("❌ Double Reward Error:", error);
+//     res.status(500).json({ error: "Failed to apply double rewards" });
+//   }
+// };
+
+// sirf ek hi baar coins double hoga
+const doubleRewards = async (req, res) => {
+  try {
+    const { quizId } = req.body;
+    const userId = req.user.login_data._id;
+
+    // 1️⃣ Get submission
+    const submission = await QuizSubmission.findOne({ quizId, userId });
+
+    if (!submission) {
+      return res.status(400).json({
+        error: true,
+        message: "You must attempt the quiz first to apply double rewards."
+      });
+    }
+
+    // 2️⃣ Already applied? stop here
+    if (submission.isDoubleRewardApplied === true) {
+      const user = await User.findById(userId);
+
+      return res.json({
+        error: false,
+        message: "Double reward already applied.",
+        coinsEarned: 0,
+        expEarned: 0,
+        score: submission.score,
+        currentWallet: {
+          coins: user.coins,
+          exp: user.exp,
+          gems: user.gems,
+        }
+      });
+    }
+
+    // 3️⃣ Calculate double
+    const doubleScore = submission.score * 2;
+    const doubleCoins = submission.coinsEarned;
+    const doubleExp = submission.expEarned;
+
+    // 4️⃣ Update submission with double reward
+    submission.score = doubleScore;
+    submission.isDoubleRewardApplied = true;
+    await submission.save();
+
+    // 5️⃣ Update user wallet
+    const user = await User.findById(userId);
+    user.coins += doubleCoins;
+    user.exp += doubleExp;
+    await user.save();
+
+    return res.json({
+      error: false,
+      message: "Double Rewards applied successfully!",
+      score: doubleScore,
+      coinsEarned: doubleCoins,
+      expEarned: doubleExp,
+      currentWallet: {
+        coins: user.coins,
+        exp: user.exp,
+        gems: user.gems,
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Double Reward Error:", error);
+    res.status(500).json({ error: "Failed to apply double rewards" });
+  }
+};
+
+
+
+
+
+
+module.exports = { submitQuiz, doubleRewards }

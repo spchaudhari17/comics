@@ -7,7 +7,7 @@ const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, te
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
-const { submitQuiz } = require('../app/controller/api/submitQuizController');
+const { submitQuiz, doubleRewards } = require('../app/controller/api/submitQuizController');
 const { getAllUsers } = require('../app/controller/api/admin/userController');
 const { generateFAQs, listFAQs } = require('../app/controller/api/faqController');
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
@@ -91,8 +91,6 @@ router.get("/user/listComicsforPublic", listComicsforPublic);
 router.post("/user/deleteComic", authentication, deleteComic);
 router.post("/user/comic-view", authentication, addComicView);
 
-router.post("/user/submit-quiz", authentication, submitQuiz);
-
 router.get("/user/concepts-by-subject/:subjectId", getConceptsBySubject);
 router.get("/user/concepts/:conceptId/comics", getComicsByConcept);
 
@@ -129,6 +127,9 @@ router.post("/admin/deleteUser", authentication, deleteUser)
 router.post("/user/generate-quiz", authentication, generateQuiz);
 router.get("/user/comic/:id/quiz/:userId", getQuizByComic);
 router.get("/user/comic/:id/quiz/", getQuizByComic);
+router.post("/user/submit-quiz", authentication, submitQuiz);
+router.post("/user/doubleRewards-quiz", authentication, doubleRewards);
+
 router.post("/user/quiz/publish", authentication, publishQuiz);
 //******************************** Hard core quiz routes routes started from here ***************************** */
 
