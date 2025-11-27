@@ -19,6 +19,7 @@ const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPow
 const { getAllCountries } = require('../app/controller/api/countryController');
 const { getChildActivity } = require('../app/controller/api/getChildActivity');
 const { addChild, getMyChildren, removeChild } = require('../app/controller/api/parentController');
+const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 
 
 //******************************** routes started from here ***************************** */
@@ -94,8 +95,17 @@ router.post("/user/submit-quiz", authentication, submitQuiz);
 
 router.get("/user/concepts-by-subject/:subjectId", getConceptsBySubject);
 router.get("/user/concepts/:conceptId/comics", getComicsByConcept);
+
+//******************************** ads routes routes started from here ***************************** */
 router.patch("/user/add-coins", authentication, addCoins);
 router.patch("/user/add-gems", authentication, addGems);
+
+router.post("/user/impression", createImpression);
+router.post("/user/ecpm", upsertEcpm);   // create/update
+router.get("/user/ecpm", listEcpm);      // list all
+router.get("/user/revenue/comics", comicRevenueReport);
+
+
 
 //******************************** admin routes routes started from here ***************************** */
 router.post("/user/child-activity", authentication, getChildActivity);
