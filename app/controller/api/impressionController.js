@@ -76,7 +76,9 @@ const listEcpm = async (req, res) => {
 
 const comicRevenueReport = async (req, res) => {
     try {
-        const { start_date, end_date } = req.query;
+        const { start_date, end_date, page = 1, limit = 10 } = req.query;
+
+        const skip = (page - 1) * limit;
 
         const match = {};
         if (start_date || end_date) {
@@ -146,24 +148,101 @@ const comicRevenueReport = async (req, res) => {
                 }
             },
             { $unwind: { path: "$comic", preserveNullAndEmptyArrays: true } },
-            {
-                $project: {
-                    _id: 0,
-                    comic_id: "$_id",
-                    title: "$comic.title",
-                    thumbnailUrl: "$comic.thumbnailUrl",
-                    subject: "$comic.subject",
-                    country: "$comic.country",
-                    total_impressions: 1,
-                    total_revenue: 1,
-                    breakdown: 1
-                }
-            },
-            { $sort: { total_revenue: -1 } }
+            { $sort: { total_revenue: -1 } },
+            { $skip: skip },
+            { $limit: parseInt(limit) }
         ];
 
-        const data = await AdImpression.aggregate(pipeline);
-        return res.json({ success: true, data });
+        let data = await AdImpression.aggregate(pipeline);
+
+        // ----- PLATFORM SPLIT -----
+        data = data.map(item => {
+            const android = {
+                banner: { impressions: 0, revenue: 0 },
+                interstitial: { impressions: 0, revenue: 0 },
+                rewarded: { impressions: 0, revenue: 0 },
+                total_impressions: 0,
+                total_revenue: 0
+            };
+
+            const ios = {
+                banner: { impressions: 0, revenue: 0 },
+                interstitial: { impressions: 0, revenue: 0 },
+                rewarded: { impressions: 0, revenue: 0 },
+                total_impressions: 0,
+                total_revenue: 0
+            };
+
+            item.breakdown.forEach(b => {
+                const id = b.ad_unit_id;
+
+                // ANDROID UNITS
+                if (id.endsWith("0565")) android.banner = b;      // Android banner
+                if (id.endsWith("5411")) android.interstitial = b; // Android interstitial
+                if (id.endsWith("0075")) android.rewarded = b;     // Android rewarded
+
+                // IOS UNITS
+                if (id.endsWith("8723")) ios.banner = b;           // iOS banner
+                if (id.endsWith("5576")) ios.interstitial = b;     // iOS interstitial
+                if (id.endsWith("4364")) ios.rewarded = b;         // iOS rewarded
+            });
+
+            // Android totals
+            android.total_impressions =
+                (android.banner.impressions || 0) +
+                (android.interstitial.impressions || 0) +
+                (android.rewarded.impressions || 0);
+
+            android.total_revenue =
+                (android.banner.revenue || 0) +
+                (android.interstitial.revenue || 0) +
+                (android.rewarded.revenue || 0);
+
+            // iOS totals
+            ios.total_impressions =
+                (ios.banner.impressions || 0) +
+                (ios.interstitial.impressions || 0) +
+                (ios.rewarded.impressions || 0);
+
+            ios.total_revenue =
+                (ios.banner.revenue || 0) +
+                (ios.interstitial.revenue || 0) +
+                (ios.rewarded.revenue || 0);
+
+            // Combined totals
+            const combined = {
+                banner: android.banner.impressions + ios.banner.impressions,
+                rewarded: android.rewarded.impressions + ios.rewarded.impressions,
+                interstitial: android.interstitial.impressions + ios.interstitial.impressions,
+                total_impressions: item.total_impressions,
+                total_revenue: item.total_revenue
+            };
+
+            return {
+                comic_id: item.comic._id,
+                title: item.comic.title,
+                thumbnailUrl: item.comic.thumbnailUrl,
+                subject: item.comic.subject,
+                country: item.comic.country,
+                total_impressions: item.total_impressions,
+                total_revenue: item.total_revenue,
+
+                android,
+                ios,
+                combined
+            };
+        });
+
+        return res.json({
+            success: true,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                count: data.length
+            },
+            data
+        });
+
     } catch (err) {
         console.error("comicRevenueReport error:", err);
         res.status(500).json({ success: false, message: "Server error" });
