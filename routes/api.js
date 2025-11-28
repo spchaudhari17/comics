@@ -5,7 +5,7 @@ const multer = require('multer');
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
-const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser } = require('../app/controller/api/admin/adminComicController');
+const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser, toggleUnlimited } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
 const { submitQuiz, doubleRewards } = require('../app/controller/api/submitQuizController');
 const { getAllUsers } = require('../app/controller/api/admin/userController');
@@ -121,6 +121,8 @@ router.get("/admin/comics/:id", authentication, getAdminComicDetails);
 router.put("/admin/update-country", authentication, updateCountryForSeries);
 router.post("/admin/assign-moderator", authentication, assignModeratorRole);
 router.post("/admin/deleteUser", authentication, deleteUser)
+router.post("/admin/unlimited", authentication, toggleUnlimited);
+
 
 //******************************** quiz routes routes started from here ***************************** */
 

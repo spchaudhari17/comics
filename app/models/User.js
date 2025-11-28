@@ -61,6 +61,9 @@ var UserSchema = new mongoose.Schema({
 
     adLogs: { type: [Date], default: [] },
 
+    isUnlimited: { type: Boolean, default: false }
+
+
 
 }, { timestamps: true })
 

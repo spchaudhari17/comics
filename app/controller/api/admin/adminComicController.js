@@ -239,8 +239,40 @@ const deleteUser = async (req, res) => {
 }
 
 
+const toggleUnlimited = async (req, res) => {
+  try {
+    const { isUnlimited, userId } = req.body;
 
-module.exports = { approveComicStatusAdmin, listAllComicsAdmin, getAdminComicDetails, assignModeratorRole, deleteUser }
+    // agar value nahi bhejoge to error dega
+    if (typeof isUnlimited !== "boolean") {
+      return res.status(400).json({
+        error: "Please provide isUnlimited as true or false"
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { isUnlimited },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: `User unlimited access set to ${isUnlimited}`,
+      user: updatedUser
+    });
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+
+module.exports = { approveComicStatusAdmin, listAllComicsAdmin, getAdminComicDetails, assignModeratorRole, deleteUser, toggleUnlimited }
 
 
 
