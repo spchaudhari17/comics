@@ -12,6 +12,7 @@ const DidYouKnow = require("../../../models/DidYouKnow");
 const Quiz = require("../../../models/Quiz");
 const FAQ = require("../../../models/FAQ");
 const User = require("../../../models/User");
+const transporter = require("../../../../config/mailer");
 
 
 const openai = new OpenAI({
@@ -145,23 +146,106 @@ const getAdminComicDetails = async (req, res) => {
 };
 
 
+// const approveComicStatusAdmin = async (req, res) => {
+//   try {
+//     const { id } = req.body;
+//     const { status } = req.body;
+
+//     if (!["approved", "rejected", "pending"].includes(status)) {
+//       return res.status(400).json({ error: "Invalid status value" });
+//     }
+
+//     const comic = await Comic.findByIdAndUpdate(
+//       id,
+//       { status },
+//       { new: true }
+//     );
+
+//     if (!comic) {
+//       return res.status(404).json({ error: "Comic not found" });
+//     }
+
+//     res.json({ message: `Comic ${status} successfully`, comic });
+//   } catch (error) {
+//     console.error("Update comic status error:", error);
+//     res.status(500).json({ error: "Failed to update comic status" });
+//   }
+// };
+
 const approveComicStatusAdmin = async (req, res) => {
   try {
-    const { id } = req.body;
-    const { status } = req.body;
+    const { id, status } = req.body;
 
     if (!["approved", "rejected", "pending"].includes(status)) {
       return res.status(400).json({ error: "Invalid status value" });
     }
 
-    const comic = await Comic.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
+    // ⭐ Fetch comic with user data
+    const comic = await Comic.findById(id).populate("user_id");
 
     if (!comic) {
       return res.status(404).json({ error: "Comic not found" });
+    }
+
+    // ⭐ Update status
+    comic.status = status;
+    await comic.save();
+
+    // ⭐ If approved → send email to user
+    if (status === "approved") {
+      const userEmail = comic.user_id?.email;
+
+      if (userEmail) {
+        const mailOptions = {
+          from: "ajinkya.kridemy@gmail.com",
+          to: userEmail,
+          subject: "Your Comic Has Been Approved! 🎉",
+          html: `
+            <h2>Congratulations!</h2>
+            <p>Your comic <strong>"${comic.title}"</strong> has been approved by the admin.</p>
+
+            <p>You can now see it live in the public comics section.</p>
+
+            <br/>
+            <p>Keep creating great educational comics! 🚀</p>
+          `
+        };
+
+        transporter.sendMail(mailOptions, (err, info) => {
+          if (err) {
+            console.error("❌ Failed to send approval email:", err.message);
+          } else {
+            console.log("📨 Approval email sent to user:", info.response);
+          }
+        });
+      }
+    }
+
+    // ⭐ If rejected → (optional) user ko rejection email bhi bhej sakte ho
+    if (status === "rejected") {
+      const userEmail = comic.user_id?.email;
+
+      if (userEmail) {
+        const mailOptions = {
+          from: "ajinkya.kridemy@gmail.com",
+          to: userEmail,
+          subject: "Your Comic Was Rejected 😕",
+          html: `
+            <h2>Your Comic Review Result</h2>
+            <p>Unfortunately, your comic <strong>"${comic.title}"</strong> has been rejected.</p>
+
+            <p>You may revise it and submit again.</p>
+          `
+        };
+
+        transporter.sendMail(mailOptions, (err, info) => {
+          if (err) {
+            console.error("❌ Failed to send rejection email:", err.message);
+          } else {
+            console.log("📨 Rejection email sent:", info.response);
+          }
+        });
+      }
     }
 
     res.json({ message: `Comic ${status} successfully`, comic });
@@ -170,6 +254,7 @@ const approveComicStatusAdmin = async (req, res) => {
     res.status(500).json({ error: "Failed to update comic status" });
   }
 };
+
 
 
 const assignModeratorRole = async (req, res) => {

@@ -22,6 +22,7 @@ const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const Quiz = require("../../models/Quiz");
 const ComicView = require("../../models/ComicView");
 const User = require("../../models/User");
+const transporter = require("../../../config/mailer");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -1186,27 +1187,88 @@ const getComic = async (req, res) => {
 };
 
 
+// const updateComicStatus = async (req, res) => {
+//     try {
+//         const { comicId, comicStatus } = req.body;
+
+//         // check valid status
+//         if (!["draft", "published"].includes(comicStatus)) {
+//             return res.status(400).json({ error: "Invalid comic status" });
+//         }
+
+//         // only owner update karega
+//         const comic = await Comic.findOneAndUpdate(
+//             { _id: comicId, },
+//             { comicStatus },
+//             { new: true }
+//         );
+
+//         if (!comic) {
+//             return res.status(404).json({ error: "Comic not found or unauthorized" });
+//         }
+
+//         res.json({ message: "Comic status updated", comic });
+//     } catch (error) {
+//         console.error("Error updating comic status:", error);
+//         res.status(500).json({ error: "Failed to update comic status" });
+//     }
+// };
+
+
 const updateComicStatus = async (req, res) => {
     try {
         const { comicId, comicStatus } = req.body;
 
-        // check valid status
         if (!["draft", "published"].includes(comicStatus)) {
             return res.status(400).json({ error: "Invalid comic status" });
         }
 
-        // only owner update karega
-        const comic = await Comic.findOneAndUpdate(
-            { _id: comicId, },
-            { comicStatus },
-            { new: true }
-        );
-
+        // ⭐ Fetch comic + user info
+        const comic = await Comic.findById(comicId).populate("user_id");
         if (!comic) {
-            return res.status(404).json({ error: "Comic not found or unauthorized" });
+            return res.status(404).json({ error: "Comic not found" });
+        }
+
+        const previousStatus = comic.comicStatus;
+
+        // ⭐ Update status
+        comic.comicStatus = comicStatus;
+        await comic.save();
+
+        // ⭐ Send email only if status changed from draft → published
+        if (previousStatus === "draft" && comicStatus === "published") {
+
+            const adminEmail = "ajinkya.kridemy@gmail.com"; // admin email
+
+            const mailOptions = {
+                from: "ajinkya.kridemy@gmail.com",
+                to: adminEmail,
+                subject: "New Comic Published - Admin Approval Required",
+                html: `
+                    <h2>New Comic Published by User</h2>
+
+                    <p><strong>User Name:</strong> ${comic.user_id.name || "Unknown"}</p>
+                    <p><strong>User Email:</strong> ${comic.user_id.email || "Not Provided"}</p>
+
+                    <p><strong>Comic Title:</strong> ${comic.title}</p>
+                    <p><strong>Comic ID:</strong> ${comic._id}</p>
+
+                    <br/>
+                    <p>Please review and approve this comic in the admin dashboard.</p>
+                `
+            };
+
+            transporter.sendMail(mailOptions, (err, info) => {
+                if (err) {
+                    console.error("Email sending failed:", err);
+                } else {
+                    console.log("Admin notified via email:", info.response);
+                }
+            });
         }
 
         res.json({ message: "Comic status updated", comic });
+
     } catch (error) {
         console.error("Error updating comic status:", error);
         res.status(500).json({ error: "Failed to update comic status" });
