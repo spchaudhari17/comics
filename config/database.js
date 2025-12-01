@@ -3,7 +3,8 @@
 const mongoose = require('mongoose');
 // mongoose.connect('mongodb://localhost:27017/comics');
 // mongoose.connect('mongodb+srv://shubham:shubham@cluster0.e5aknxd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0'); // old
-mongoose.connect('mongodb+srv://kridemy:kridemy@cluster0.eh7durg.mongodb.net/?appName=Cluster0'); // new
+// mongoose.connect('mongodb+srv://kridemy:kridemy@cluster0.eh7durg.mongodb.net/?appName=Cluster0'); // old
+mongoose.connect(process.env.MONGODB_URI); 
 
 mongoose.connection.once('open', function () {
   console.log("database connected")
