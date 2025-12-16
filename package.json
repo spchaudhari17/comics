@@ -12,6 +12,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google-cloud/aiplatform": "^6.0.0",
+    "@google-cloud/vertexai": "^1.10.0",
+    "@google/genai": "^1.33.0",
     "@google/generative-ai": "^0.24.1",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.11.0",
