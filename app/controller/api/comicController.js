@@ -69,9 +69,9 @@ const refinePrompt = async (req, res) => {
                 createdAt: { $gte: oneWeekAgo }
             });
 
-            if (seriesCount >= 5) {
+            if (seriesCount >= 1) {
                 return res.status(403).json({
-                    error: "You have reached your weekly limit of 5 new series. Please wait until next week."
+                    error: "You have reached your weekly limit of 1 new series. Please wait until next week."
                 });
             }
         }
@@ -411,9 +411,9 @@ const generateComicImage = async (req, res) => {
                 pdfUrl: { $exists: true, $ne: null }
             });
 
-            if (comicCount >= 5) {
+            if (comicCount >= 1) {
                 return res.status(403).json({
-                    error: "You have reached your weekly limit of 5 comics. Please wait until next week."
+                    error: "You have reached your weekly limit of 1 comics. Please wait until next week."
                 });
             }
         }
