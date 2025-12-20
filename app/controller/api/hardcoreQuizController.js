@@ -29,25 +29,49 @@ const generateHardcoreQuiz = async (req, res) => {
       return res.status(200).json({
         message: "Adaptive quiz already exists for this comic.",
         quizId: existingQuiz._id,
-        quiz: existingQuiz,
+        questions: existingQuiz.questions,
         alreadyExists: true,
       });
     }
 
     // 🧩 Step 2: Extract minimal reference context from script (no story use)
     // Just use a short trimmed version to give GPT background if needed
+    // let storyContext = "";
+    // if (Array.isArray(script)) {
+    //   storyContext = script
+    //     .map((page) =>
+    //       page.panels
+    //         .map((p) => `${p.caption || ""}`)
+    //         .join(" ")
+    //     )
+    //     .join(" ");
+    // } else {
+    //   storyContext = script || "";
+    // }
+
     let storyContext = "";
-    if (Array.isArray(script)) {
-      storyContext = script
-        .map((page) =>
-          page.panels
-            .map((p) => `${p.caption || ""}`)
-            .join(" ")
-        )
-        .join(" ");
-    } else {
-      storyContext = script || "";
+
+    try {
+      let parsedScript = script;
+
+      if (typeof script === "string") {
+        parsedScript = JSON.parse(script);
+      }
+
+      if (Array.isArray(parsedScript)) {
+        storyContext = parsedScript
+          .map(page =>
+            (page.panels || [])
+              .map(p => p.caption || "")
+              .join(" ")
+          )
+          .join(" ");
+      }
+    } catch (e) {
+      console.warn("Hardcore quiz: script parse failed");
+      storyContext = "";
     }
+
 
     const prompt = `
 You are an expert educational content creator.

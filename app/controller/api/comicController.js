@@ -212,10 +212,16 @@ STRICT RULES:
 - Simple, clear English
 - Correct spelling only
 
-Theme Guidelines:
+EDUCATION RULE:
+- Focus ONLY on explaining the concept clearly
+- Theme must never add extra story elements
+- No fantasy, drama, or decorative scenes unless required for understanding
+
+
+Theme Guidelines (SECONDARY – do not overpower education):
 ${theme.prompt}
 
-Style Guidelines:
+Style Guidelines (keep visuals clean and minimal):
 ${style.prompt}
 
 ${gradeInstruction}
@@ -539,6 +545,10 @@ Do NOT reference other pages.
                 // 🎨 Final AI prompt
                 const fullPrompt = `
 Create an educational comic page suitable for children ages 6–12.
+
+GOAL:
+Explain the concept clearly using the simplest possible visuals.
+
 Content must be G-rated and fully child-safe.
 No violence, no scary content, no sensitive material.
 
@@ -548,6 +558,11 @@ STRICT RULES:
 - G-rated, child-safe
 - Correct spelling
 - Friendly visuals
+- Only what is needed to explain the scene
+- No extra characters
+- No unnecessary objects
+- No visual clutter
+- Neutral background if possible
 
 Style: ${stylePrompt}
 ${referencesText}
