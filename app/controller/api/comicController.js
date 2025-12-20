@@ -35,13 +35,26 @@ const { generateGeminiComicImage } = require("../../../helper/geminiImage");
 
 function safeJsonParse(str) {
     try {
-        if (str.startsWith("```")) str = str.replace(/```json|```/g, "").trim();
-        return JSON.parse(str);
+        if (!str) throw new Error("Empty response");
+
+        if (str.startsWith("```")) {
+            str = str.replace(/```json|```/g, "").trim();
+        }
+
+        const parsed = JSON.parse(str);
+
+        if (!Array.isArray(parsed)) {
+            throw new Error("Expected JSON array");
+        }
+
+        return parsed;
     } catch (err) {
-        console.error("JSON Parse Error:", err.message, "\nRaw Output:", str);
+        console.error("JSON Parse Error:", err.message);
+        console.error("RAW OUTPUT:", str);
         throw new Error("AI returned invalid JSON");
     }
 }
+
 
 const refinePrompt = async (req, res) => {
     const { title, author, subject, story, themeId, styleId, country, grade, subjectId, concept } = req.body;
@@ -189,6 +202,16 @@ End: ${part.end}
             const comicPrompt = `
 You are a professional educational comic creator.
 
+STRICT RULES:
+- EXACTLY 8–10 pages
+- EXACTLY 2 panels per page
+- Each page is COMPLETELY INDEPENDENT
+- DO NOT reference previous or future pages
+- DO NOT repeat information across pages
+- Short captions (max 15 words)
+- Simple, clear English
+- Correct spelling only
+
 Theme Guidelines:
 ${theme.prompt}
 
@@ -197,14 +220,15 @@ ${style.prompt}
 
 ${gradeInstruction}
 
-Base Context (User Story):
-"${story}"
+// Base Context (User Story):
+// "${story}"
 
 Now create a JSON-based comic script of **8–10 pages** for the concept "${cleanConcept}", focusing on:
 ${partStory}
 
 Each page must have:
-- 1–3 panels
+// - 1–3 panels
+- EXACTLY 2 panels per page
 - Each panel includes:
   "scene": visual description,
   "caption": narrator or description,
@@ -296,45 +320,59 @@ const makePromptSafer = (prompt) => {
     return `${prompt} ${randomSafety}`;
 };
 
-const sanitizeText = (text) => {
-    if (!text) return "";
-    const replacementMap = {
-        clown: "funny character",
-        joker: "playful character",
-        creepy: "interesting",
-        scary: "exciting",
-        violent: "active",
-        mystery: "puzzle",
-        secret: "special",
-        hidden: "waiting to be found",
-        detective: "explorer",
-        investigator: "researcher",
-        crime: "problem",
-        theft: "mix-up",
-        robbery: "misunderstanding",
-        attack: "approach",
-        destroy: "fix",
-        kill: "stop",
-        harm: "help",
-        weapon: "tool",
-        gun: "water pistol",
-        knife: "utensil",
-        blood: "paint",
-    };
+// const sanitizeText = (text) => {
+//     if (!text) return "";
+//     const replacementMap = {
+//         clown: "funny character",
+//         joker: "playful character",
+//         creepy: "interesting",
+//         scary: "exciting",
+//         violent: "active",
+//         mystery: "puzzle",
+//         secret: "special",
+//         hidden: "waiting to be found",
+//         detective: "explorer",
+//         investigator: "researcher",
+//         crime: "problem",
+//         theft: "mix-up",
+//         robbery: "misunderstanding",
+//         attack: "approach",
+//         destroy: "fix",
+//         kill: "stop",
+//         harm: "help",
+//         weapon: "tool",
+//         gun: "water pistol",
+//         knife: "utensil",
+//         blood: "paint",
+//     };
 
-    let safeText = text.toLowerCase();
-    Object.keys(replacementMap).forEach((term) => {
-        const regex = new RegExp(`\\b${term}\\b`, "gi");
-        safeText = safeText.replace(regex, replacementMap[term]);
-    });
+//     let safeText = text.toLowerCase();
+//     Object.keys(replacementMap).forEach((term) => {
+//         const regex = new RegExp(`\\b${term}\\b`, "gi");
+//         safeText = safeText.replace(regex, replacementMap[term]);
+//     });
+
+//     safeText = safeText
+//         .replace(/["“”'‘’]/g, "")
+//         .replace(/[^\w\s.,!?-]/g, "")
+//         .trim();
+
+//     return safeText;
+// };
+
+const sanitizeText = (text = "") => {
+    if (typeof text !== "string") return "";
+
+    let safeText = text;
 
     safeText = safeText
-        .replace(/["“”'‘’]/g, "")
         .replace(/[^\w\s.,!?-]/g, "")
+        .replace(/\s+/g, " ")
         .trim();
 
     return safeText;
 };
+
 
 
 const isDiagramContent = (text = "") => {
@@ -489,7 +527,12 @@ const generateComicImage = async (req, res) => {
                 for (const character of Object.keys(characterReferences)) {
                     // Yahan aapko ek generic description dena hoga, ya koi saved description.
                     // Filhaal, hum general consistency ke liye bol rahe hain.
-                    referencesText += `Ensure the character "${sanitizeText(character)}" is consistent in appearance across all panels and pages (e.g., same clothing, hair, and friendly face).\n`;
+                    // referencesText += `Ensure the character "${sanitizeText(character)}" is consistent in appearance across all panels and pages (e.g., same clothing, hair, and friendly face).\n`;
+                    referencesText += `
+Ensure the character "${sanitizeText(character)}" looks consistent within THIS page only.
+Do NOT reference other pages.
+`;
+
                 }
 
 
@@ -498,6 +541,13 @@ const generateComicImage = async (req, res) => {
 Create an educational comic page suitable for children ages 6–12.
 Content must be G-rated and fully child-safe.
 No violence, no scary content, no sensitive material.
+
+STRICT RULES:
+- ONLY this page
+- NO other pages
+- G-rated, child-safe
+- Correct spelling
+- Friendly visuals
 
 Style: ${stylePrompt}
 ${referencesText}
