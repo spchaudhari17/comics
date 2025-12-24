@@ -7,7 +7,20 @@ const ai = new GoogleGenAI({
 async function generateGeminiComicImage(prompt) {
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-image",
-    contents: prompt,
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt }
+        ]
+      }
+    ],
+
+    generationConfig: {
+      thinking_level: "high",                 //  THIS IS THE KEY
+      response_modalities: ["IMAGE", "TEXT"], //  text ko language treat karega
+      include_thoughts: false                 // true sirf debug ke liye
+    }
   });
 
   const parts = response.candidates?.[0]?.content?.parts || [];
