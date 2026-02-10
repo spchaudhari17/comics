@@ -1,6 +1,7 @@
 const express = require('express');
 require('dotenv').config()
 const router = require('./routes/api.js');
+const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes.js');
 const cors = require('cors');
 bodyParser = require("body-parser");
 const fs = require("fs");
@@ -58,6 +59,8 @@ app.use(
   express.static(path.join(__dirname, "public", "comics"))
 );
 
+
+app.use("/api", stripeWebhookRoutes);
 
 
 // app.use(cors(corsOptions));

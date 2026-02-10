@@ -20,6 +20,9 @@ const { getAllCountries } = require('../app/controller/api/countryController');
 const { getChildActivity } = require('../app/controller/api/getChildActivity');
 const { addChild, getMyChildren, removeChild } = require('../app/controller/api/parentController');
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
+const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription } = require('../app/controller/api/subscriptionController');
+const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
+
 
 
 //******************************** routes started from here ***************************** */
@@ -156,7 +159,7 @@ router.get("/user/hardcore/all-bought-questions", authentication, getAllBoughtQu
 
 
 
-//******************************** quiz routes routes started from here ***************************** */
+//******************************** privacy routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
 router.get("/user/countries", getAllCountries);
 
@@ -164,6 +167,18 @@ router.post("/user/contact", createContact);
 router.get("/user/contacts", getAllContacts);
 router.delete("/user/contact/:id", deleteContact);
 
+//******************************** subscription routes routes started from here ***************************** */
+
+router.post("/user/create-checkout-session", authentication, createCheckoutSession);
+router.post("/user/createSubscription", authentication, createSubscription);
+router.get("/subscription/active", authentication, getActiveSubscription);
+router.get("/subscription/me", authentication, getMySubscription);
+router.post("/subscription/cancel", authentication, cancelSubscription);
+router.get("/subscription/invoices", authentication, getInvoices);
+router.get("/subscription/portal", authentication, createBillingPortal);
+router.get("/subscription/history", authentication, getSubscriptionHistory);
+
+//******************************** subscription ends routes routes started from here ***************************** */
 
 router.get("/users", async (req, res) => {
     res.send("just for test today 30-10-2025")
