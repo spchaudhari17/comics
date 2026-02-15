@@ -24,7 +24,7 @@ const subscriptionHistorySchema = new Schema(
 
     status: {
       type: String,
-      enum: ["created", "renewed", "cancelled", "expired", "payment_failed", "cancel_requested"],
+      enum: ["created", "renewed", "cancelled", "expired", "payment_failed", "cancel_requested", "replaced_by_new_plan"],
       required: true,
     },
 

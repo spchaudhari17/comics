@@ -170,7 +170,6 @@ router.delete("/user/contact/:id", deleteContact);
 //******************************** subscription routes routes started from here ***************************** */
 
 router.post("/user/create-checkout-session", authentication, createCheckoutSession);
-router.post("/user/createSubscription", authentication, createSubscription);
 router.get("/subscription/active", authentication, getActiveSubscription);
 router.get("/subscription/me", authentication, getMySubscription);
 router.post("/subscription/cancel", authentication, cancelSubscription);

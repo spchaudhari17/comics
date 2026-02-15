@@ -82,78 +82,6 @@ const createCheckoutSession = async (req, res) => {
 
 
 
-const createSubscription = async (req, res) => {
-  try {
-    const userId = req.user.login_data._id;
-    const { sessionId, planType } = req.body;
-
-    // 1️⃣ Validate user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // 2️⃣ Retrieve Stripe session
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription", "line_items"],
-    });
-
-    if (!session || session.payment_status !== "paid") {
-      return res.status(400).json({ message: "Payment not completed" });
-    }
-
-    // 3️⃣ Extract priceId from Stripe
-    const priceId = session.line_items.data[0].price.id;
-
-    // 4️⃣ Get plan config
-    const planConfig =
-      planType === "bundle"
-        ? PLANS.bundle[priceId]
-        : PLANS.dashboard[priceId];
-
-    if (!planConfig) {
-      return res.status(400).json({ message: "Invalid plan selected" });
-    }
-
-    // 5️⃣ Deactivate old subscriptions
-    await Subscription.updateMany(
-      { userId, status: "active" },
-      { status: "inactive" }
-    );
-
-    // 6️⃣ Create subscription in DB
-    const subscription = await Subscription.create({
-      userId,
-      planType,
-      priceId,
-
-      stripeCustomerId: session.customer,
-      stripeSubscriptionId: session.subscription.id,
-
-      comicsPerWeek: planConfig.comicsPerWeek,
-      studentsLimit: planConfig.studentsLimit,
-
-      status: "active",
-      startDate: new Date(session.created * 1000),
-      endDate: new Date(
-        new Date(session.created * 1000).setMonth(
-          new Date(session.created * 1000).getMonth() + 1
-        )
-      ),
-    });
-
-    return res.status(201).json({
-      message: "Subscription activated successfully",
-      subscription,
-    });
-
-  } catch (error) {
-    console.error("Create subscription error:", error);
-    return res.status(500).json({ message: error.message });
-  }
-};
-
-
 
 const getActiveSubscription = async (req, res) => {
   try {
@@ -280,33 +208,42 @@ const cancelSubscription = async (req, res) => {
 };
 
 
-
 const getInvoices = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
 
-    const sub = await Subscription.findOne({ userId });
-    if (!sub) {
+    const user = await User.findById(userId);
+
+    // 🔥 Safety fallback (temporary until all users migrated)
+    const fallbackSub = await Subscription.findOne({ userId });
+
+    const customerId =
+      user?.stripeCustomerId || fallbackSub?.stripeCustomerId;
+
+    if (!customerId) {
       return res.json({ invoices: [] });
     }
 
     const invoices = await stripe.invoices.list({
-      customer: sub.stripeCustomerId,
-      limit: 10,
+      customer: customerId,
+      limit: 20,
     });
 
     const formatted = invoices.data.map(inv => ({
       id: inv.id,
       amount: inv.amount_paid / 100,
       currency: inv.currency,
+      billingReason: inv.billing_reason,
       status: inv.status,
       date: new Date(inv.created * 1000),
       pdf: inv.invoice_pdf,
     }));
 
-    res.json({ invoices: formatted });
+    return res.json({ invoices: formatted });
+
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch invoices" });
+    console.error("Invoice fetch error:", err);
+    return res.status(500).json({ message: "Failed to fetch invoices" });
   }
 };
 
@@ -345,6 +282,6 @@ const getSubscriptionHistory = async (req, res) => {
 
 
 module.exports = {
-  createCheckoutSession, createSubscription, getActiveSubscription, cancelSubscription, getInvoices, createBillingPortal,
+  createCheckoutSession, getActiveSubscription, cancelSubscription, getInvoices, createBillingPortal,
   getSubscriptionHistory, getMySubscription
 };
