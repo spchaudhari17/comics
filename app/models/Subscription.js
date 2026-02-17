@@ -47,7 +47,7 @@ const subscriptionSchema = new mongoose.Schema(
     // Subscription lifecycle
     status: {
       type: String,
-      enum: ["active", "inactive", "cancelled"],
+      enum: ["active", "inactive", "cancelled", "to_cancel"],
       default: "active",
     },
 

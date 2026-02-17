@@ -269,34 +269,79 @@ const stripeWebhook = async (req, res) => {
     /* =====================================================
        5️⃣ USER REQUESTED CANCEL (AT PERIOD END)
     ===================================================== */
-    if (
-      event.type === "customer.subscription.updated" &&
-      event.data.object.cancel_at_period_end === true
-    ) {
+    // if (
+    //   event.type === "customer.subscription.updated" &&
+    //   event.data.object.cancel_at_period_end === true
+    // ) {
+    //   const stripeSub = event.data.object;
+    //   const endDate = safeDate(stripeSub.current_period_end);
+
+    //   const sub = await Subscription.findOneAndUpdate(
+    //     { stripeSubscriptionId: stripeSub.id },
+    //     {
+    //       status: "to_cancel",
+    //       ...(endDate && { endDate }),
+    //     },
+    //     { new: true }
+    //   );
+
+    //   if (sub) {
+    //     await SubscriptionHistory.create({
+    //       userId: sub.userId,
+    //       planType: sub.planType,
+    //       priceId: sub.priceId,
+    //       stripeSubscriptionId: stripeSub.id,
+    //       status: "cancel_requested",
+    //       startDate: sub.startDate,
+    //       ...(endDate && { endDate }),
+    //     });
+    //   }
+    // }
+
+
+    if (event.type === "customer.subscription.updated") {
+
       const stripeSub = event.data.object;
-      const endDate = safeDate(stripeSub.current_period_end);
 
-      const sub = await Subscription.findOneAndUpdate(
-        { stripeSubscriptionId: stripeSub.id },
-        {
-          status: "to_cancel",
-          ...(endDate && { endDate }),
-        },
-        { new: true }
-      );
+      console.log("cancel_at_period_end:", stripeSub.cancel_at_period_end);
+      console.log("stripe status:", stripeSub.status);
 
-      if (sub) {
-        await SubscriptionHistory.create({
-          userId: sub.userId,
-          planType: sub.planType,
-          priceId: sub.priceId,
-          stripeSubscriptionId: stripeSub.id,
-          status: "cancel_requested",
-          startDate: sub.startDate,
-          ...(endDate && { endDate }),
-        });
+      const sub = await Subscription.findOne({
+        stripeSubscriptionId: stripeSub.id,
+      });
+
+      if (!sub) {
+        console.log("❌ Subscription not found in DB");
+        return res.json({ received: true });
       }
+
+      // 🔥 IF CANCEL REQUESTED
+      if (stripeSub.cancel_at_period_end === true) {
+        const endDate = safeDate(stripeSub.current_period_end);
+
+        sub.status = "to_cancel";
+
+        if (endDate) {
+          sub.endDate = endDate;
+        }
+
+        await sub.save();
+      }
+
+
+      // 🔴 IF FULLY CANCELLED
+      if (stripeSub.status === "canceled") {
+
+        sub.status = "cancelled";
+        await sub.save();
+
+        console.log("🛑 Subscription fully cancelled");
+
+      }
+
+      return res.json({ received: true });
     }
+
 
     /* =====================================================
        6️⃣ SUBSCRIPTION FINALLY ENDED
