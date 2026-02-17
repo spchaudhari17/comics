@@ -31,7 +31,7 @@ const openai = new OpenAI({
 const { generateGeminiComicImage } = require("../../../helper/geminiImage");
 const { checkComicPermission } = require("../../../utils/checkComicPermission");
 const { checkWeeklyComicLimit } = require("../../../utils/checkWeeklyLimit");
-
+const { getUserAccess } = require("../../../utils/getUserAccess");
 
 
 
@@ -300,6 +300,7 @@ function safeJsonParse(str) {
 // };
 
 
+
 const refinePrompt = async (req, res) => {
     const {
         title,
@@ -317,51 +318,32 @@ const refinePrompt = async (req, res) => {
     try {
 
         const userId = req.user.login_data._id;
-        const user = await User.findById(userId);
-
-        // 🔐 SUBSCRIPTION + PLAN CHECK
-        let subscription;
-        try {
-            subscription = await checkComicPermission(userId);
-        } catch (err) {
-            return res.status(403).json(err);
-        }
-
-        // 🔁 WEEKLY LIMIT CHECK
-        try {
-            await checkWeeklyComicLimit(userId, subscription.comicsPerWeek);
-        } catch (err) {
-            return res.status(403).json(err);
-        }
-
-
-
-        /* ===============================
-           1️⃣ WEEKLY LIMIT CHECK
-        =============================== */
-        // if (!user?.isUnlimited) {
-        //     const oneWeekAgo = new Date();
-        //     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-        //     const seriesCount = await ComicSeries.countDocuments({
-        //         user_id: userId,
-        //         createdAt: { $gte: oneWeekAgo }
-        //     });
-
-        //     if (seriesCount >= 1) {
-        //         return res.status(403).json({
-        //             error: "Weekly limit reached. Try again next week."
-        //         });
-        //     }
-        // }
-
-        /* ===============================
-           2️⃣ BASIC SETUP
-        =============================== */
         const cleanConcept = concept.trim();
 
+        /* ===============================
+           1️⃣ ACCESS CONTROL
+        =============================== */
+        const access = await getUserAccess(userId);
+
+        // ❌ Dashboard cannot create comics
+        if (!access.comicsAllowed) {
+            return res.status(403).json({
+                code: "COMICS_NOT_ALLOWED",
+                message: "Upgrade to bundle plan to create comics"
+            });
+        }
+
+        /* ===============================
+           2️⃣ WEEKLY LIMIT CHECK
+        =============================== */
+        await checkWeeklyComicLimit(userId, access.comicsPerWeek);
+
+        /* ===============================
+           3️⃣ BASIC VALIDATIONS
+        =============================== */
         const theme = await Theme.findById(themeId);
         const style = await Style.findById(styleId);
+
         if (!theme || !style) {
             return res.status(400).json({ error: "Invalid theme or style" });
         }
@@ -372,23 +354,21 @@ const refinePrompt = async (req, res) => {
         }
 
         /* ===============================
-           3️⃣ COUNTRY NORMALIZATION
+           4️⃣ NORMALIZE COUNTRY
         =============================== */
         let finalCountry = "ALL";
         let finalCountries = ["ALL"];
 
-        if (Array.isArray(country) && country.length > 0) {
-            if (!country.includes("ALL")) {
-                finalCountry = country[0].toUpperCase();
-                finalCountries = country.map(c => c.toUpperCase());
-            }
+        if (Array.isArray(country) && country.length > 0 && !country.includes("ALL")) {
+            finalCountry = country[0].toUpperCase();
+            finalCountries = country.map(c => c.toUpperCase());
         } else if (typeof country === "string" && country.trim()) {
             finalCountry = country.toUpperCase();
             finalCountries = [finalCountry];
         }
 
         /* ===============================
-           4️⃣ CREATE SERIES
+           5️⃣ CREATE SERIES
         =============================== */
         const series = await ComicSeries.create({
             user_id: userId,
@@ -402,30 +382,29 @@ const refinePrompt = async (req, res) => {
             author,
             country: finalCountry,
             countries: finalCountries,
-            parts: []
+            parts: [],
+
         });
 
         /* ===============================
-           5️⃣ DIVIDE INTO PARTS
+           6️⃣ DIVIDE INTO PARTS (AI)
         =============================== */
         const divisionPrompt = `
-You are an educational content designer.
-
-Break the concept "${cleanConcept}" into smaller learning parts for grade ${grade} students.
+Break the concept "${cleanConcept}" into small learning parts for grade ${grade}.
 
 Rules:
-- Each part should fit an 8–10 page educational comic
-- Keep concepts simple and progressive
+- Each part fits an 8-page comic
+- Progressive difficulty
 - Return ONLY valid JSON
 
 Format:
 [
   {
     "part": 1,
-    "title": "Part title",
-    "keyTerms": ["term1", "term2"],
-    "start": "What this part begins with",
-    "end": "What this part ends with"
+    "title": "Title",
+    "keyTerms": ["term1"],
+    "start": "Beginning idea",
+    "end": "Ending idea"
   }
 ]
 `;
@@ -433,10 +412,10 @@ Format:
         const divisionResponse = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
-                { role: "system", content: "Return only valid JSON." },
+                { role: "system", content: "Return ONLY valid JSON." },
                 { role: "user", content: divisionPrompt }
             ],
-            temperature: 0.2,
+            temperature: 0.3,
             max_tokens: 800
         });
 
@@ -444,79 +423,68 @@ Format:
             divisionResponse.choices[0].message.content.trim()
         );
 
-        /* ===============================
-           6️⃣ GRADE INSTRUCTIONS
-        =============================== */
-        let gradeInstruction = "";
-        if (grade) {
-            gradeInstruction = `
-Adapt content for grade ${grade}:
-- Simple language
-- One idea per page
-- No complex vocabulary
-- Clear visual explanations
-`;
+        if (!Array.isArray(parts) || parts.length === 0) {
+            return res.status(400).json({
+                error: "Failed to divide concept"
+            });
         }
 
         /* ===============================
-           7️⃣ GENERATE COMICS
+           7️⃣ FREE USER LOCK LOGIC
+        =============================== */
+        let allowedParts = parts;
+
+        if (access.type === "FREE") {
+            allowedParts = parts.slice(0, 1);
+        }
+
+        /* ===============================
+           8️⃣ CREATE COMIC DOCUMENTS
         =============================== */
         const comicsCreated = [];
 
         for (const part of parts) {
-            const partContext = `
+
+            const isLocked =
+                access.type === "FREE" && part.part > 1;
+
+            /* ===============================
+               🔥 GENERATE ACTUAL COMIC SCRIPT
+            =============================== */
+
+            const comicPrompt = `
+You are a professional educational comic writer.
+
+RULES:
+- EXACTLY 8 pages
+- EXACTLY 2 panels per page
+- Simple language
+- Short captions
+- No repeated info
+- Return ONLY valid JSON
+
+Format:
+[
+  {
+    "page": 1,
+    "panels": [
+      {
+        "scene": "visual description only",
+        "caption": "short line",
+        "dialogue": []
+      }
+    ]
+  }
+]
+
+Concept: "${cleanConcept}"
 Part ${part.part}: ${part.title}
 Key terms: ${part.keyTerms.join(", ")}
 Start: ${part.start}
 End: ${part.end}
 `;
 
-            const comicPrompt = `
-You are a professional educational comic writer.
-
-ABSOLUTE RULES:
-- EXACTLY 8 pages
-- EXACTLY 2 panels per page
-- Each page must be independent
-- NO references to other pages
-- NO repeated information
-- SHORT captions (max 12 words)
-- SIMPLE English only
-
-CRITICAL IMAGE RULE:
-- Scene descriptions MUST be visual only
-- DO NOT include text, words, labels, captions, signs, symbols, numbers, or letters inside scenes
-- Images must be drawable with no written content
-
-Each panel format:
-{
-  "scene": "Pure visual description ONLY",
-  "caption": "One short educational line",
-  "dialogue": []
-}
-
-Theme (secondary):
-${theme.prompt}
-
-Style (clean visuals):
-${style.prompt}
-
-${gradeInstruction}
-
-Create a comic for:
-Concept: "${cleanConcept}"
-${partContext}
-
-Return ONLY valid JSON array:
-[
-  {
-    "page": 1,
-    "panels": [ { ... }, { ... } ]
-  }
-]
-`;
-
-            const response = await openai.chat.completions.create({
+            const scriptResponse = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [
                     { role: "system", content: "Return ONLY valid JSON." },
@@ -527,8 +495,12 @@ Return ONLY valid JSON array:
             });
 
             const pages = safeJsonParse(
-                response.choices[0].message.content.trim()
+                scriptResponse.choices[0].message.content.trim()
             );
+
+            if (!Array.isArray(pages)) {
+                throw new Error("Invalid comic script generated");
+            }
 
             const comic = await Comic.create({
                 seriesId: series._id,
@@ -542,33 +514,44 @@ Return ONLY valid JSON array:
                 partNumber: part.part,
                 title: `${title} – Part ${part.part}: ${part.title}`,
                 author,
-                story: partContext,
+                story: part.start,
                 userStory: story,
                 grade,
                 country: finalCountry,
                 countries: finalCountries,
-                prompt: JSON.stringify(pages),
-                comicStatus: "draft"
+                comicStatus: "draft",
+                isLocked,
+                prompt: JSON.stringify(pages) // 🔥 REAL PROMPT SAVE
             });
 
             series.parts.push(comic._id);
+
             comicsCreated.push({
                 part: part.part,
                 title: part.title,
-                comicId: comic._id
+                comicId: comic._id,
+                locked: isLocked
             });
         }
 
+
         await series.save();
 
+        /* ===============================
+           9️⃣ RESPONSE
+        =============================== */
         res.json({
             success: true,
+            subscriptionType: access.type,
             seriesId: series._id,
+            totalParts: parts.length,
+            unlockedParts: allowedParts.length,
             parts: comicsCreated
         });
 
     } catch (error) {
         console.error("❌ refinePrompt error:", error);
+
         res.status(500).json({
             error: "Prompt generation failed",
             details: error.message
@@ -713,6 +696,7 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 
 // ---------------------- Main Image Generation Controller ----------------------
 // old code sahi hai gemini k liye
+
 // const generateComicImage = async (req, res) => {
 //     const { comicId, pages } = req.body;
 
@@ -933,51 +917,244 @@ const generateImageWithRetry = async (prompt, retries = 3) => {
 // };
 
 
+// sahi hai no text k liye
+// const generateComicImage = async (req, res) => {
+//     const { comicId, pages } = req.body;
+
+//     try {
+//         const userId = req.user.login_data._id;
+//         const user = await User.findById(userId);
+
+//         const subscription = await checkComicPermission(userId);
+//         await checkWeeklyComicLimit(userId, subscription.comicsPerWeek);
+
+
+//         /* ===============================
+//            1️⃣ WEEKLY LIMIT CHECK
+//         =============================== */
+//         // if (!user?.isUnlimited) {
+//         //     const oneWeekAgo = new Date();
+//         //     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+//         //     const comicCount = await Comic.countDocuments({
+//         //         user_id: userId,
+//         //         createdAt: { $gte: oneWeekAgo },
+//         //         pdfUrl: { $exists: true, $ne: null }
+//         //     });
+
+//         //     if (comicCount >= 1) {
+//         //         return res.status(403).json({
+//         //             error: "Weekly comic generation limit reached."
+//         //         });
+//         //     }
+//         // }
+
+//         /* ===============================
+//            2️⃣ FETCH COMIC + STYLE
+//         =============================== */
+//         const comic = await Comic.findById(comicId).populate("styleId");
+//         if (!comic) {
+//             return res.status(404).json({ error: "Comic not found" });
+//         }
+
+//         const stylePrompt = comic.styleId?.prompt || "";
+//         const imageUrls = [];
+
+//         /* ===============================
+//            3️⃣ EXISTING PAGES CHECK
+//         =============================== */
+//         const existingPages = await ComicPage.find({ comicId });
+//         const existingMap = new Map(
+//             existingPages.map(p => [p.pageNumber, p.imageUrl])
+//         );
+
+//         /* ===============================
+//            4️⃣ PAGE LOOP
+//         =============================== */
+//         for (const page of pages) {
+//             try {
+//                 // Skip already generated pages
+//                 if (existingMap.has(page.page)) {
+//                     imageUrls.push({
+//                         page: page.page,
+//                         imageUrl: existingMap.get(page.page),
+//                         skipped: true
+//                     });
+//                     continue;
+//                 }
+
+//                 if (!Array.isArray(page.panels) || page.panels.length === 0) {
+//                     imageUrls.push({ page: page.page, skipped: true });
+//                     continue;
+//                 }
+
+//                 /* ===============================
+//                    5️⃣ IMAGE PROMPT (SCENE ONLY)
+//                 =============================== */
+//                 const visualPrompt = page.panels
+//                     .map((panel, idx) => {
+//                         return `
+// Panel ${idx + 1} visual description:
+// ${sanitizeText(panel.scene)}
+
+// IMPORTANT:
+// - Do NOT include any text
+// - No letters
+// - No words
+// - No numbers
+// - No captions
+// - No labels
+// - No speech bubbles
+// - No symbols
+// `;
+//                     })
+//                     .join("\n");
+
+//                 /* ===============================
+//                    6️⃣ FINAL IMAGE PROMPT
+//                 =============================== */
+//                 const fullPrompt = `
+// Create a child-friendly educational comic image.
+
+// CRITICAL RULES:
+// - This image must be VISUAL ONLY
+// - ABSOLUTELY NO TEXT inside the image
+// - No written language of any kind
+// - Clean, simple visuals
+// - Safe for children (ages 6–12)
+
+// Style:
+// ${stylePrompt}
+
+// PAGE CONTENT:
+// ${visualPrompt}
+//         `;
+
+//                 /* ===============================
+//                    7️⃣ IMAGE GENERATION
+//                 =============================== */
+//                 const rawBuffer = await generateImageWithRetry(fullPrompt);
+
+//                 const buffer = await sharp(rawBuffer)
+//                     .resize({ width: 1024 })
+//                     .jpeg({ quality: 75 })
+//                     .toBuffer();
+
+//                 /* ===============================
+//                    8️⃣ UPLOAD TO S3
+//                 =============================== */
+//                 const fileName = `comic_${comicId}_page${page.page}_${Date.now()}.jpg`;
+
+//                 const imageUrl = await upload_files("comics", {
+//                     name: fileName,
+//                     data: buffer,
+//                     mimetype: "image/jpeg"
+//                 });
+
+//                 /* ===============================
+//                    9️⃣ SAVE PAGE DATA
+//                 =============================== */
+//                 await ComicPage.findOneAndUpdate(
+//                     { comicId, pageNumber: page.page },
+//                     {
+//                         comicId,
+//                         user_id: userId,
+//                         pageNumber: page.page,
+//                         panels: page.panels, // captions stored here (UI + voice)
+//                         imageUrl,
+//                         s3Key: `comics/${fileName}`,
+//                         createdAt: new Date()
+//                     },
+//                     { upsert: true, new: true }
+//                 );
+
+//                 imageUrls.push({
+//                     page: page.page,
+//                     imageUrl
+//                 });
+
+//             } catch (pageError) {
+//                 console.error(`❌ Page ${page.page} error:`, pageError);
+//                 imageUrls.push({
+//                     page: page.page,
+//                     error: true,
+//                     message: pageError.message
+//                 });
+//             }
+
+//             // Rate-limit safety
+//             await new Promise(r => setTimeout(r, 1000));
+//         }
+
+//         /* ===============================
+//            10️⃣ FINAL RESPONSE
+//         =============================== */
+//         const failedPages = imageUrls.filter(p => p.error);
+
+//         res.json({
+//             success: failedPages.length === 0,
+//             comicId,
+//             images: imageUrls,
+//             failedPages: failedPages.map(p => p.page)
+//         });
+
+//     } catch (error) {
+//         console.error("🔥 generateComicImage error:", error);
+//         res.status(500).json({
+//             error: "Image generation failed",
+//             details: error.message
+//         });
+//     }
+// };
+
 
 const generateComicImage = async (req, res) => {
     const { comicId, pages } = req.body;
 
     try {
         const userId = req.user.login_data._id;
-        const user = await User.findById(userId);
 
-        const subscription = await checkComicPermission(userId);
-        await checkWeeklyComicLimit(userId, subscription.comicsPerWeek);
-
+        const access = await getUserAccess(userId);
 
         /* ===============================
-           1️⃣ WEEKLY LIMIT CHECK
+           1️⃣ BLOCK DASHBOARD USERS
         =============================== */
-        // if (!user?.isUnlimited) {
-        //     const oneWeekAgo = new Date();
-        //     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-        //     const comicCount = await Comic.countDocuments({
-        //         user_id: userId,
-        //         createdAt: { $gte: oneWeekAgo },
-        //         pdfUrl: { $exists: true, $ne: null }
-        //     });
-
-        //     if (comicCount >= 1) {
-        //         return res.status(403).json({
-        //             error: "Weekly comic generation limit reached."
-        //         });
-        //     }
-        // }
+        if (!access.comicsAllowed) {
+            return res.status(403).json({
+                code: "COMICS_NOT_ALLOWED",
+                message: "Upgrade to bundle plan to generate comics"
+            });
+        }
 
         /* ===============================
-           2️⃣ FETCH COMIC + STYLE
+           2️⃣ FETCH COMIC
         =============================== */
         const comic = await Comic.findById(comicId).populate("styleId");
+
         if (!comic) {
             return res.status(404).json({ error: "Comic not found" });
         }
+
+        /* ===============================
+           3️⃣ LOCK CHECK (FREE USERS)
+        =============================== */
+        if (comic.isLocked) {
+            return res.status(403).json({
+                code: "UPGRADE_REQUIRED",
+                message: "Upgrade subscription to unlock remaining parts"
+            });
+        }
+
+        /* ===============================
+           4️⃣ WEEKLY LIMIT CHECK
+        =============================== */
+        await checkWeeklyComicLimit(userId, access.comicsPerWeek);
 
         const stylePrompt = comic.styleId?.prompt || "";
         const imageUrls = [];
 
         /* ===============================
-           3️⃣ EXISTING PAGES CHECK
+           5️⃣ EXISTING PAGES
         =============================== */
         const existingPages = await ComicPage.find({ comicId });
         const existingMap = new Map(
@@ -985,11 +1162,11 @@ const generateComicImage = async (req, res) => {
         );
 
         /* ===============================
-           4️⃣ PAGE LOOP
+           6️⃣ PAGE LOOP
         =============================== */
         for (const page of pages) {
             try {
-                // Skip already generated pages
+
                 if (existingMap.has(page.page)) {
                     imageUrls.push({
                         page: page.page,
@@ -1004,51 +1181,38 @@ const generateComicImage = async (req, res) => {
                     continue;
                 }
 
-                /* ===============================
-                   5️⃣ IMAGE PROMPT (SCENE ONLY)
-                =============================== */
                 const visualPrompt = page.panels
-                    .map((panel, idx) => {
-                        return `
+                    .map((panel, idx) => `
 Panel ${idx + 1} visual description:
 ${sanitizeText(panel.scene)}
 
 IMPORTANT:
-- Do NOT include any text
-- No letters
+- No text
 - No words
+- No letters
 - No numbers
 - No captions
 - No labels
 - No speech bubbles
 - No symbols
-`;
-                    })
-                    .join("\n");
+`).join("\n");
 
-                /* ===============================
-                   6️⃣ FINAL IMAGE PROMPT
-                =============================== */
                 const fullPrompt = `
 Create a child-friendly educational comic image.
 
 CRITICAL RULES:
-- This image must be VISUAL ONLY
-- ABSOLUTELY NO TEXT inside the image
-- No written language of any kind
-- Clean, simple visuals
-- Safe for children (ages 6–12)
+- VISUAL ONLY
+- NO TEXT inside image
+- Clean visuals
+- Safe for children
 
 Style:
 ${stylePrompt}
 
 PAGE CONTENT:
 ${visualPrompt}
-        `;
+`;
 
-                /* ===============================
-                   7️⃣ IMAGE GENERATION
-                =============================== */
                 const rawBuffer = await generateImageWithRetry(fullPrompt);
 
                 const buffer = await sharp(rawBuffer)
@@ -1056,9 +1220,6 @@ ${visualPrompt}
                     .jpeg({ quality: 75 })
                     .toBuffer();
 
-                /* ===============================
-                   8️⃣ UPLOAD TO S3
-                =============================== */
                 const fileName = `comic_${comicId}_page${page.page}_${Date.now()}.jpg`;
 
                 const imageUrl = await upload_files("comics", {
@@ -1067,16 +1228,13 @@ ${visualPrompt}
                     mimetype: "image/jpeg"
                 });
 
-                /* ===============================
-                   9️⃣ SAVE PAGE DATA
-                =============================== */
                 await ComicPage.findOneAndUpdate(
                     { comicId, pageNumber: page.page },
                     {
                         comicId,
                         user_id: userId,
                         pageNumber: page.page,
-                        panels: page.panels, // captions stored here (UI + voice)
+                        panels: page.panels,
                         imageUrl,
                         s3Key: `comics/${fileName}`,
                         createdAt: new Date()
@@ -1098,13 +1256,9 @@ ${visualPrompt}
                 });
             }
 
-            // Rate-limit safety
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 800));
         }
 
-        /* ===============================
-           10️⃣ FINAL RESPONSE
-        =============================== */
         const failedPages = imageUrls.filter(p => p.error);
 
         res.json({
@@ -1122,7 +1276,6 @@ ${visualPrompt}
         });
     }
 };
-
 
 
 

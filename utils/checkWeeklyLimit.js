@@ -7,7 +7,14 @@ const checkWeeklyComicLimit = async (userId, allowedCount) => {
   const count = await Comic.countDocuments({
     user_id: userId,
     createdAt: { $gte: oneWeekAgo },
+
+    // ✅ ONLY count completed comics
+    pdfUrl: { $exists: true, $ne: null },
+
+    // Optional: only published comics
+    comicStatus: "published"
   });
+
 
   if (count >= allowedCount) {
     throw {
