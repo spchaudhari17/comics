@@ -123,7 +123,7 @@ const getMySubscription = async (req, res) => {
     const subscription = await Subscription.findOne({
       userId,
       status: { $in: ["active", "to_cancel"] },
-      endDate: { $gte: now }
+      // endDate: { $gte: now }
     }).sort({ createdAt: -1 });
 
     // ❌ NO SUBSCRIPTION

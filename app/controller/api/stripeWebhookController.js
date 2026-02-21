@@ -40,6 +40,125 @@ const stripeWebhook = async (req, res) => {
     ===================================================== */
     console.log("🔥 EVENT TYPE:", event.type);
 
+    // if (event.type === "checkout.session.completed") {
+    //   const session = event.data.object;
+
+    //   if (!session.subscription) {
+    //     return res.json({ received: true });
+    //   }
+
+    //   const userId = session.metadata.userId;
+    //   const planType = session.metadata.planType;
+
+    //   // ✅ Always sync customer ID to user
+    //   await User.findByIdAndUpdate(userId, {
+    //     stripeCustomerId: session.customer,
+    //   });
+
+    //   // 🔥 Stripe rule: fetch line items separately
+    //   const lineItems = await stripe.checkout.sessions.listLineItems(
+    //     session.id,
+    //     { limit: 1 }
+    //   );
+
+    //   const priceId = lineItems?.data?.[0]?.price?.id;
+    //   if (!priceId) return res.json({ received: true });
+
+    //   const planConfig =
+    //     planType === "bundle"
+    //       ? PLANS.bundle[priceId]
+    //       : PLANS.dashboard[priceId];
+
+    //   if (!planConfig) return res.json({ received: true });
+
+    //   // 🛑 Idempotency check (very important)
+    //   const exists = await Subscription.findOne({
+    //     stripeSubscriptionId: session.subscription,
+    //   });
+    //   if (exists) return res.json({ received: true });
+
+    //   // =====================================================
+    //   // 🔥 OPTION 1 LOGIC — REPLACE OLD SUBSCRIPTION
+    //   // =====================================================
+
+    //   const oldSub = await Subscription.findOne({
+    //     userId,
+    //     status: { $in: ["active", "to_cancel"] },
+    //   });
+
+    //   if (oldSub && oldSub.stripeSubscriptionId !== session.subscription) {
+    //     try {
+    //       // ✅ Immediately cancel in Stripe
+    //       await stripe.subscriptions.cancel(oldSub.stripeSubscriptionId);
+
+
+    //       // ✅ Update DB
+    //       await Subscription.findByIdAndUpdate(oldSub._id, {
+    //         status: "cancelled",
+    //         endDate: new Date(),
+    //       });
+
+    //       await SubscriptionHistory.create({
+    //         userId,
+    //         planType: oldSub.planType,
+    //         priceId: oldSub.priceId,
+    //         stripeSubscriptionId: oldSub.stripeSubscriptionId,
+    //         status: "replaced_by_new_plan",
+    //         startDate: oldSub.startDate,
+    //         endDate: new Date(),
+    //       });
+
+    //     } catch (err) {
+    //       console.error("Failed to replace old subscription:", err.message);
+    //     }
+    //   }
+
+    //   // =====================================================
+    //   // ✅ CREATE NEW SUBSCRIPTION IN DB
+    //   // =====================================================
+
+
+    //   const stripeSub = await stripe.subscriptions.retrieve(
+    //     session.subscription,
+    //     { expand: ["items"] }
+    //   );
+
+    //   const startDate = safeDate(
+    //     stripeSub.items.data[0]?.current_period_start
+    //   );
+
+    //   const endDate = safeDate(
+    //     stripeSub.items.data[0]?.current_period_end
+    //   );
+
+
+
+    //   const newSub = await Subscription.create({
+    //     userId,
+    //     planType,
+    //     priceId,
+    //     stripeCustomerId: session.customer,
+    //     stripeSubscriptionId: session.subscription,
+    //     comicsPerWeek: planConfig.comicsPerWeek,
+    //     studentsLimit: planConfig.studentsLimit,
+    //     status: "active",
+    //     ...(startDate && { startDate }),
+    //     ...(endDate && { endDate }),
+    //   });
+
+    //   await SubscriptionHistory.create({
+    //     userId,
+    //     planType,
+    //     priceId,
+    //     stripeSubscriptionId: session.subscription,
+    //     amount: session.amount_total / 100,
+    //     currency: session.currency,
+    //     status: "created",
+    //     ...(newSub.startDate && { startDate: newSub.startDate }),
+    //     ...(newSub.endDate && { endDate: newSub.endDate }),
+    //   });
+    // }
+
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
 
@@ -47,122 +166,18 @@ const stripeWebhook = async (req, res) => {
         return res.json({ received: true });
       }
 
-      const userId = session.metadata.userId;
-      const planType = session.metadata.planType;
-
-      // ✅ Always sync customer ID to user
-      await User.findByIdAndUpdate(userId, {
+      await User.findByIdAndUpdate(session.metadata.userId, {
         stripeCustomerId: session.customer,
       });
 
-      // 🔥 Stripe rule: fetch line items separately
-      const lineItems = await stripe.checkout.sessions.listLineItems(
-        session.id,
-        { limit: 1 }
-      );
-
-      const priceId = lineItems?.data?.[0]?.price?.id;
-      if (!priceId) return res.json({ received: true });
-
-      const planConfig =
-        planType === "bundle"
-          ? PLANS.bundle[priceId]
-          : PLANS.dashboard[priceId];
-
-      if (!planConfig) return res.json({ received: true });
-
-      // 🛑 Idempotency check (very important)
-      const exists = await Subscription.findOne({
-        stripeSubscriptionId: session.subscription,
-      });
-      if (exists) return res.json({ received: true });
-
-      // =====================================================
-      // 🔥 OPTION 1 LOGIC — REPLACE OLD SUBSCRIPTION
-      // =====================================================
-
-      const oldSub = await Subscription.findOne({
-        userId,
-        status: { $in: ["active", "to_cancel"] },
-      });
-
-      if (oldSub && oldSub.stripeSubscriptionId !== session.subscription) {
-        try {
-          // ✅ Immediately cancel in Stripe
-          await stripe.subscriptions.cancel(oldSub.stripeSubscriptionId);
-
-
-          // ✅ Update DB
-          await Subscription.findByIdAndUpdate(oldSub._id, {
-            status: "cancelled",
-            endDate: new Date(),
-          });
-
-          await SubscriptionHistory.create({
-            userId,
-            planType: oldSub.planType,
-            priceId: oldSub.priceId,
-            stripeSubscriptionId: oldSub.stripeSubscriptionId,
-            status: "replaced_by_new_plan",
-            startDate: oldSub.startDate,
-            endDate: new Date(),
-          });
-
-        } catch (err) {
-          console.error("Failed to replace old subscription:", err.message);
-        }
-      }
-
-      // =====================================================
-      // ✅ CREATE NEW SUBSCRIPTION IN DB
-      // =====================================================
-
-
-      const stripeSub = await stripe.subscriptions.retrieve(
-        session.subscription,
-        { expand: ["items"] }
-      );
-
-      const startDate = safeDate(
-        stripeSub.items.data[0]?.current_period_start
-      );
-
-      const endDate = safeDate(
-        stripeSub.items.data[0]?.current_period_end
-      );
-
-
-
-      const newSub = await Subscription.create({
-        userId,
-        planType,
-        priceId,
-        stripeCustomerId: session.customer,
-        stripeSubscriptionId: session.subscription,
-        comicsPerWeek: planConfig.comicsPerWeek,
-        studentsLimit: planConfig.studentsLimit,
-        status: "active",
-        ...(startDate && { startDate }),
-        ...(endDate && { endDate }),
-      });
-
-      await SubscriptionHistory.create({
-        userId,
-        planType,
-        priceId,
-        stripeSubscriptionId: session.subscription,
-        amount: session.amount_total / 100,
-        currency: session.currency,
-        status: "created",
-        ...(newSub.startDate && { startDate: newSub.startDate }),
-        ...(newSub.endDate && { endDate: newSub.endDate }),
-      });
+      return res.json({ received: true });
     }
-
 
     /* =====================================================
        3️⃣ MONTHLY RENEWAL SUCCESS
     ===================================================== */
+
+
     if (event.type === "invoice.payment_succeeded") {
 
       console.log("🔥 invoice.payment_succeeded received");
@@ -174,18 +189,40 @@ const stripeWebhook = async (req, res) => {
         invoice.parent?.subscription_details?.subscription ||
         invoice.lines?.data?.[0]?.subscription;
 
-      console.log("Resolved Subscription ID:", subscriptionId);
-
       if (!subscriptionId) {
-        console.log("❌ Still no subscription found on invoice");
+        console.log("❌ No subscription ID found in invoice");
         return res.json({ received: true });
       }
 
+      // 🔥 Always fetch latest Stripe subscription state
       const stripeSub = await stripe.subscriptions.retrieve(
         subscriptionId,
         { expand: ["items"] }
       );
 
+      // =====================================================
+      // 🛑 If user has requested cancel, DO NOT renew
+      // =====================================================
+      if (stripeSub.cancel_at_period_end === true) {
+        console.log("⛔ Skipping renewal — subscription is cancelling");
+        return res.json({ received: true });
+      }
+
+      // =====================================================
+      // 🔎 Find subscription in DB
+      // =====================================================
+      const sub = await Subscription.findOne({
+        stripeSubscriptionId: subscriptionId,
+      });
+
+      if (!sub) {
+        console.log("❌ Subscription not found in DB. Skipping renewal.");
+        return res.json({ received: true });
+      }
+
+      // =====================================================
+      // 📅 Get new billing period dates
+      // =====================================================
       const startDate = safeDate(
         stripeSub.items.data[0]?.current_period_start
       );
@@ -196,41 +233,36 @@ const stripeWebhook = async (req, res) => {
 
       console.log("📅 Stripe Current Period End:", endDate);
 
-      const sub = await Subscription.findOne({
+      // =====================================================
+      // 🔄 Update subscription safely
+      // =====================================================
+      sub.status = "active";
+
+      if (startDate) sub.startDate = startDate;
+      if (endDate) sub.endDate = endDate;
+
+      await sub.save();
+
+      // =====================================================
+      // 🧾 Create renewal history
+      // =====================================================
+      await SubscriptionHistory.create({
+        userId: sub.userId,
+        planType: sub.planType,
+        priceId: sub.priceId,
         stripeSubscriptionId: subscriptionId,
+        stripeInvoiceId: invoice.id,
+        amount: invoice.amount_paid / 100,
+        currency: invoice.currency,
+        status: "renewed",
+        startDate,
+        endDate,
       });
 
-      if (!sub) {
-        console.log("❌ Subscription not found in DB");
-        return res.json({ received: true });
-      }
+      console.log("✅ Renewal handled safely");
 
-      if (!sub.endDate || (endDate && endDate > sub.endDate)) {
-        sub.status = "active";
-        sub.startDate = startDate || sub.startDate;
-        sub.endDate = endDate || sub.endDate;
-
-        await sub.save();
-
-        await SubscriptionHistory.create({
-          userId: sub.userId,
-          planType: sub.planType,
-          priceId: sub.priceId,
-          stripeSubscriptionId: subscriptionId,
-          stripeInvoiceId: invoice.id,
-          amount: invoice.amount_paid / 100,
-          currency: invoice.currency,
-          status: "renewed",
-          startDate,
-          endDate,
-        });
-
-        console.log("✅ Subscription renewed in DB");
-      } else {
-        console.log("⏭ Renewal skipped (period not greater)");
-      }
+      return res.json({ received: true });
     }
-
 
 
 
@@ -269,55 +301,24 @@ const stripeWebhook = async (req, res) => {
     /* =====================================================
        5️⃣ USER REQUESTED CANCEL (AT PERIOD END)
     ===================================================== */
-    // if (
-    //   event.type === "customer.subscription.updated" &&
-    //   event.data.object.cancel_at_period_end === true
-    // ) {
-    //   const stripeSub = event.data.object;
-    //   const endDate = safeDate(stripeSub.current_period_end);
-
-    //   const sub = await Subscription.findOneAndUpdate(
-    //     { stripeSubscriptionId: stripeSub.id },
-    //     {
-    //       status: "to_cancel",
-    //       ...(endDate && { endDate }),
-    //     },
-    //     { new: true }
-    //   );
-
-    //   if (sub) {
-    //     await SubscriptionHistory.create({
-    //       userId: sub.userId,
-    //       planType: sub.planType,
-    //       priceId: sub.priceId,
-    //       stripeSubscriptionId: stripeSub.id,
-    //       status: "cancel_requested",
-    //       startDate: sub.startDate,
-    //       ...(endDate && { endDate }),
-    //     });
-    //   }
-    // }
-
 
     if (event.type === "customer.subscription.updated") {
 
       const stripeSub = event.data.object;
-
-      console.log("cancel_at_period_end:", stripeSub.cancel_at_period_end);
-      console.log("stripe status:", stripeSub.status);
 
       const sub = await Subscription.findOne({
         stripeSubscriptionId: stripeSub.id,
       });
 
       if (!sub) {
-        console.log("❌ Subscription not found in DB");
+        console.log("❌ Subscription not found in DB (updated)");
         return res.json({ received: true });
       }
 
-      // 🔥 IF CANCEL REQUESTED
+      const endDate = safeDate(stripeSub.current_period_end);
+
+      // 🔥 When user clicks cancel
       if (stripeSub.cancel_at_period_end === true) {
-        const endDate = safeDate(stripeSub.current_period_end);
 
         sub.status = "to_cancel";
 
@@ -326,17 +327,8 @@ const stripeWebhook = async (req, res) => {
         }
 
         await sub.save();
-      }
 
-
-      // 🔴 IF FULLY CANCELLED
-      if (stripeSub.status === "canceled") {
-
-        sub.status = "cancelled";
-        await sub.save();
-
-        console.log("🛑 Subscription fully cancelled");
-
+        console.log("✅ Subscription marked to_cancel");
       }
 
       return res.json({ received: true });
@@ -376,13 +368,14 @@ const stripeWebhook = async (req, res) => {
       });
     }
 
+
     if (event.type === "customer.subscription.created") {
       const stripeSub = event.data.object;
 
       const priceId = stripeSub.items.data[0]?.price?.id;
-      if (!priceId) return;
+      if (!priceId) return res.json({ received: true });
 
-      // 🔎 Detect plan type
+      // 🔎 Detect plan
       let planType = null;
       let planConfig = null;
 
@@ -394,31 +387,46 @@ const stripeWebhook = async (req, res) => {
         planConfig = PLANS.dashboard[priceId];
       }
 
-      if (!planConfig) {
-        console.log("❌ Unknown price ID:", priceId);
-        return;
-      }
+      if (!planConfig) return res.json({ received: true });
 
+      // 🔎 Find user
       const user = await User.findOne({
         stripeCustomerId: stripeSub.customer
       });
 
-      if (!user) {
-        console.log("❌ No user found for customer:", stripeSub.customer);
-        return;
-      }
+      if (!user) return res.json({ received: true });
 
-      // 🛑 Idempotency check
-      const existing = await Subscription.findOne({
-        stripeSubscriptionId: stripeSub.id,
+      // 🛑 Idempotency guard
+      const alreadyExists = await Subscription.findOne({
+        stripeSubscriptionId: stripeSub.id
       });
 
-      if (existing) {
-        console.log("⚠ Subscription already exists");
-        return;
+      if (alreadyExists) {
+        console.log("⚠ Subscription already saved");
+        return res.json({ received: true });
       }
 
-      // 🔥 Cancel old active subscriptions
+      // =====================================================
+      // 🔥 PRODUCTION SAFE PART
+      // Cancel ALL other active Stripe subscriptions
+      // =====================================================
+
+      const activeStripeSubs = await stripe.subscriptions.list({
+        customer: stripeSub.customer,
+        status: "active",
+      });
+
+      for (const s of activeStripeSubs.data) {
+        if (s.id !== stripeSub.id) {
+          console.log("🛑 Cancelling old Stripe sub:", s.id);
+          await stripe.subscriptions.cancel(s.id);
+        }
+      }
+
+      // =====================================================
+      // Cancel old DB subscriptions
+      // =====================================================
+
       await Subscription.updateMany(
         {
           userId: user._id,
@@ -438,7 +446,11 @@ const stripeWebhook = async (req, res) => {
         stripeSub.items.data[0]?.current_period_end
       );
 
-      await Subscription.create({
+      // =====================================================
+      // Create new subscription
+      // =====================================================
+
+      const newSub = await Subscription.create({
         userId: user._id,
         stripeCustomerId: stripeSub.customer,
         stripeSubscriptionId: stripeSub.id,
@@ -448,10 +460,22 @@ const stripeWebhook = async (req, res) => {
         studentsLimit: planConfig.studentsLimit,
         status: "active",
         startDate,
-        endDate,
+        endDate
       });
 
-      console.log("✅ Dashboard subscription saved properly");
+      await SubscriptionHistory.create({
+        userId: user._id,
+        planType,
+        priceId,
+        stripeSubscriptionId: stripeSub.id,
+        status: "created",
+        startDate,
+        endDate
+      });
+
+      console.log("✅ Subscription safely created");
+
+      return res.json({ received: true });
     }
 
 

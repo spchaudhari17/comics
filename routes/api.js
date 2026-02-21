@@ -13,7 +13,7 @@ const { generateFAQs, listFAQs } = require('../app/controller/api/faqController'
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
 const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject, getAllSubjectsForWeb } = require('../app/controller/api/subjectController');
-const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList, resetStudentPassword, deleteStudent, deleteAllStudents } = require('../app/controller/api/appAuthController');
+const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList, resetStudentPassword, deleteStudent, deleteAllStudents, addSingleStudent } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
 const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard, buyGems, unlockHardcoreQuestion, getUnlockedQuestions, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions, finishHardcoreQuiz, increaseUserHardcoreAttempts } = require('../app/controller/api/hardcoreQuizController');
 const { getAllCountries } = require('../app/controller/api/countryController');
@@ -38,6 +38,7 @@ router.post('/app/login', loginWithUsername)
 
 
 router.post('/user/bulk-register', authentication, bulkRegister);
+router.post("/user/add-student", authentication, addSingleStudent);
 router.get('/user/get-students', authentication, getStudentsList);
 router.post('/user/reset-student-password', authentication, resetStudentPassword);
 router.post('/user/delete-student', authentication, deleteStudent);
