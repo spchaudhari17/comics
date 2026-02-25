@@ -181,7 +181,7 @@ router.get("/subscription/history", authentication, getSubscriptionHistory);
 //******************************** subscription ends routes routes started from here ***************************** */
 
 router.get("/users", async (req, res) => {
-    res.send("just for test today 30-10-2025")
+    res.send("just for test today 25-02-2026")
 });
 
 
