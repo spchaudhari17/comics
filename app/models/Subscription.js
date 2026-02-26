@@ -64,8 +64,16 @@ const subscriptionSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+
+
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+subscriptionSchema.index(
+  { stripeSubscriptionId: 1 },
+  { unique: true }
+);
+
 
 module.exports = mongoose.model("Subscription", subscriptionSchema);

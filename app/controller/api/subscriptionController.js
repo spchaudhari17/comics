@@ -5,14 +5,91 @@ const stripe = require("../../../utils/stripe");
 const SubscriptionHistory = require("../../models/SubscriptionHistory");
 const Comic = require("../../models/Comic");
 
+// const createCheckoutSession = async (req, res) => {
+//   try {
+//     const userId = req.user.login_data._id;
+//     const { priceId, planType } = req.body;
+
+//     // 1️ Validate input
+//     if (!priceId || !planType) {
+//       return res.status(400).json({ message: "priceId and planType are required" });
+//     }
+
+//     // 2️⃣ Validate plan
+//     const planConfig =
+//       planType === "bundle"
+//         ? PLANS.bundle[priceId]
+//         : PLANS.dashboard[priceId];
+
+//     if (!planConfig) {
+//       return res.status(400).json({ message: "Invalid plan selected" });
+//     }
+
+//     // 3️⃣ Get user
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     // 4️⃣ Reuse Stripe customer if exists
+//     let stripeCustomerId = user.stripeCustomerId;
+
+//     if (!stripeCustomerId) {
+//       const customer = await stripe.customers.create({
+//         email: user.email,
+//         metadata: {
+//           userId: user._id.toString(),
+//         },
+//       });
+
+//       stripeCustomerId = customer.id;
+
+//       // save customer id in user table
+//       user.stripeCustomerId = stripeCustomerId;
+//       await user.save();
+//     }
+
+//     // 5️⃣ Create checkout session
+//     const session = await stripe.checkout.sessions.create({
+//       mode: "subscription",
+//       customer: stripeCustomerId,
+//       payment_method_types: ["card"],
+//       line_items: [
+//         {
+//           price: priceId,
+//           quantity: 1,
+//         },
+//       ],
+//       metadata: {
+//         userId: user._id.toString(),
+//         planType,
+//       },
+//       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+//       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+//     });
+
+//     return res.status(200).json({
+//       url: session.url,
+//     });
+
+//   } catch (error) {
+//     console.error("Create checkout session error:", error);
+//     return res.status(500).json({
+//       message: "Unable to create checkout session",
+//     });
+//   }
+// };
+
 const createCheckoutSession = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
     const { priceId, planType } = req.body;
 
-    // 1️ Validate input
+    // 1️⃣ Validate input
     if (!priceId || !planType) {
-      return res.status(400).json({ message: "priceId and planType are required" });
+      return res.status(400).json({
+        message: "priceId and planType are required"
+      });
     }
 
     // 2️⃣ Validate plan
@@ -22,16 +99,32 @@ const createCheckoutSession = async (req, res) => {
         : PLANS.dashboard[priceId];
 
     if (!planConfig) {
-      return res.status(400).json({ message: "Invalid plan selected" });
+      return res.status(400).json({
+        message: "Invalid plan selected"
+      });
     }
 
     // 3️⃣ Get user
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found"
+      });
     }
 
-    // 4️⃣ Reuse Stripe customer if exists
+    // 🔥 4️⃣ IMPORTANT — Prevent multiple subscriptions
+    const existing = await Subscription.findOne({
+      userId,
+      status: { $in: ["active", "to_cancel"] }
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        message: "You already have a subscription. Use upgrade or downgrade option."
+      });
+    }
+
+    // 5️⃣ Reuse Stripe customer if exists
     let stripeCustomerId = user.stripeCustomerId;
 
     if (!stripeCustomerId) {
@@ -44,12 +137,11 @@ const createCheckoutSession = async (req, res) => {
 
       stripeCustomerId = customer.id;
 
-      // save customer id in user table
       user.stripeCustomerId = stripeCustomerId;
       await user.save();
     }
 
-    // 5️⃣ Create checkout session
+    // 6️⃣ Create checkout session
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: stripeCustomerId,
@@ -79,7 +171,6 @@ const createCheckoutSession = async (req, res) => {
     });
   }
 };
-
 
 
 
@@ -160,6 +251,7 @@ const getMySubscription = async (req, res) => {
       hasSubscription: true,
       subscriptionId: subscription._id,
       planType: subscription.planType,
+      priceId: subscription.priceId,
       status: subscription.status, // active | to_cancel
       comicsPerWeek,
       usedThisWeek,
@@ -280,8 +372,116 @@ const getSubscriptionHistory = async (req, res) => {
   }
 };
 
+const getPlanPrice = (priceId) => {
+  const allPlans = { ...PLANS.bundle, ...PLANS.dashboard };
+  return allPlans[priceId]?.amount || 0;
+};
+
+
+const upgradeSubscriptionImmediate = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+    const { priceId } = req.body;
+
+    const sub = await Subscription.findOne({ userId, status: "active" });
+    if (!sub) return res.status(404).json({ message: "No active subscription found" });
+
+    if (sub.priceId === priceId)
+      return res.status(400).json({ message: "You are already on this plan" });
+
+    const stripeSub = await stripe.subscriptions.retrieve(
+      sub.stripeSubscriptionId,
+      { expand: ["items"] }
+    );
+
+    const itemId = stripeSub.items.data[0].id;
+
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      items: [{ id: itemId, price: priceId }],
+      proration_behavior: "create_prorations",
+    });
+
+    return res.json({ message: "Plan upgraded immediately (prorated)" });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Upgrade failed" });
+  }
+};
+
+
+const upgradeSubscriptionScheduled = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+    const { priceId } = req.body;
+
+    const sub = await Subscription.findOne({ userId, status: "active" });
+    if (!sub) return res.status(404).json({ message: "No active subscription found" });
+
+    if (sub.priceId === priceId)
+      return res.status(400).json({ message: "You are already on this plan" });
+
+    const stripeSub = await stripe.subscriptions.retrieve(
+      sub.stripeSubscriptionId,
+      { expand: ["items"] }
+    );
+
+    const itemId = stripeSub.items.data[0].id;
+
+    // ⭐ THIS IS THE FIX
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      items: [{ id: itemId, price: priceId }],
+      proration_behavior: "none",   // 👉 next billing se apply
+    });
+
+    return res.json({
+      message: "Plan change scheduled for next billing cycle"
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Scheduled upgrade failed" });
+  }
+};
+
+
+
+
+const downgradeSubscription = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+    const { priceId } = req.body;
+
+    const sub = await Subscription.findOne({ userId, status: "active" });
+    if (!sub) return res.status(404).json({ message: "No active subscription found" });
+
+    const stripeSub = await stripe.subscriptions.retrieve(
+      sub.stripeSubscriptionId,
+      { expand: ["items"] }
+    );
+
+    const itemId = stripeSub.items.data[0].id;
+
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      items: [{ id: itemId, price: priceId }],
+      proration_behavior: "none",   // next billing cycle
+    });
+
+    return res.json({
+      message: "Downgrade scheduled for next billing cycle"
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Downgrade failed" });
+  }
+};
+
+
+
+
 
 module.exports = {
   createCheckoutSession, getActiveSubscription, cancelSubscription, getInvoices, createBillingPortal,
-  getSubscriptionHistory, getMySubscription
+  getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription,
 };
