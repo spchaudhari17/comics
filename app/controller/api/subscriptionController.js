@@ -205,19 +205,16 @@ const getActiveSubscription = async (req, res) => {
 };
 
 
+
 const getMySubscription = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
-    const now = new Date();
 
-    // 1️⃣ FIND LATEST VALID SUBSCRIPTION
     const subscription = await Subscription.findOne({
       userId,
       status: { $in: ["active", "to_cancel"] },
-      // endDate: { $gte: now }
     }).sort({ createdAt: -1 });
 
-    // ❌ NO SUBSCRIPTION
     if (!subscription) {
       return res.status(200).json({
         hasSubscription: false,
@@ -225,41 +222,41 @@ const getMySubscription = async (req, res) => {
         comicsPerWeek: 0,
         usedThisWeek: 0,
         comicsLeft: 0,
-        studentsLimit: 0
+        studentsLimit: 0,
       });
     }
 
-    // 2️⃣ CALCULATE WEEKLY USAGE
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     const usedThisWeek = await Comic.countDocuments({
       user_id: userId,
       createdAt: { $gte: oneWeekAgo },
-      pdfUrl: { $exists: true, $ne: null }
+      pdfUrl: { $exists: true, $ne: null },
     });
 
     const comicsPerWeek = subscription.comicsPerWeek || 0;
+    const comicsLeft = Math.max(comicsPerWeek - usedThisWeek, 0);
 
-    const comicsLeft = Math.max(
-      comicsPerWeek - usedThisWeek,
-      0
-    );
-
-    // 3️⃣ RESPONSE
     return res.status(200).json({
       hasSubscription: true,
       subscriptionId: subscription._id,
       planType: subscription.planType,
       priceId: subscription.priceId,
-      status: subscription.status, // active | to_cancel
+      status: subscription.status,
       comicsPerWeek,
       usedThisWeek,
       comicsLeft,
       studentsLimit: subscription.studentsLimit,
       startDate: subscription.startDate,
       endDate: subscription.endDate,
-      canCancel: subscription.status === "active"
+      canCancel: subscription.status === "active",
+
+      // 🔥 Pending Info (Important)
+      pendingPriceId: subscription.pendingPriceId,
+      pendingPlanType: subscription.pendingPlanType,
+      pendingApplyDate: subscription.pendingApplyDate,
+      hasPendingChange: !!subscription.pendingPriceId,
     });
 
   } catch (error) {
@@ -269,6 +266,7 @@ const getMySubscription = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -378,16 +376,85 @@ const getPlanPrice = (priceId) => {
 };
 
 
+
+
+// const upgradeSubscriptionImmediate = async (req, res) => {
+//   try {
+//     const userId = req.user.login_data._id;
+//     const { priceId } = req.body;
+
+//     const sub = await Subscription.findOne({ userId, status: "active" });
+//     if (!sub) {
+//       return res.status(404).json({ message: "No active subscription found" });
+//     }
+
+//     if (sub.priceId === priceId) {
+//       return res.status(400).json({ message: "Already on this plan" });
+//     }
+
+//     const stripeSub = await stripe.subscriptions.retrieve(
+//       sub.stripeSubscriptionId,
+//       { expand: ["items"] }
+//     );
+
+//     const itemId = stripeSub.items.data[0].id;
+
+//     // 🔥 Stripe update with proration
+//     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+//       items: [{ id: itemId, price: priceId }],
+//       proration_behavior: "create_prorations",
+//     });
+
+//     // 🔥 DB update immediately
+//     let planConfig = null;
+//     let planType = null;
+
+//     if (PLANS.bundle[priceId]) {
+//       planType = "bundle";
+//       planConfig = PLANS.bundle[priceId];
+//     } else if (PLANS.dashboard[priceId]) {
+//       planType = "dashboard";
+//       planConfig = PLANS.dashboard[priceId];
+//     }
+
+//     sub.planType = planType;
+//     sub.priceId = priceId;
+//     sub.comicsPerWeek = planConfig.comicsPerWeek;
+//     sub.studentsLimit = planConfig.studentsLimit;
+
+//     // clear any pending
+//     sub.pendingPlanType = null;
+//     sub.pendingPriceId = null;
+//     sub.pendingComicsPerWeek = null;
+//     sub.pendingStudentsLimit = null;
+//     sub.pendingApplyDate = null;
+
+//     await sub.save();
+
+//     return res.json({
+//       message: "Plan upgraded immediately (prorated)",
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({ message: "Immediate upgrade failed" });
+//   }
+// };
+
+
 const upgradeSubscriptionImmediate = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
     const { priceId } = req.body;
 
     const sub = await Subscription.findOne({ userId, status: "active" });
-    if (!sub) return res.status(404).json({ message: "No active subscription found" });
+    if (!sub) {
+      return res.status(404).json({ message: "No active subscription found" });
+    }
 
-    if (sub.priceId === priceId)
-      return res.status(400).json({ message: "You are already on this plan" });
+    if (sub.priceId === priceId) {
+      return res.status(400).json({ message: "Already on this plan" });
+    }
 
     const stripeSub = await stripe.subscriptions.retrieve(
       sub.stripeSubscriptionId,
@@ -396,16 +463,64 @@ const upgradeSubscriptionImmediate = async (req, res) => {
 
     const itemId = stripeSub.items.data[0].id;
 
+    // 1️⃣ Update subscription with proration
     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
       items: [{ id: itemId, price: priceId }],
       proration_behavior: "create_prorations",
     });
 
-    return res.json({ message: "Plan upgraded immediately (prorated)" });
+    // 2️⃣ Create invoice immediately
+    const invoice = await stripe.invoices.create({
+      customer: stripeSub.customer,
+      subscription: sub.stripeSubscriptionId,
+    });
+
+    // 3️⃣ Finalize invoice
+    const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+
+    // 4️⃣ Attempt payment immediately
+    const paidInvoice = await stripe.invoices.pay(finalizedInvoice.id);
+
+    if (paidInvoice.status !== "paid") {
+      return res.status(400).json({
+        message: "Payment failed. Upgrade not completed.",
+      });
+    }
+
+    // 5️⃣ Only after successful payment → update DB
+    let planConfig = null;
+    let planType = null;
+
+    if (PLANS.bundle[priceId]) {
+      planType = "bundle";
+      planConfig = PLANS.bundle[priceId];
+    } else if (PLANS.dashboard[priceId]) {
+      planType = "dashboard";
+      planConfig = PLANS.dashboard[priceId];
+    }
+
+    sub.planType = planType;
+    sub.priceId = priceId;
+    sub.comicsPerWeek = planConfig.comicsPerWeek;
+    sub.studentsLimit = planConfig.studentsLimit;
+
+    sub.pendingPlanType = null;
+    sub.pendingPriceId = null;
+    sub.pendingComicsPerWeek = null;
+    sub.pendingStudentsLimit = null;
+    sub.pendingApplyDate = null;
+
+    await sub.save();
+
+    return res.json({
+      message: "Plan upgraded and charged immediately",
+    });
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Upgrade failed" });
+    console.error("Immediate upgrade error:", err);
+    return res.status(500).json({
+      message: err.message || "Immediate upgrade failed",
+    });
   }
 };
 
@@ -415,11 +530,22 @@ const upgradeSubscriptionScheduled = async (req, res) => {
     const userId = req.user.login_data._id;
     const { priceId } = req.body;
 
-    const sub = await Subscription.findOne({ userId, status: "active" });
-    if (!sub) return res.status(404).json({ message: "No active subscription found" });
+    const sub = await Subscription.findOne({
+      userId,
+      status: "active",
+    });
 
-    if (sub.priceId === priceId)
-      return res.status(400).json({ message: "You are already on this plan" });
+    if (!sub) {
+      return res.status(404).json({
+        message: "No active subscription found",
+      });
+    }
+
+    if (sub.priceId === priceId) {
+      return res.status(400).json({
+        message: "Already on this plan",
+      });
+    }
 
     const stripeSub = await stripe.subscriptions.retrieve(
       sub.stripeSubscriptionId,
@@ -428,24 +554,43 @@ const upgradeSubscriptionScheduled = async (req, res) => {
 
     const itemId = stripeSub.items.data[0].id;
 
-    // ⭐ THIS IS THE FIX
+    // 🔥 Stripe update (NO immediate charge)
     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
       items: [{ id: itemId, price: priceId }],
-      proration_behavior: "none",   // 👉 next billing se apply
+      proration_behavior: "none",
     });
 
+    // 🔥 Set pending state in DB
+    let planConfig = null;
+    let planType = null;
+
+    if (PLANS.bundle[priceId]) {
+      planType = "bundle";
+      planConfig = PLANS.bundle[priceId];
+    } else if (PLANS.dashboard[priceId]) {
+      planType = "dashboard";
+      planConfig = PLANS.dashboard[priceId];
+    }
+
+    sub.pendingPlanType = planType;
+    sub.pendingPriceId = priceId;
+    sub.pendingComicsPerWeek = planConfig.comicsPerWeek;
+    sub.pendingStudentsLimit = planConfig.studentsLimit;
+    sub.pendingApplyDate = sub.endDate;
+
+    await sub.save();
+
     return res.json({
-      message: "Plan change scheduled for next billing cycle"
+      message: "Plan will change at next billing cycle",
     });
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Scheduled upgrade failed" });
+    return res.status(500).json({
+      message: "Scheduled upgrade failed",
+    });
   }
 };
-
-
-
 
 const downgradeSubscription = async (req, res) => {
   try {
@@ -453,27 +598,115 @@ const downgradeSubscription = async (req, res) => {
     const { priceId } = req.body;
 
     const sub = await Subscription.findOne({ userId, status: "active" });
-    if (!sub) return res.status(404).json({ message: "No active subscription found" });
+    if (!sub) return res.status(404).json({ message: "No active subscription" });
 
     const stripeSub = await stripe.subscriptions.retrieve(
       sub.stripeSubscriptionId,
       { expand: ["items"] }
     );
 
-    const itemId = stripeSub.items.data[0].id;
-
-    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
-      items: [{ id: itemId, price: priceId }],
-      proration_behavior: "none",   // next billing cycle
+    await stripe.subscriptionSchedules.create({
+      from_subscription: stripeSub.id,
+      phases: [
+        {
+          items: [{
+            price: stripeSub.items.data[0].price.id
+          }],
+          end_date: stripeSub.current_period_end,
+        },
+        {
+          items: [{
+            price: priceId
+          }]
+        }
+      ]
     });
 
-    return res.json({
-      message: "Downgrade scheduled for next billing cycle"
-    });
+    return res.json({ message: "Downgrade scheduled for next billing cycle" });
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Downgrade failed" });
+    res.status(500).json({ message: "Downgrade failed" });
+  }
+};
+
+const getScheduleStatus = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+
+    // 1️⃣ Find active subscription
+    const sub = await Subscription.findOne({
+      userId,
+      status: { $in: ["active", "to_cancel"] },
+    });
+
+    if (!sub) {
+      return res.status(200).json({
+        hasSchedule: false,
+        message: "No active subscription found",
+      });
+    }
+
+    // 2️⃣ Get Stripe Subscription
+    const stripeSub = await stripe.subscriptions.retrieve(
+      sub.stripeSubscriptionId,
+      { expand: ["items"] }
+    );
+
+    const currentPrice =
+      stripeSub.items?.data?.[0]?.price?.id || null;
+
+    const currentPeriodEnd = stripeSub.current_period_end
+      ? new Date(stripeSub.current_period_end * 1000)
+      : null;
+
+    // 3️⃣ If no schedule attached
+    if (!stripeSub.schedule) {
+      return res.status(200).json({
+        hasSchedule: false,
+        currentPrice,
+        currentPeriodEnd,
+      });
+    }
+
+    // 4️⃣ Retrieve Schedule
+    const schedule = await stripe.subscriptionSchedules.retrieve(
+      stripeSub.schedule,
+      { expand: ["phases.items.price"] }
+    );
+
+    const phases = schedule.phases || [];
+
+    let nextPrice = null;
+    let applyDate = currentPeriodEnd;
+
+    // 5️⃣ Extract future phase safely
+    if (phases.length > 1) {
+      const futurePhase = phases[1];
+
+      if (
+        futurePhase?.items &&
+        futurePhase.items.length > 0
+      ) {
+        nextPrice =
+          futurePhase.items[0].price?.id || null;
+      }
+    }
+
+    return res.status(200).json({
+      hasSchedule: true,
+      scheduleId: stripeSub.schedule,
+      currentPrice,
+      nextPrice,
+      applyDate,
+      currentPeriodEnd,
+    });
+
+  } catch (err) {
+    console.error("Schedule status error:", err);
+    return res.status(500).json({
+      message: "Failed to retrieve schedule status",
+    });
   }
 };
 
@@ -484,4 +717,5 @@ const downgradeSubscription = async (req, res) => {
 module.exports = {
   createCheckoutSession, getActiveSubscription, cancelSubscription, getInvoices, createBillingPortal,
   getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription,
+  getScheduleStatus,
 };

@@ -66,6 +66,34 @@ const subscriptionSchema = new mongoose.Schema(
     },
 
 
+    // Scheduled change fields
+    pendingPlanType: {
+      type: String,
+      enum: ["bundle", "dashboard"],
+      default: null,
+    },
+
+    pendingPriceId: {
+      type: String,
+      default: null,
+    },
+
+    pendingComicsPerWeek: {
+      type: Number,
+      default: null,
+    },
+
+    pendingStudentsLimit: {
+      type: Number,
+      default: null,
+    },
+
+    pendingApplyDate: {
+      type: Date,
+      default: null,
+    },
+
+
   },
   { timestamps: true },
 );
