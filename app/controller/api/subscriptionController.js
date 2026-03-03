@@ -288,6 +288,16 @@ const cancelSubscription = async (req, res) => {
       cancel_at_period_end: true,
     });
 
+    await SubscriptionHistory.create({
+      userId: sub.userId,
+      planType: sub.planType,
+      priceId: sub.priceId,
+      stripeSubscriptionId: sub.stripeSubscriptionId,
+      status: "cancel_requested",
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+    });
+
     return res.json({
       message: "Subscription will be cancelled at the end of billing cycle",
     });
@@ -356,15 +366,42 @@ const createBillingPortal = async (req, res) => {
 };
 
 
+// const getSubscriptionHistory = async (req, res) => {
+//   try {
+//     const userId = req.user.login_data._id;
+
+//     const history = await SubscriptionHistory.find({ userId })
+//       .sort({ createdAt: -1 })
+//       .select("-__v");
+
+//     return res.json({ history });
+//   } catch (err) {
+//     res.status(500).json({ message: "Failed to fetch subscription history" });
+//   }
+// };
+
+
 const getSubscriptionHistory = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
 
     const history = await SubscriptionHistory.find({ userId })
       .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
       .select("-__v");
 
-    return res.json({ history });
+    const total = await SubscriptionHistory.countDocuments({ userId });
+
+    return res.json({
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+      history
+    });
+
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch subscription history" });
   }
@@ -512,6 +549,19 @@ const upgradeSubscriptionImmediate = async (req, res) => {
 
     await sub.save();
 
+    await SubscriptionHistory.create({
+      userId: sub.userId,
+      planType,
+      priceId,
+      stripeSubscriptionId: sub.stripeSubscriptionId,
+      stripeInvoiceId: paidInvoice.id,
+      amount: paidInvoice.amount_paid / 100,
+      currency: paidInvoice.currency,
+      status: "created",
+      startDate: sub.startDate,
+      endDate: sub.endDate,
+    });
+
     return res.json({
       message: "Plan upgraded and charged immediately",
     });
@@ -579,6 +629,15 @@ const upgradeSubscriptionScheduled = async (req, res) => {
     sub.pendingApplyDate = sub.endDate;
 
     await sub.save();
+    await SubscriptionHistory.create({
+      userId: sub.userId,
+      planType: planType,
+      priceId: priceId,
+      stripeSubscriptionId: sub.stripeSubscriptionId,
+      status: "replaced_by_new_plan",
+      startDate: sub.startDate,
+      endDate: sub.pendingApplyDate,
+    });
 
     return res.json({
       message: "Plan will change at next billing cycle",
@@ -711,11 +770,96 @@ const getScheduleStatus = async (req, res) => {
 };
 
 
+const getSavedPaymentMethod = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+
+    const user = await User.findById(userId);
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({
+        hasCard: false,
+        message: "Stripe customer not found"
+      });
+    }
+
+    // 1️⃣ Try default payment method
+    const customer = await stripe.customers.retrieve(
+      user.stripeCustomerId,
+      { expand: ["invoice_settings.default_payment_method"] }
+    );
+
+    let paymentMethod = customer.invoice_settings.default_payment_method;
+
+    // 2️⃣ If not found, fetch from paymentMethods list
+    if (!paymentMethod) {
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: "card",
+        limit: 1,
+      });
+
+      if (paymentMethods.data.length > 0) {
+        paymentMethod = paymentMethods.data[0];
+      }
+    }
+
+    if (!paymentMethod || !paymentMethod.card) {
+      return res.json({
+        hasCard: false,
+        message: "No card found"
+      });
+    }
+
+    const card = paymentMethod.card;
+
+    return res.json({
+      hasCard: true,
+      brand: card.brand,
+      last4: card.last4,
+      expMonth: card.exp_month,
+      expYear: card.exp_year,
+      country: card.country,
+    });
+
+  } catch (err) {
+    console.error("Get payment method error:", err);
+    return res.status(500).json({
+      message: "Failed to fetch payment method"
+    });
+  }
+};
 
 
+const createUpdateCardSession = async (req, res) => {
+  try {
+    const userId = req.user.login_data._id;
+
+    const user = await User.findById(userId);
+    if (!user || !user.stripeCustomerId) {
+      return res.status(404).json({
+        message: "Stripe customer not found"
+      });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${process.env.FRONTEND_URL}/dashboard`,
+    });
+
+    return res.json({
+      url: session.url
+    });
+
+  } catch (err) {
+    console.error("Update card session error:", err);
+    return res.status(500).json({
+      message: "Failed to create update card session"
+    });
+  }
+};
 
 module.exports = {
   createCheckoutSession, getActiveSubscription, cancelSubscription, getInvoices, createBillingPortal,
   getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription,
-  getScheduleStatus,
+  getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession
 };

@@ -20,7 +20,7 @@ const { getAllCountries } = require('../app/controller/api/countryController');
 const { getChildActivity } = require('../app/controller/api/getChildActivity');
 const { addChild, getMyChildren, removeChild } = require('../app/controller/api/parentController');
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
-const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus } = require('../app/controller/api/subscriptionController');
+const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
 
 
@@ -181,6 +181,8 @@ router.post("/subscription/upgrade-immediate", authentication, upgradeSubscripti
 router.post("/subscription/upgrade-scheduled", authentication, upgradeSubscriptionScheduled);
 router.post("/subscription/upgrade-down", authentication, downgradeSubscription);
 router.get("/subscription/schedule-status", authentication, getScheduleStatus);
+router.get("/subscription/payment-method", authentication, getSavedPaymentMethod);
+router.post("/subscription/update-card", authentication, createUpdateCardSession);
 
 //******************************** subscription ends routes routes started from here ***************************** */
 

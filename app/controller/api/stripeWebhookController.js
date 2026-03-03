@@ -94,6 +94,33 @@ const stripeWebhook = async (req, res) => {
         { upsert: true }
       );
 
+      const existingHistory = await SubscriptionHistory.findOne({
+        stripeSubscriptionId: stripeSub.id,
+        status: "created",
+      });
+
+      if (!existingHistory) {
+        const latestInvoice = stripeSub.latest_invoice
+          ? await stripe.invoices.retrieve(stripeSub.latest_invoice)
+          : null;
+
+        await SubscriptionHistory.create({
+          userId: user._id,
+          planType,
+          priceId,
+          stripeSubscriptionId: stripeSub.id,
+          stripeInvoiceId: latestInvoice?.id || null,
+          amount: latestInvoice ? latestInvoice.amount_paid / 100 : 0,
+          currency: latestInvoice?.currency || "usd",
+          status: "created",
+          startDate: safeDate(stripeSub.items.data[0]?.current_period_start),
+          endDate: safeDate(stripeSub.items.data[0]?.current_period_end),
+        });
+      }
+
+
+
+
       console.log("✅ Subscription created safely");
       return res.json({ received: true });
     }
