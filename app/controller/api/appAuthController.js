@@ -6,6 +6,7 @@ var crypto = require("crypto");
 let mailer = require("../../../config/mailer");
 const MOMENT = require('moment');
 const { upload_files } = require("../../../helper/helper");
+const { getUserAccess } = require("../../../utils/getUserAccess");
 
 
 const BASE_URL = process.env.BASE_URL;
@@ -136,6 +137,19 @@ const bulkRegister = async (req, res) => {
     if (!teacherId)
       return res.status(403).send({ error: true, message: "Unauthorized" });
 
+    /* ===============================
+       🔐 SUBSCRIPTION CHECK
+    =============================== */
+
+    const access = await getUserAccess(teacherId);
+
+    if (!access.studentsAllowed) {
+      return res.status(403).send({
+        error: true,
+        message: "Dashboard subscription required to add students.",
+      });
+    }
+
     if (!req.files || !req.files.file)
       return res.send({ error: true, message: "Excel file required" });
 
@@ -144,52 +158,68 @@ const bulkRegister = async (req, res) => {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json(sheet);
 
-    let createdUsers = [];
+    /* ===============================
+       📊 STUDENT LIMIT CALCULATION
+    =============================== */
 
-    // ⭐ GRADE MAPPING FUNCTION
+    const currentStudentsCount = await Users.countDocuments({
+      createdBy: teacherId,
+      userType: "student",
+    });
+
+    const studentsFromExcel = data.length;
+
+    const remainingSlots =
+      access.type === "UNLIMITED"
+        ? Infinity
+        : access.studentsLimit - currentStudentsCount;
+
+    if (remainingSlots <= 0) {
+      return res.status(403).send({
+        error: true,
+        message: `Student limit reached. Maximum allowed: ${access.studentsLimit}`,
+      });
+    }
+
+    if (studentsFromExcel > remainingSlots) {
+      return res.status(403).send({
+        error: true,
+        message: `You can only add ${remainingSlots} more students. 
+Upgrade your plan to add more.`,
+      });
+    }
+
+    /* ===============================
+       🧠 GRADE MAPPING
+    =============================== */
+
     const getGradeName = (cls) => {
       const num = parseInt(cls);
-
-      if (!isNaN(num)) {
-        if (num === 1) return "1st Standard";
-        if (num === 2) return "2nd Standard";
-        if (num === 3) return "3rd Standard";
-        if (num === 4) return "4th Standard";
-        if (num === 5) return "5th Standard";
-        if (num === 6) return "6th Standard";
-        if (num === 7) return "7th Standard";
-        if (num === 8) return "8th Standard";
-        if (num === 9) return "9th Standard";
-        if (num === 10) return "10th Standard";
-        if (num === 11) return "11th Standard";
-        if (num === 12) return "12th Standard";
-      }
-
+      if (!isNaN(num)) return `${num}th Standard`;
       if (cls.toString().toUpperCase() === "UG") return "UG";
       if (cls.toString().toUpperCase() === "PG") return "PG";
-
       return "Unknown";
     };
 
+    let createdUsers = [];
 
     for (const row of data) {
       const { School, Year, Class, Section, ["Roll No."]: RollNo, Country } = row;
       if (!School || !Year || !Class || !Section || !RollNo) continue;
 
-      // ✅ Follow institutional username rule
-      const schoolCode = School.trim().toUpperCase().slice(0, 3); // 3 letters
-      const yearCode = Year.toString().padStart(2, "0"); // 2 digits
-      const classCode = Class.toString().padStart(2, "0"); // 2 digits
-      const sectionCode = Section.trim().toUpperCase().slice(0, 1); // 1 letter
-      const rollCode = RollNo.toString().padStart(3, "0"); // 3 digits
+      const schoolCode = School.trim().toUpperCase().slice(0, 3);
+      const yearCode = Year.toString().padStart(2, "0");
+      const classCode = Class.toString().padStart(2, "0");
+      const sectionCode = Section.trim().toUpperCase().slice(0, 1);
+      const rollCode = RollNo.toString().padStart(3, "0");
 
-      const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`; // e.g. GGS2508A001
-
-      const randomPassword = generateRandomPassword();
-      const passwordHash = await bcrypt.hash(randomPassword, 12);
+      const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`;
 
       const exists = await Users.findOne({ username: username.toLowerCase() });
       if (exists) continue;
+
+      const randomPassword = generateRandomPassword();
+      const passwordHash = await bcrypt.hash(randomPassword, 12);
 
       const gradeName = getGradeName(Class);
       const countryCode = Country?.trim().toUpperCase() || "IN";
@@ -200,10 +230,8 @@ const bulkRegister = async (req, res) => {
         plain_password: randomPassword,
         userType: "student",
         createdBy: teacherId,
-
         grade: gradeName,
         country: countryCode,
-
         classInfo: {
           school: schoolCode,
           year: yearCode,
@@ -220,27 +248,116 @@ const bulkRegister = async (req, res) => {
       createdUsers.push({
         username,
         password: randomPassword,
+        id: saved._id,
+      });
+    }
+
+    return res.send({
+      error: false,
+      message: `${createdUsers.length} students added successfully`,
+      data: createdUsers,
+    });
+
+  } catch (e) {
+    console.error(e);
+    return res.send({ error: true, message: e.message });
+  }
+};
+
+const addSingleStudent = async (req, res) => {
+  try {
+    const teacherId = req.user?.login_data?._id;
+    if (!teacherId)
+      return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    const { School, Year, Class, Section, RollNo, Country } = req.body;
+
+    if (!School || !Year || !Class || !Section || !RollNo) {
+      return res.send({ error: true, message: "All fields are required" });
+    }
+
+    /* ===============================
+       🔐 SUBSCRIPTION CHECK
+    =============================== */
+    const access = await getUserAccess(teacherId);
+
+    if (!access.studentsAllowed) {
+      return res.status(403).send({
+        error: true,
+        message: "Dashboard subscription required to add students.",
+      });
+    }
+
+    const currentStudentsCount = await Users.countDocuments({
+      createdBy: teacherId,
+      userType: "student",
+    });
+
+    if (
+      access.type !== "UNLIMITED" &&
+      currentStudentsCount >= access.studentsLimit
+    ) {
+      return res.status(403).send({
+        error: true,
+        message: `Student limit reached. Maximum allowed: ${access.studentsLimit}`,
+      });
+    }
+
+    /* ===============================
+       🧠 USERNAME GENERATION LOGIC
+    =============================== */
+
+    const schoolCode = School.trim().toUpperCase().slice(0, 3);
+    const yearCode = Year.toString().padStart(2, "0");
+    const classCode = Class.toString().padStart(2, "0");
+    const sectionCode = Section.trim().toUpperCase().slice(0, 1);
+    const rollCode = RollNo.toString().padStart(3, "0");
+
+    const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`.toLowerCase();
+
+    const exists = await Users.findOne({ username });
+    if (exists)
+      return res.send({ error: true, message: "Student already exists" });
+
+    const randomPassword = generateRandomPassword();
+    const passwordHash = await bcrypt.hash(randomPassword, 12);
+
+    const newUser = new Users({
+      username,
+      password: passwordHash,
+      plain_password: randomPassword,
+      userType: "student",
+      createdBy: teacherId,
+      grade: `${Class}th Standard`,
+      country: Country?.toUpperCase() || "IN",
+      classInfo: {
         school: schoolCode,
         year: yearCode,
         class: classCode,
         section: sectionCode,
         rollNo: rollCode,
-        country: countryCode,
-        grade: gradeName,
-        id: saved._id,
-      });
-    }
+        country: Country?.toUpperCase() || "IN",
+      },
+      is_verify: 1,
+    });
 
-    res.send({
+    const saved = await newUser.save();
+
+    return res.send({
       error: false,
-      message: "✅ Students added successfully",
-      data: createdUsers,
+      message: "Student added successfully",
+      data: {
+        username,
+        password: randomPassword,
+        id: saved._id,
+      },
     });
   } catch (e) {
     console.error(e);
-    res.send({ error: true, message: e.message });
+    return res.send({ error: true, message: e.message });
   }
 };
+
 
 const getStudentsList = async (req, res) => {
   try {
@@ -352,7 +469,7 @@ const deleteAllStudents = async (req, res) => {
 
 
 module.exports = {
-  signupWithUsername, loginWithUsername, bulkRegister, getStudentsList,
+  signupWithUsername, loginWithUsername, bulkRegister, addSingleStudent, getStudentsList,
   resetStudentPassword,
   deleteStudent,
   deleteAllStudents

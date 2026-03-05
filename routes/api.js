@@ -13,13 +13,16 @@ const { generateFAQs, listFAQs } = require('../app/controller/api/faqController'
 const { generateDidYouKnow, listDidYouKnow } = require('../app/controller/api/didyouknowController');
 const { createStyle, createTheme, getAllStyles, getAllThemes, updateStyle } = require('../app/controller/api/themeStyleController');
 const { createSubject, deleteSubject, getAllSubjects, getConceptsBySubject, getComicsByConcept, saveSubjectPriority, updateSubject, getAllSubjectsForWeb } = require('../app/controller/api/subjectController');
-const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList, resetStudentPassword, deleteStudent, deleteAllStudents } = require('../app/controller/api/appAuthController');
+const { signupWithUsername, loginWithUsername, bulkRegister, getMyClasses, getStudentsByClass, downloadClassStudents, getStudentsList, resetStudentPassword, deleteStudent, deleteAllStudents, addSingleStudent } = require('../app/controller/api/appAuthController');
 const { createContact, getAllContacts, deleteContact } = require('../app/controller/api/contactController');
 const { generateHardcoreQuiz, getHardcoreQuizByComic, submitHardcoreQuiz, buyPowerCard, getPowerCards, usePowerCard, buyGems, unlockHardcoreQuestion, getUnlockedQuestions, buyHardcoreQuestion, getBoughtQuestions, getAllBoughtQuestions, finishHardcoreQuiz, increaseUserHardcoreAttempts } = require('../app/controller/api/hardcoreQuizController');
 const { getAllCountries } = require('../app/controller/api/countryController');
 const { getChildActivity } = require('../app/controller/api/getChildActivity');
 const { addChild, getMyChildren, removeChild } = require('../app/controller/api/parentController');
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
+const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
+const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
+
 
 
 //******************************** routes started from here ***************************** */
@@ -35,6 +38,7 @@ router.post('/app/login', loginWithUsername)
 
 
 router.post('/user/bulk-register', authentication, bulkRegister);
+router.post("/user/add-student", authentication, addSingleStudent);
 router.get('/user/get-students', authentication, getStudentsList);
 router.post('/user/reset-student-password', authentication, resetStudentPassword);
 router.post('/user/delete-student', authentication, deleteStudent);
@@ -156,7 +160,7 @@ router.get("/user/hardcore/all-bought-questions", authentication, getAllBoughtQu
 
 
 
-//******************************** quiz routes routes started from here ***************************** */
+//******************************** privacy routes routes started from here ***************************** */
 router.get("/user/privacy", privacys);
 router.get("/user/countries", getAllCountries);
 
@@ -164,9 +168,26 @@ router.post("/user/contact", createContact);
 router.get("/user/contacts", getAllContacts);
 router.delete("/user/contact/:id", deleteContact);
 
+//******************************** subscription routes routes started from here ***************************** */
+
+router.post("/user/create-checkout-session", authentication, createCheckoutSession);
+router.get("/subscription/active", authentication, getActiveSubscription);
+router.get("/subscription/me", authentication, getMySubscription);
+router.post("/subscription/cancel", authentication, cancelSubscription);
+router.get("/subscription/invoices", authentication, getInvoices);
+router.get("/subscription/portal", authentication, createBillingPortal);
+router.get("/subscription/history", authentication, getSubscriptionHistory);
+router.post("/subscription/upgrade-immediate", authentication, upgradeSubscriptionImmediate);
+router.post("/subscription/upgrade-scheduled", authentication, upgradeSubscriptionScheduled);
+router.post("/subscription/upgrade-down", authentication, downgradeSubscription);
+router.get("/subscription/schedule-status", authentication, getScheduleStatus);
+router.get("/subscription/payment-method", authentication, getSavedPaymentMethod);
+router.post("/subscription/update-card", authentication, createUpdateCardSession);
+
+//******************************** subscription ends routes routes started from here ***************************** */
 
 router.get("/users", async (req, res) => {
-    res.send("just for test today 30-10-2025")
+    res.send("just for test today 25-02-2026")
 });
 
 

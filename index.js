@@ -1,6 +1,7 @@
 const express = require('express');
 require('dotenv').config()
 const router = require('./routes/api.js');
+const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes.js');
 const cors = require('cors');
 bodyParser = require("body-parser");
 const fs = require("fs");
@@ -10,7 +11,7 @@ const connectToDatabase = require('./config/database.js');
 const app = express();
 
 
-const allowedOrigins = ['http://localhost:3000', 'http://51.21.194.3', 'http://kridemy.com', 'https://kridemy.com', 'https://www.kridemy.com', 'https://api.kridemy.com'];
+const allowedOrigins = ['http://localhost:3000', 'http://51.21.194.3', 'http://16.171.146.122', 'http://kridemy.com', 'https://kridemy.com', 'https://www.kridemy.com', 'https://api.kridemy.com'];
 
 if (process.env.NODE_ENV === "development") {
   app.use(cors({
@@ -58,6 +59,8 @@ app.use(
   express.static(path.join(__dirname, "public", "comics"))
 );
 
+
+app.use("/api", stripeWebhookRoutes);
 
 
 // app.use(cors(corsOptions));

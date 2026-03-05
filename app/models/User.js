@@ -61,8 +61,10 @@ var UserSchema = new mongoose.Schema({
 
     adLogs: { type: [Date], default: [] },
 
-    isUnlimited: { type: Boolean, default: false }
+    isUnlimited: { type: Boolean, default: false },
 
+    // Billing
+    stripeCustomerId: { type: String, default: null },
 
 
 }, { timestamps: true })

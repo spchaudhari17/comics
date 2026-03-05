@@ -39,6 +39,12 @@ const comicSchema = new mongoose.Schema({
   hasQuiz: { type: Boolean, default: false },
   total_view: { type: Number, default: 0 },
 
+  isLocked: {
+    type: Boolean,
+    default: false
+  },
+
+
   createdAt: { type: Date, default: Date.now }
 });
 
