@@ -1132,6 +1132,7 @@ const generateComicImage = async (req, res) => {
                     imageUrls.push({
                         page: page.page,
                         imageUrl: existingMap.get(page.page),
+                        caption: page.panels?.[0]?.scene || "",
                         skipped: true
                     });
                     continue;
