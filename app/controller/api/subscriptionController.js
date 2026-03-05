@@ -5,81 +5,6 @@ const stripe = require("../../../utils/stripe");
 const SubscriptionHistory = require("../../models/SubscriptionHistory");
 const Comic = require("../../models/Comic");
 
-// const createCheckoutSession = async (req, res) => {
-//   try {
-//     const userId = req.user.login_data._id;
-//     const { priceId, planType } = req.body;
-
-//     // 1️ Validate input
-//     if (!priceId || !planType) {
-//       return res.status(400).json({ message: "priceId and planType are required" });
-//     }
-
-//     // 2️⃣ Validate plan
-//     const planConfig =
-//       planType === "bundle"
-//         ? PLANS.bundle[priceId]
-//         : PLANS.dashboard[priceId];
-
-//     if (!planConfig) {
-//       return res.status(400).json({ message: "Invalid plan selected" });
-//     }
-
-//     // 3️⃣ Get user
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found" });
-//     }
-
-//     // 4️⃣ Reuse Stripe customer if exists
-//     let stripeCustomerId = user.stripeCustomerId;
-
-//     if (!stripeCustomerId) {
-//       const customer = await stripe.customers.create({
-//         email: user.email,
-//         metadata: {
-//           userId: user._id.toString(),
-//         },
-//       });
-
-//       stripeCustomerId = customer.id;
-
-//       // save customer id in user table
-//       user.stripeCustomerId = stripeCustomerId;
-//       await user.save();
-//     }
-
-//     // 5️⃣ Create checkout session
-//     const session = await stripe.checkout.sessions.create({
-//       mode: "subscription",
-//       customer: stripeCustomerId,
-//       payment_method_types: ["card"],
-//       line_items: [
-//         {
-//           price: priceId,
-//           quantity: 1,
-//         },
-//       ],
-//       metadata: {
-//         userId: user._id.toString(),
-//         planType,
-//       },
-//       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-//       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
-//     });
-
-//     return res.status(200).json({
-//       url: session.url,
-//     });
-
-//   } catch (error) {
-//     console.error("Create checkout session error:", error);
-//     return res.status(500).json({
-//       message: "Unable to create checkout session",
-//     });
-//   }
-// };
-
 const createCheckoutSession = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
@@ -366,20 +291,6 @@ const createBillingPortal = async (req, res) => {
 };
 
 
-// const getSubscriptionHistory = async (req, res) => {
-//   try {
-//     const userId = req.user.login_data._id;
-
-//     const history = await SubscriptionHistory.find({ userId })
-//       .sort({ createdAt: -1 })
-//       .select("-__v");
-
-//     return res.json({ history });
-//   } catch (err) {
-//     res.status(500).json({ message: "Failed to fetch subscription history" });
-//   }
-// };
-
 
 const getSubscriptionHistory = async (req, res) => {
   try {
@@ -413,70 +324,6 @@ const getPlanPrice = (priceId) => {
 };
 
 
-
-
-// const upgradeSubscriptionImmediate = async (req, res) => {
-//   try {
-//     const userId = req.user.login_data._id;
-//     const { priceId } = req.body;
-
-//     const sub = await Subscription.findOne({ userId, status: "active" });
-//     if (!sub) {
-//       return res.status(404).json({ message: "No active subscription found" });
-//     }
-
-//     if (sub.priceId === priceId) {
-//       return res.status(400).json({ message: "Already on this plan" });
-//     }
-
-//     const stripeSub = await stripe.subscriptions.retrieve(
-//       sub.stripeSubscriptionId,
-//       { expand: ["items"] }
-//     );
-
-//     const itemId = stripeSub.items.data[0].id;
-
-//     // 🔥 Stripe update with proration
-//     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
-//       items: [{ id: itemId, price: priceId }],
-//       proration_behavior: "create_prorations",
-//     });
-
-//     // 🔥 DB update immediately
-//     let planConfig = null;
-//     let planType = null;
-
-//     if (PLANS.bundle[priceId]) {
-//       planType = "bundle";
-//       planConfig = PLANS.bundle[priceId];
-//     } else if (PLANS.dashboard[priceId]) {
-//       planType = "dashboard";
-//       planConfig = PLANS.dashboard[priceId];
-//     }
-
-//     sub.planType = planType;
-//     sub.priceId = priceId;
-//     sub.comicsPerWeek = planConfig.comicsPerWeek;
-//     sub.studentsLimit = planConfig.studentsLimit;
-
-//     // clear any pending
-//     sub.pendingPlanType = null;
-//     sub.pendingPriceId = null;
-//     sub.pendingComicsPerWeek = null;
-//     sub.pendingStudentsLimit = null;
-//     sub.pendingApplyDate = null;
-
-//     await sub.save();
-
-//     return res.json({
-//       message: "Plan upgraded immediately (prorated)",
-//     });
-
-//   } catch (err) {
-//     console.error(err);
-//     return res.status(500).json({ message: "Immediate upgrade failed" });
-//   }
-// };
 
 
 const upgradeSubscriptionImmediate = async (req, res) => {

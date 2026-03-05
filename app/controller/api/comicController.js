@@ -588,45 +588,6 @@ const makePromptSafer = (prompt) => {
     return `${prompt} ${randomSafety}`;
 };
 
-// const sanitizeText = (text) => {
-//     if (!text) return "";
-//     const replacementMap = {
-//         clown: "funny character",
-//         joker: "playful character",
-//         creepy: "interesting",
-//         scary: "exciting",
-//         violent: "active",
-//         mystery: "puzzle",
-//         secret: "special",
-//         hidden: "waiting to be found",
-//         detective: "explorer",
-//         investigator: "researcher",
-//         crime: "problem",
-//         theft: "mix-up",
-//         robbery: "misunderstanding",
-//         attack: "approach",
-//         destroy: "fix",
-//         kill: "stop",
-//         harm: "help",
-//         weapon: "tool",
-//         gun: "water pistol",
-//         knife: "utensil",
-//         blood: "paint",
-//     };
-
-//     let safeText = text.toLowerCase();
-//     Object.keys(replacementMap).forEach((term) => {
-//         const regex = new RegExp(`\\b${term}\\b`, "gi");
-//         safeText = safeText.replace(regex, replacementMap[term]);
-//     });
-
-//     safeText = safeText
-//         .replace(/["“”'‘’]/g, "")
-//         .replace(/[^\w\s.,!?-]/g, "")
-//         .trim();
-
-//     return safeText;
-// };
 
 const sanitizeText = (text = "") => {
     if (typeof text !== "string") return "";
