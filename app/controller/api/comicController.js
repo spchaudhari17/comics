@@ -1077,6 +1077,7 @@ const generateComicImage = async (req, res) => {
 
         const access = await getUserAccess(userId);
 
+
         /* ===============================
            1️⃣ BLOCK DASHBOARD USERS
         =============================== */
@@ -1091,6 +1092,8 @@ const generateComicImage = async (req, res) => {
            2️⃣ FETCH COMIC
         =============================== */
         const comic = await Comic.findById(comicId).populate("styleId");
+        console.log("ACCESS:", access);
+        console.log("COMIC LOCK:", comic.isLocked);
 
         if (!comic) {
             return res.status(404).json({ error: "Comic not found" });
@@ -1099,7 +1102,7 @@ const generateComicImage = async (req, res) => {
         /* ===============================
            3️⃣ LOCK CHECK (FREE USERS)
         =============================== */
-        if (comic.isLocked) {
+        if (comic.isLocked && access.type === "FREE") {
             return res.status(403).json({
                 code: "UPGRADE_REQUIRED",
                 message: "Upgrade subscription to unlock remaining parts"
