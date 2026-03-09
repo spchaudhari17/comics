@@ -1091,40 +1091,6 @@ const addCoins = async (req, res) => {
     }
 };
 
-// const addGems = async (req, res) => {
-//     try {
-//         const userId = req.user?.login_data?._id; // safely extract user ID
-
-//         if (!userId) {
-//             return res.status(401).json({ success: false, message: 'Not authenticated' });
-//         }
-
-//         // Increment gems atomically by 1
-//         const updatedUser = await Users.findByIdAndUpdate(
-//             userId,
-//             { $inc: { gems: 2 } },
-//             { new: true, runValidators: true }
-//         ).select('-password -plain_password');
-
-//         if (!updatedUser) {
-//             return res.status(404).json({ success: false, message: 'User not found' });
-//         }
-
-//         return res.json({
-//             success: true,
-//             message: 'Gems increased by 2',
-//             user: updatedUser
-//         });
-
-//     } catch (err) {
-//         console.error('Error increasing gems:', err);
-//         return res.status(500).json({
-//             success: false,
-//             message: 'Server error',
-//             error: err.message
-//         });
-//     }
-// };
 
 const addGems = async (req, res) => {
     try {

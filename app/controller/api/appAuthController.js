@@ -466,11 +466,131 @@ const deleteAllStudents = async (req, res) => {
 
 
 
+const getStudentTeachers = async (req, res) => {
+  try {
+    const studentId = req.user?.login_data?._id;
+
+    if (!studentId) {
+      return res.status(401).send({
+        error: true,
+        message: "Unauthorized",
+      });
+    }
+
+    const student = await Users.findById(studentId);
+
+    if (!student) {
+      return res.send({
+        error: true,
+        message: "Student not found",
+      });
+    }
+
+    if (!student.createdBy) {
+      return res.send({
+        error: false,
+        message: "No teacher linked with this student",
+        data: []
+      });
+    }
+
+    // array bana rahe hai future compatibility ke liye
+    const teacherIds = Array.isArray(student.createdBy)
+      ? student.createdBy
+      : [student.createdBy];
+
+    const teachers = await Users.find(
+      { _id: { $in: teacherIds } },
+      "firstname lastname username email"
+    );
+
+    const teacherData = teachers.map((t) => ({
+      teacherId: t._id,
+      firstname: t.firstname,
+      lastname: t.lastname,
+      username: t.username,
+      email: t.email
+    }));
+
+    return res.send({
+      error: false,
+      message: "Teachers fetched successfully",
+      data: teacherData
+    });
+
+  } catch (e) {
+    return res.send({
+      error: true,
+      message: e.message
+    });
+  }
+};
+
+const addStudentByUsername = async (req, res) => {
+  try {
+    const teacherId = req.user?.login_data?._id;
+    const { username } = req.body;
+
+    if (!teacherId) {
+      return res.status(403).send({
+        error: true,
+        message: "Unauthorized"
+      });
+    }
+
+    if (!username) {
+      return res.send({
+        error: true,
+        message: "Username is required"
+      });
+    }
+
+    // student find karo
+    const student = await Users.findOne({
+      username: username.toLowerCase(),
+      userType: "student"
+    });
+
+    if (!student) {
+      return res.send({
+        error: true,
+        message: "Student not found"
+      });
+    }
+
+    // check agar student already kisi teacher ke under hai
+    if (student.createdBy) {
+      return res.send({
+        error: true,
+        message: "Student already assigned to a teacher"
+      });
+    }
+
+    // teacher assign karo
+    student.createdBy = teacherId;
+    await student.save();
+
+    return res.send({
+      error: false,
+      message: "Student added to classroom successfully",
+      data: {
+        studentId: student._id,
+        username: student.username
+      }
+    });
+
+  } catch (e) {
+    console.error(e);
+    return res.send({
+      error: true,
+      message: e.message
+    });
+  }
+};
+
 
 
 module.exports = {
   signupWithUsername, loginWithUsername, bulkRegister, addSingleStudent, getStudentsList,
-  resetStudentPassword,
-  deleteStudent,
-  deleteAllStudents
+  resetStudentPassword, deleteStudent, deleteAllStudents, getStudentTeachers, addStudentByUsername
 }
