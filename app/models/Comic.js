@@ -36,6 +36,12 @@ const comicSchema = new mongoose.Schema({
     default: "draft"
   },
 
+  visibility: {
+    type: String,
+    enum: ["public", "teacher"],
+    default: "public"
+  },
+
   hasQuiz: { type: Boolean, default: false },
   total_view: { type: Number, default: 0 },
 

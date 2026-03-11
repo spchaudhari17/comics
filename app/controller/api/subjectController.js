@@ -198,14 +198,14 @@ const getAllSubjectsForWeb = async (req, res) => {
 };
 
 
-// country filter out
+// old sahi hai 
 // const getAllSubjects = async (req, res) => {
 //   try {
 //     const { search, grade, userId, country } = req.query;
 
 //     const pipeline = [];
 
-//     // 🔍 Search filter (optional)
+//     // 🔍 Optional search filter
 //     if (search) {
 //       pipeline.push({
 //         $match: {
@@ -214,7 +214,7 @@ const getAllSubjectsForWeb = async (req, res) => {
 //       });
 //     }
 
-//     // 🧩 Link with concepts and comics
+//     // 🧩 Link subjects → concepts → comics
 //     pipeline.push(
 //       {
 //         $lookup: {
@@ -240,7 +240,177 @@ const getAllSubjectsForWeb = async (req, res) => {
 //                   $and: [
 //                     { $in: ["$conceptId", "$$cids"] },
 //                     { $eq: ["$status", "approved"] },
-//                     ...(country ? [{ $eq: ["$country", country] }] : []) // ✅ Country filter
+//                     // ✅ Country filter updated to use "countries" array
+//                     ...(country
+//                       ? [
+//                         {
+//                           $or: [
+//                             { $in: [country, "$countries"] }, // if country exists in countries array
+//                             { $in: ["ALL", "$countries"] }    // OR globally available comics
+//                           ]
+//                         }
+//                       ]
+//                       : [])
+//                   ]
+//                 }
+//               }
+//             },
+//             { $group: { _id: "$conceptId" } }
+//           ],
+//           as: "approvedConcepts"
+//         }
+//       },
+//       {
+//         $addFields: {
+//           conceptCount: { $size: "$approvedConcepts" }
+//         }
+//       },
+//       {
+//         $project: {
+//           concepts: 0,
+//           conceptIds: 0,
+//           approvedConcepts: 0
+//         }
+//       }
+//     );
+
+//     // 🚀 Run aggregation
+//     let subjects = await Subject.aggregate(pipeline);
+
+//     // 🎓 Grade-based filtering
+//     if (grade) {
+//       const gradeNum = parseInt(grade, 10);
+//       subjects = subjects.filter((s) => {
+//         const match = s.name.match(/Grades?\s*(\d+)(?:–(\d+))?/);
+//         if (match) {
+//           const start = parseInt(match[1], 10);
+//           const end = match[2] ? parseInt(match[2], 10) : start;
+//           return gradeNum >= start && gradeNum <= end;
+//         }
+//         return false;
+//       });
+//     }
+
+//     // 🚫 Only subjects having at least 1 approved concept
+//     subjects = subjects.filter((s) => s.conceptCount >= 1);
+
+//     // 👤 Handle user subject preferences
+//     let prioritySubjects = [];
+//     let remainingSubjects = subjects;
+
+//     if (userId) {
+//       const pref = await UserSubjectPriority.findOne({ userId });
+//       if (pref?.selectedSubjects?.length > 0) {
+//         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+//         prioritySubjects = selectedIds
+//           .map((id) => subjects.find((s) => s._id.toString() === id))
+//           .filter(Boolean);
+//         remainingSubjects = subjects.filter(
+//           (s) => !selectedIds.includes(s._id.toString())
+//         );
+//       }
+//     }
+
+//     // 🕓 Find latest added subject
+//     let latest = null;
+//     if (subjects.length > 0) {
+//       latest = subjects.reduce((a, b) =>
+//         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
+//       );
+//     }
+
+//     // 📚 Merge prioritized + latest + remaining subjects
+//     let finalSubjects = [...prioritySubjects];
+//     if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
+//       finalSubjects.push(latest);
+//       remainingSubjects = remainingSubjects.filter(
+//         (s) => s._id.toString() !== latest._id.toString()
+//       );
+//     }
+
+//     finalSubjects = [...finalSubjects, ...remainingSubjects];
+
+//     res.json(finalSubjects);
+//   } catch (err) {
+//     console.error("❌ Error fetching subjects with counts:", err);
+//     res.status(500).json({ error: "Failed to fetch subjects" });
+//   }
+// };
+
+
+// new visibility and teacher id
+// const getAllSubjects = async (req, res) => {
+//   try {
+//     const { search, grade, userId, country, teacherId } = req.query;
+
+//     const pipeline = [];
+
+//     // 🔍 Optional search filter
+//     if (search) {
+//       pipeline.push({
+//         $match: {
+//           name: { $regex: search, $options: "i" }
+//         }
+//       });
+//     }
+
+//     pipeline.push(
+//       {
+//         $lookup: {
+//           from: "concepts",
+//           localField: "_id",
+//           foreignField: "subjectId",
+//           as: "concepts"
+//         }
+//       },
+//       {
+//         $addFields: {
+//           conceptIds: {
+//             $map: { input: "$concepts", as: "c", in: "$$c._id" }
+//           }
+//         }
+//       },
+//       {
+//         $lookup: {
+//           from: "comics",
+//           let: { cids: "$conceptIds" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     { $in: ["$conceptId", "$$cids"] },
+
+//                     // ⭐ Teacher subjects
+//                     ...(teacherId
+//                       ? [
+//                         {
+//                           $and: [
+//                             { $eq: ["$visibility", "teacher"] },
+//                             { $eq: ["$user_id", { $toObjectId: teacherId }] }
+//                           ]
+//                         }
+//                       ]
+//                       : [
+//                         // ⭐ Public subjects
+//                         {
+//                           $and: [
+//                             { $eq: ["$status", "approved"] },
+//                             { $eq: ["$visibility", "public"] }
+//                           ]
+//                         }
+//                       ]),
+
+//                     ...(country
+//                       ? [
+//                         {
+//                           $or: [
+//                             { $in: [country, "$countries"] },
+//                             { $in: ["ALL", "$countries"] }
+//                           ]
+//                         }
+//                       ]
+//                       : [])
 //                   ]
 //                 }
 //               }
@@ -266,7 +436,7 @@ const getAllSubjectsForWeb = async (req, res) => {
 
 //     let subjects = await Subject.aggregate(pipeline);
 
-//     // 🎓 Grade filter
+//     // 🎓 Grade filtering
 //     if (grade) {
 //       const gradeNum = parseInt(grade, 10);
 //       subjects = subjects.filter((s) => {
@@ -280,38 +450,48 @@ const getAllSubjectsForWeb = async (req, res) => {
 //       });
 //     }
 
-//     // 🚫 Remove subjects without approved comics
 //     subjects = subjects.filter((s) => s.conceptCount >= 1);
 
-//     // ⚡ Handle user preferences
+//     // ⭐ Subject priority
 //     let prioritySubjects = [];
 //     let remainingSubjects = subjects;
 
 //     if (userId) {
 //       const pref = await UserSubjectPriority.findOne({ userId });
+
 //       if (pref?.selectedSubjects?.length > 0) {
 //         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+
 //         prioritySubjects = selectedIds
-//           .map((id) => subjects.find((s) => s._id.toString() === id))
+//           .map((id) =>
+//             subjects.find((s) => s._id.toString() === id)
+//           )
 //           .filter(Boolean);
+
 //         remainingSubjects = subjects.filter(
 //           (s) => !selectedIds.includes(s._id.toString())
 //         );
 //       }
 //     }
 
-//     // 🕓 Find latest subject
 //     let latest = null;
+
 //     if (subjects.length > 0) {
 //       latest = subjects.reduce((a, b) =>
 //         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
 //       );
 //     }
 
-//     // Merge final list
 //     let finalSubjects = [...prioritySubjects];
-//     if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
+
+//     if (
+//       latest &&
+//       !prioritySubjects.find(
+//         (s) => s._id.toString() === latest._id.toString()
+//       )
+//     ) {
 //       finalSubjects.push(latest);
+
 //       remainingSubjects = remainingSubjects.filter(
 //         (s) => s._id.toString() !== latest._id.toString()
 //       );
@@ -320,21 +500,20 @@ const getAllSubjectsForWeb = async (req, res) => {
 //     finalSubjects = [...finalSubjects, ...remainingSubjects];
 
 //     res.json(finalSubjects);
+
 //   } catch (err) {
-//     console.error("Error fetching subjects with counts:", err);
+//     console.error("❌ Error fetching subjects with counts:", err);
 //     res.status(500).json({ error: "Failed to fetch subjects" });
 //   }
 // };
 
-
-// countries filter out
 const getAllSubjects = async (req, res) => {
   try {
-    const { search, grade, userId, country } = req.query;
+    const { search, grade, userId, country, teacherId } = req.query;
 
     const pipeline = [];
 
-    // 🔍 Optional search filter
+    // 🔍 Search filter
     if (search) {
       pipeline.push({
         $match: {
@@ -343,7 +522,7 @@ const getAllSubjects = async (req, res) => {
       });
     }
 
-    // 🧩 Link subjects → concepts → comics
+    // Subjects → Concepts
     pipeline.push(
       {
         $lookup: {
@@ -355,9 +534,13 @@ const getAllSubjects = async (req, res) => {
       },
       {
         $addFields: {
-          conceptIds: { $map: { input: "$concepts", as: "c", in: "$$c._id" } }
+          conceptIds: {
+            $map: { input: "$concepts", as: "c", in: "$$c._id" }
+          }
         }
       },
+
+      // Concepts → Comics
       {
         $lookup: {
           from: "comics",
@@ -368,14 +551,33 @@ const getAllSubjects = async (req, res) => {
                 $expr: {
                   $and: [
                     { $in: ["$conceptId", "$$cids"] },
-                    { $eq: ["$status", "approved"] },
-                    // ✅ Country filter updated to use "countries" array
+
+                    ...(teacherId
+                      ? [
+                        // Teacher comics only
+                        {
+                          $and: [
+                            { $eq: ["$visibility", "teacher"] },
+                            { $eq: ["$user_id", { $toObjectId: teacherId }] }
+                          ]
+                        }
+                      ]
+                      : [
+                        // Public comics
+                        {
+                          $and: [
+                            { $eq: ["$visibility", "public"] },
+                            { $eq: ["$status", "approved"] }
+                          ]
+                        }
+                      ]),
+
                     ...(country
                       ? [
                         {
                           $or: [
-                            { $in: [country, "$countries"] }, // if country exists in countries array
-                            { $in: ["ALL", "$countries"] }    // OR globally available comics
+                            { $in: [country, "$countries"] },
+                            { $in: ["ALL", "$countries"] }
                           ]
                         }
                       ]
@@ -389,6 +591,7 @@ const getAllSubjects = async (req, res) => {
           as: "approvedConcepts"
         }
       },
+
       {
         $addFields: {
           conceptCount: { $size: "$approvedConcepts" }
@@ -403,10 +606,9 @@ const getAllSubjects = async (req, res) => {
       }
     );
 
-    // 🚀 Run aggregation
     let subjects = await Subject.aggregate(pipeline);
 
-    // 🎓 Grade-based filtering
+    // 🎓 Grade filter
     if (grade) {
       const gradeNum = parseInt(grade, 10);
       subjects = subjects.filter((s) => {
@@ -420,27 +622,29 @@ const getAllSubjects = async (req, res) => {
       });
     }
 
-    // 🚫 Only subjects having at least 1 approved concept
     subjects = subjects.filter((s) => s.conceptCount >= 1);
 
-    // 👤 Handle user subject preferences
+    // ⭐ Subject priority
     let prioritySubjects = [];
     let remainingSubjects = subjects;
 
     if (userId) {
       const pref = await UserSubjectPriority.findOne({ userId });
+
       if (pref?.selectedSubjects?.length > 0) {
         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+
         prioritySubjects = selectedIds
           .map((id) => subjects.find((s) => s._id.toString() === id))
           .filter(Boolean);
+
         remainingSubjects = subjects.filter(
           (s) => !selectedIds.includes(s._id.toString())
         );
       }
     }
 
-    // 🕓 Find latest added subject
+    // Latest subject
     let latest = null;
     if (subjects.length > 0) {
       latest = subjects.reduce((a, b) =>
@@ -448,10 +652,16 @@ const getAllSubjects = async (req, res) => {
       );
     }
 
-    // 📚 Merge prioritized + latest + remaining subjects
     let finalSubjects = [...prioritySubjects];
-    if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
+
+    if (
+      latest &&
+      !prioritySubjects.find(
+        (s) => s._id.toString() === latest._id.toString()
+      )
+    ) {
       finalSubjects.push(latest);
+
       remainingSubjects = remainingSubjects.filter(
         (s) => s._id.toString() !== latest._id.toString()
       );
@@ -460,13 +670,12 @@ const getAllSubjects = async (req, res) => {
     finalSubjects = [...finalSubjects, ...remainingSubjects];
 
     res.json(finalSubjects);
+
   } catch (err) {
     console.error("❌ Error fetching subjects with counts:", err);
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 };
-
-
 
 
 const deleteSubject = async (req, res) => {

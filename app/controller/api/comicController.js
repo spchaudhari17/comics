@@ -1555,7 +1555,68 @@ const getComic = async (req, res) => {
     }
 };
 
+// old sahi hai 
+// const updateComicStatus = async (req, res) => {
+//     try {
+//         const { comicId, comicStatus } = req.body;
 
+//         if (!["draft", "published"].includes(comicStatus)) {
+//             return res.status(400).json({ error: "Invalid comic status" });
+//         }
+
+//         // ⭐ Fetch comic + user info
+//         const comic = await Comic.findById(comicId).populate("user_id");
+//         if (!comic) {
+//             return res.status(404).json({ error: "Comic not found" });
+//         }
+
+//         const previousStatus = comic.comicStatus;
+
+//         // ⭐ Update status
+//         comic.comicStatus = comicStatus;
+//         await comic.save();
+
+//         // ⭐ Send email only if status changed from draft → published
+//         if (previousStatus === "draft" && comicStatus === "published") {
+
+//             const adminEmail = "ajinkya.kridemy@gmail.com"; // admin email
+
+//             const mailOptions = {
+//                 from: "ajinkya.kridemy@gmail.com",
+//                 to: adminEmail,
+//                 subject: "New Comic Published - Admin Approval Required",
+//                 html: `
+//                     <h2>New Comic Published by User</h2>
+
+//                     <p><strong>User Name:</strong> ${comic.user_id.name || "Unknown"}</p>
+//                     <p><strong>User Email:</strong> ${comic.user_id.email || "Not Provided"}</p>
+
+//                     <p><strong>Comic Title:</strong> ${comic.title}</p>
+//                     <p><strong>Comic ID:</strong> ${comic._id}</p>
+
+//                     <br/>
+//                     <p>Please review and approve this comic in the admin dashboard.</p>
+//                 `
+//             };
+
+//             transporter.sendMail(mailOptions, (err, info) => {
+//                 if (err) {
+//                     console.error("Email sending failed:", err);
+//                 } else {
+//                     console.log("Admin notified via email:", info.response);
+//                 }
+//             });
+//         }
+
+//         res.json({ message: "Comic status updated", comic });
+
+//     } catch (error) {
+//         console.error("Error updating comic status:", error);
+//         res.status(500).json({ error: "Failed to update comic status" });
+//     }
+// };
+
+// new code for visibility
 const updateComicStatus = async (req, res) => {
     try {
         const { comicId, comicStatus } = req.body;
@@ -1574,6 +1635,12 @@ const updateComicStatus = async (req, res) => {
 
         // ⭐ Update status
         comic.comicStatus = comicStatus;
+
+        // ⭐ When teacher publishes comic → set visibility to teacher
+        if (previousStatus === "draft" && comicStatus === "published") {
+            comic.visibility = "teacher";
+        }
+
         await comic.save();
 
         // ⭐ Send email only if status changed from draft → published
@@ -1588,7 +1655,7 @@ const updateComicStatus = async (req, res) => {
                 html: `
                     <h2>New Comic Published by User</h2>
 
-                    <p><strong>User Name:</strong> ${comic.user_id.name || "Unknown"}</p>
+                    <p><strong>User Name:</strong> ${comic.user_id.firstname || ""} ${comic.user_id.lastname || ""}</p>
                     <p><strong>User Email:</strong> ${comic.user_id.email || "Not Provided"}</p>
 
                     <p><strong>Comic Title:</strong> ${comic.title}</p>
@@ -1615,8 +1682,6 @@ const updateComicStatus = async (req, res) => {
         res.status(500).json({ error: "Failed to update comic status" });
     }
 };
-
-
 
 const deleteComic = async (req, res) => {
     try {
