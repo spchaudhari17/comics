@@ -18,7 +18,8 @@ var UserSchema = new mongoose.Schema({
     },
     userType: { type: String, default: "user" }, // moderator, admin, teacher, student, user===teacher
     age: { type: Number, min: 0, max: 120 },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "users", default: null }, // Teacher who created student
+    // createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "users", default: null }, // Teacher who created student
+    createdBy: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: "users" }], default: [] },// Teacher who created student
     classInfo: {
         school: String,
         year: String,

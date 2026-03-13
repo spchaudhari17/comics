@@ -131,11 +131,152 @@ const generateRandomPassword = () => {
   return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 };
 
+// old sahi hai single students add k liye
+// const bulkRegister = async (req, res) => {
+//   try {
+//     const teacherId = req.user?.login_data?._id;
+//     if (!teacherId)
+//       return res.status(403).send({ error: true, message: "Unauthorized" });
+
+//     /* ===============================
+//        🔐 SUBSCRIPTION CHECK
+//     =============================== */
+
+//     const access = await getUserAccess(teacherId);
+
+//     if (!access.studentsAllowed) {
+//       return res.status(403).send({
+//         error: true,
+//         message: "Dashboard subscription required to add students.",
+//       });
+//     }
+
+//     if (!req.files || !req.files.file)
+//       return res.send({ error: true, message: "Excel file required" });
+
+//     const excelFile = req.files.file;
+//     const workbook = XLSX.read(excelFile.data, { type: "buffer" });
+//     const sheet = workbook.Sheets[workbook.SheetNames[0]];
+//     const data = XLSX.utils.sheet_to_json(sheet);
+
+//     /* ===============================
+//        📊 STUDENT LIMIT CALCULATION
+//     =============================== */
+
+//     const currentStudentsCount = await Users.countDocuments({
+//       createdBy: teacherId,
+//       userType: "student",
+//     });
+
+//     const studentsFromExcel = data.length;
+
+//     const remainingSlots =
+//       access.type === "UNLIMITED"
+//         ? Infinity
+//         : access.studentsLimit - currentStudentsCount;
+
+//     if (remainingSlots <= 0) {
+//       return res.status(403).send({
+//         error: true,
+//         message: `Student limit reached. Maximum allowed: ${access.studentsLimit}`,
+//       });
+//     }
+
+//     if (studentsFromExcel > remainingSlots) {
+//       return res.status(403).send({
+//         error: true,
+//         message: `You can only add ${remainingSlots} more students. 
+// Upgrade your plan to add more.`,
+//       });
+//     }
+
+//     /* ===============================
+//        🧠 GRADE MAPPING
+//     =============================== */
+
+//     const getGradeName = (cls) => {
+//       const num = parseInt(cls);
+//       if (!isNaN(num)) return `${num}th Standard`;
+//       if (cls.toString().toUpperCase() === "UG") return "UG";
+//       if (cls.toString().toUpperCase() === "PG") return "PG";
+//       return "Unknown";
+//     };
+
+//     let createdUsers = [];
+
+//     for (const row of data) {
+//       const { School, Year, Class, Section, ["Roll No."]: RollNo, Country } = row;
+//       if (!School || !Year || !Class || !Section || !RollNo) continue;
+
+//       const schoolCode = School.trim().toUpperCase().slice(0, 3);
+//       const yearCode = Year.toString().padStart(2, "0");
+//       const classCode = Class.toString().padStart(2, "0");
+//       const sectionCode = Section.trim().toUpperCase().slice(0, 1);
+//       const rollCode = RollNo.toString().padStart(3, "0");
+
+//       const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`;
+
+//       const exists = await Users.findOne({ username: username.toLowerCase() });
+//       if (exists) continue;
+
+//       const randomPassword = generateRandomPassword();
+//       const passwordHash = await bcrypt.hash(randomPassword, 12);
+
+//       const gradeName = getGradeName(Class);
+//       const countryCode = Country?.trim().toUpperCase() || "IN";
+
+//       const newUser = new Users({
+//         username: username.toLowerCase(),
+//         password: passwordHash,
+//         plain_password: randomPassword,
+//         userType: "student",
+//         createdBy: teacherId,
+//         grade: gradeName,
+//         country: countryCode,
+//         classInfo: {
+//           school: schoolCode,
+//           year: yearCode,
+//           class: classCode,
+//           section: sectionCode,
+//           rollNo: rollCode,
+//           country: countryCode,
+//         },
+//         is_verify: 1,
+//       });
+
+//       const saved = await newUser.save();
+
+//       createdUsers.push({
+//         username,
+//         password: randomPassword,
+//         id: saved._id,
+//       });
+//     }
+
+//     return res.send({
+//       error: false,
+//       message: `${createdUsers.length} students added successfully`,
+//       data: createdUsers,
+//     });
+
+//   } catch (e) {
+//     console.error(e);
+//     return res.send({ error: true, message: e.message });
+//   }
+// };
+
+
 const bulkRegister = async (req, res) => {
   try {
+
     const teacherId = req.user?.login_data?._id;
-    if (!teacherId)
-      return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    if (!teacherId) {
+      return res.status(403).send({
+        error: true,
+        message: "Unauthorized"
+      });
+    }
 
     /* ===============================
        🔐 SUBSCRIPTION CHECK
@@ -150,8 +291,12 @@ const bulkRegister = async (req, res) => {
       });
     }
 
-    if (!req.files || !req.files.file)
-      return res.send({ error: true, message: "Excel file required" });
+    if (!req.files || !req.files.file) {
+      return res.send({
+        error: true,
+        message: "Excel file required"
+      });
+    }
 
     const excelFile = req.files.file;
     const workbook = XLSX.read(excelFile.data, { type: "buffer" });
@@ -164,7 +309,7 @@ const bulkRegister = async (req, res) => {
 
     const currentStudentsCount = await Users.countDocuments({
       createdBy: teacherId,
-      userType: "student",
+      userType: "student"
     });
 
     const studentsFromExcel = data.length;
@@ -177,15 +322,14 @@ const bulkRegister = async (req, res) => {
     if (remainingSlots <= 0) {
       return res.status(403).send({
         error: true,
-        message: `Student limit reached. Maximum allowed: ${access.studentsLimit}`,
+        message: `Student limit reached. Maximum allowed: ${access.studentsLimit}`
       });
     }
 
     if (studentsFromExcel > remainingSlots) {
       return res.status(403).send({
         error: true,
-        message: `You can only add ${remainingSlots} more students. 
-Upgrade your plan to add more.`,
+        message: `You can only add ${remainingSlots} more students. Upgrade your plan to add more.`
       });
     }
 
@@ -202,9 +346,12 @@ Upgrade your plan to add more.`,
     };
 
     let createdUsers = [];
+    let linkedStudents = [];
 
     for (const row of data) {
+
       const { School, Year, Class, Section, ["Roll No."]: RollNo, Country } = row;
+
       if (!School || !Year || !Class || !Section || !RollNo) continue;
 
       const schoolCode = School.trim().toUpperCase().slice(0, 3);
@@ -213,23 +360,46 @@ Upgrade your plan to add more.`,
       const sectionCode = Section.trim().toUpperCase().slice(0, 1);
       const rollCode = RollNo.toString().padStart(3, "0");
 
-      const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`;
-
-      const exists = await Users.findOne({ username: username.toLowerCase() });
-      if (exists) continue;
-
-      const randomPassword = generateRandomPassword();
-      const passwordHash = await bcrypt.hash(randomPassword, 12);
+      const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`.toLowerCase();
 
       const gradeName = getGradeName(Class);
       const countryCode = Country?.trim().toUpperCase() || "IN";
 
+      /* ===============================
+         🔍 CHECK STUDENT EXISTS
+      =============================== */
+
+      const exists = await Users.findOne({ username });
+
+      if (exists) {
+
+        // teacher ko existing student me add karo
+        await Users.updateOne(
+          { _id: exists._id },
+          { $addToSet: { createdBy: teacherId } }
+        );
+
+        linkedStudents.push({
+          username,
+          id: exists._id
+        });
+
+        continue;
+      }
+
+      /* ===============================
+         🆕 CREATE NEW STUDENT
+      =============================== */
+
+      const randomPassword = generateRandomPassword();
+      const passwordHash = await bcrypt.hash(randomPassword, 12);
+
       const newUser = new Users({
-        username: username.toLowerCase(),
+        username,
         password: passwordHash,
         plain_password: randomPassword,
         userType: "student",
-        createdBy: teacherId,
+        createdBy: [teacherId], // important
         grade: gradeName,
         country: countryCode,
         classInfo: {
@@ -254,31 +424,49 @@ Upgrade your plan to add more.`,
 
     return res.send({
       error: false,
-      message: `${createdUsers.length} students added successfully`,
-      data: createdUsers,
+      message: "Bulk upload completed",
+      createdStudents: createdUsers.length,
+      linkedExistingStudents: linkedStudents.length,
+      data: {
+        newStudents: createdUsers,
+        existingLinked: linkedStudents
+      }
     });
 
   } catch (e) {
     console.error(e);
-    return res.send({ error: true, message: e.message });
+    return res.send({
+      error: true,
+      message: e.message
+    });
   }
 };
 
 const addSingleStudent = async (req, res) => {
   try {
+
     const teacherId = req.user?.login_data?._id;
-    if (!teacherId)
-      return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    if (!teacherId) {
+      return res.status(403).send({
+        error: true,
+        message: "Unauthorized"
+      });
+    }
 
     const { School, Year, Class, Section, RollNo, Country } = req.body;
 
     if (!School || !Year || !Class || !Section || !RollNo) {
-      return res.send({ error: true, message: "All fields are required" });
+      return res.send({
+        error: true,
+        message: "All fields are required"
+      });
     }
 
     /* ===============================
        🔐 SUBSCRIPTION CHECK
     =============================== */
+
     const access = await getUserAccess(teacherId);
 
     if (!access.studentsAllowed) {
@@ -315,9 +503,43 @@ const addSingleStudent = async (req, res) => {
 
     const username = `${schoolCode}${yearCode}${classCode}${sectionCode}${rollCode}`.toLowerCase();
 
+    const countryCode = Country?.toUpperCase() || "IN";
+
+    /* ===============================
+       🔍 CHECK IF STUDENT EXISTS
+    =============================== */
+
     const exists = await Users.findOne({ username });
-    if (exists)
-      return res.send({ error: true, message: "Student already exists" });
+
+    if (exists) {
+
+      // check agar teacher already assigned hai
+      if (exists.createdBy.includes(teacherId)) {
+        return res.send({
+          error: true,
+          message: "Student already added by you"
+        });
+      }
+
+      // teacher add karo existing student me
+      await Users.updateOne(
+        { _id: exists._id },
+        { $addToSet: { createdBy: teacherId } }
+      );
+
+      return res.send({
+        error: false,
+        message: "Student linked to your classroom successfully",
+        data: {
+          username: exists.username,
+          id: exists._id
+        }
+      });
+    }
+
+    /* ===============================
+       🆕 CREATE NEW STUDENT
+    =============================== */
 
     const randomPassword = generateRandomPassword();
     const passwordHash = await bcrypt.hash(randomPassword, 12);
@@ -327,16 +549,16 @@ const addSingleStudent = async (req, res) => {
       password: passwordHash,
       plain_password: randomPassword,
       userType: "student",
-      createdBy: teacherId,
+      createdBy: [teacherId], // ✅ array
       grade: `${Class}th Standard`,
-      country: Country?.toUpperCase() || "IN",
+      country: countryCode,
       classInfo: {
         school: schoolCode,
         year: yearCode,
         class: classCode,
         section: sectionCode,
         rollNo: rollCode,
-        country: Country?.toUpperCase() || "IN",
+        country: countryCode,
       },
       is_verify: 1,
     });
@@ -352,9 +574,13 @@ const addSingleStudent = async (req, res) => {
         id: saved._id,
       },
     });
+
   } catch (e) {
     console.error(e);
-    return res.send({ error: true, message: e.message });
+    return res.send({
+      error: true,
+      message: e.message
+    });
   }
 };
 
@@ -362,27 +588,98 @@ const addSingleStudent = async (req, res) => {
 const getStudentsList = async (req, res) => {
   try {
     const teacherId = req.user?.login_data?._id;
-    if (!teacherId)
-      return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    if (!teacherId) {
+      return res.status(403).send({
+        error: true,
+        message: "Unauthorized",
+      });
+    }
 
     const students = await Users.find(
-      { createdBy: teacherId, userType: "student" },
-      { password: 0 }
+      {
+        createdBy: { $in: [teacherId] }, // ✅ array support
+        userType: "student",
+      },
+      {
+        password: 0, // hide hashed password
+      }
     ).sort({ createdAt: -1 });
 
-    res.send({
+    return res.send({
       error: false,
-      message: "All students fetched successfully",
+      message: "Students fetched successfully",
+      count: students.length,
       data: students,
     });
+
   } catch (e) {
     console.error(e);
-    res.send({ error: true, message: e.message });
+    return res.send({
+      error: true,
+      message: e.message,
+    });
   }
 };
 
 
 const resetStudentPassword = async (req, res) => {
+  try {
+
+    const { studentId } = req.body;
+    const teacherId = req.user?.login_data?._id;
+
+    if (!studentId) {
+      return res.send({
+        error: true,
+        message: "Student ID required"
+      });
+    }
+
+    const student = await Users.findOne({
+      _id: studentId,
+      createdBy: { $in: [teacherId] }, // ✅ array support
+      userType: "student"
+    });
+
+    if (!student) {
+      return res.send({
+        error: true,
+        message: "Student not found or unauthorized"
+      });
+    }
+
+    const newPassword = Math.random().toString(36).slice(-8);
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await Users.updateOne(
+      { _id: studentId },
+      {
+        $set: {
+          password: passwordHash,
+          plain_password: newPassword
+        }
+      }
+    );
+
+    return res.send({
+      error: false,
+      message: "Password reset successfully",
+      username: student.username,
+      newPassword
+    });
+
+  } catch (e) {
+    console.error(e);
+    return res.send({
+      error: true,
+      message: e.message
+    });
+  }
+};
+
+
+const removeStudent = async (req, res) => {
   try {
     const { studentId } = req.body;
     const teacherId = req.user?.login_data?._id;
@@ -392,47 +689,85 @@ const resetStudentPassword = async (req, res) => {
 
     const student = await Users.findOne({
       _id: studentId,
-      createdBy: teacherId,
+      createdBy: { $in: [teacherId] },
       userType: "student",
     });
 
     if (!student)
       return res.send({ error: true, message: "Student not found or unauthorized" });
 
-    const newPassword = Math.random().toString(36).slice(-8);
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-
     await Users.updateOne(
       { _id: studentId },
-      { $set: { password: passwordHash, plain_password: newPassword } }
+      { $pull: { createdBy: teacherId } }
     );
 
-    res.send({
+    return res.send({
       error: false,
-      message: "Password reset successfully",
-      newPassword,
-      username: student.username,
+      message: "Student removed from your classroom successfully",
     });
+
   } catch (e) {
-    res.send({ error: true, message: e.message });
+    console.error(e);
+    return res.send({ error: true, message: e.message });
+  }
+};
+
+const removeAllStudents = async (req, res) => {
+  try {
+    const { filter } = req.body;
+    const teacherId = req.user?.login_data?._id;
+
+    if (!teacherId)
+      return res.status(403).send({ error: true, message: "Unauthorized" });
+
+    let query = {
+      createdBy: { $in: [teacherId] },
+      userType: "student",
+    };
+
+    if (filter && filter !== "All") {
+      const [school, year, className, section] = filter.split("-");
+
+      query["classInfo.school"] = school;
+      query["classInfo.year"] = year;
+      query["classInfo.class"] = className;
+      query["classInfo.section"] = section;
+    }
+
+    const result = await Users.updateMany(
+      query,
+      { $pull: { createdBy: teacherId } }
+    );
+
+    return res.send({
+      error: false,
+      message: `${result.modifiedCount} students removed from classroom`,
+    });
+
+  } catch (e) {
+    console.error(e);
+    return res.send({ error: true, message: e.message });
   }
 };
 
 const deleteStudent = async (req, res) => {
   try {
+
     const { studentId } = req.body;
-    const teacherId = req.user?.login_data?._id;
 
     const deleted = await Users.findOneAndDelete({
       _id: studentId,
-      createdBy: teacherId,
-      userType: "student",
+      userType: "student"
     });
 
     if (!deleted)
-      return res.send({ error: true, message: "Student not found or unauthorized" });
+      return res.send({ error: true, message: "Student not found" });
 
-    res.send({ error: false, message: "Student deleted successfully" });
+    res.send({
+      error: false,
+      message: "Student permanently deleted"
+    });
+
   } catch (e) {
     res.send({ error: true, message: e.message });
   }
@@ -440,13 +775,14 @@ const deleteStudent = async (req, res) => {
 
 const deleteAllStudents = async (req, res) => {
   try {
-    const { filter } = req.body;
-    const teacherId = req.user?.login_data?._id;
 
-    let query = { createdBy: teacherId, userType: "student" };
+    const { filter } = req.body;
+
+    let query = { userType: "student" };
 
     if (filter && filter !== "All") {
       const [school, year, className, section] = filter.split("-");
+
       query["classInfo.school"] = school;
       query["classInfo.year"] = year;
       query["classInfo.class"] = className;
@@ -454,10 +790,12 @@ const deleteAllStudents = async (req, res) => {
     }
 
     const result = await Users.deleteMany(query);
+
     res.send({
       error: false,
-      message: `${result.deletedCount} students deleted successfully.`,
+      message: `${result.deletedCount} students permanently deleted`
     });
+
   } catch (e) {
     res.send({ error: true, message: e.message });
   }
@@ -528,6 +866,7 @@ const getStudentTeachers = async (req, res) => {
 
 const addStudentByUsername = async (req, res) => {
   try {
+
     const teacherId = req.user?.login_data?._id;
     const { username } = req.body;
 
@@ -558,17 +897,19 @@ const addStudentByUsername = async (req, res) => {
       });
     }
 
-    // check agar student already kisi teacher ke under hai
-    if (student.createdBy) {
+    // check agar teacher already assigned hai
+    if (student.createdBy.includes(teacherId)) {
       return res.send({
         error: true,
-        message: "Student already assigned to a teacher"
+        message: "Student already added by you"
       });
     }
 
-    // teacher assign karo
-    student.createdBy = teacherId;
-    await student.save();
+    // teacher add karo existing student me
+    await Users.updateOne(
+      { _id: student._id },
+      { $addToSet: { createdBy: teacherId } }
+    );
 
     return res.send({
       error: false,
@@ -592,5 +933,6 @@ const addStudentByUsername = async (req, res) => {
 
 module.exports = {
   signupWithUsername, loginWithUsername, bulkRegister, addSingleStudent, getStudentsList,
-  resetStudentPassword, deleteStudent, deleteAllStudents, getStudentTeachers, addStudentByUsername
+  resetStudentPassword, deleteStudent, deleteAllStudents, getStudentTeachers, addStudentByUsername,
+  removeAllStudents, removeStudent
 }
