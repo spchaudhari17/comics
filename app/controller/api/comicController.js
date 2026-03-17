@@ -1637,7 +1637,7 @@ const updateComicStatus = async (req, res) => {
         comic.comicStatus = comicStatus;
 
         // ⭐ When teacher publishes comic → set visibility to teacher
-        if (previousStatus === "draft" && comicStatus === "published") {
+        if (comicStatus === "published") {
             comic.visibility = "teacher";
         }
 

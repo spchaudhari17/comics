@@ -839,7 +839,7 @@ const getStudentTeachers = async (req, res) => {
 
     const teachers = await Users.find(
       { _id: { $in: teacherIds } },
-      "firstname lastname username email"
+      "firstname lastname username email profile_pic"
     );
 
     const teacherData = teachers.map((t) => ({
@@ -847,7 +847,8 @@ const getStudentTeachers = async (req, res) => {
       firstname: t.firstname,
       lastname: t.lastname,
       username: t.username,
-      email: t.email
+      email: t.email,
+      profile_pic: t.profile_pic || ""
     }));
 
     return res.send({
