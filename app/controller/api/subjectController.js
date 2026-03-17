@@ -1335,11 +1335,34 @@ const getComicsByConcept = async (req, res) => {
 
             }).join(" ");
 
+
+          }
+
+          const panels = [];
+
+          if (pageData && Array.isArray(pageData.panels)) {
+
+            pageData.panels.forEach((panel, idx) => {
+
+              panels.push({
+                panelNumber: idx + 1,
+                caption: panel.caption || "",
+                dialogues: Array.isArray(panel.dialogue)
+                  ? panel.dialogue.map(d => ({
+                    character: d.character,
+                    text: d.text
+                  }))
+                  : []
+              });
+
+            });
+
           }
 
           return {
             imageUrl: page.imageUrl,
-            caption
+            caption,
+            panels
           };
 
         });
