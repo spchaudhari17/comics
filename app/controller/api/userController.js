@@ -30,11 +30,11 @@ const signupWithEmail = async (req, res) => {
         return res.send({ "error": true, 'status': 201, "message": "Lastname is required.", "message_desc": "Username is required" })
 
     }
-    // else if (username === '') {
+    else if (username === '') {
 
-    //     return res.send({ "error": true, 'status': 201, "message": "Username is required.", "message_desc": "Username is required" })
+        return res.send({ "error": true, 'status': 201, "message": "Username is required.", "message_desc": "Username is required" })
 
-    // }
+    }
     if (email === '') {
 
         return res.send({ "error": true, 'status': 201, "message": "Email is required.", "message_desc": "Email is required" })
@@ -68,18 +68,20 @@ const signupWithEmail = async (req, res) => {
 
         if (isExist) {
 
-            return res.send({ "error": true, 'status': 201, "message": "This email already taken.", "message_desc": "This email already taken." })
+            return res.send({ "error": true, 'status': 201, "message": "Account already exists. Please login.", "message_desc": "Account already exists. Please login." })
 
         }
 
+
+
         // Check if username already exists
-        // const isUsernameExist = await Users.findOne({ username });
+        const isUsernameExist = await Users.findOne({ username });
 
-        // if (isUsernameExist) {
+        if (isUsernameExist) {
 
-        //     return res.send({ "error": true, 'status': 201, "message": "Username already taken.", "message_desc": "Username already taken." });
+            return res.send({ "error": true, 'status': 201, "message": "Username already taken.", "message_desc": "Username already taken." });
 
-        // }
+        }
 
         var min = 1000;
         var max = 9999;
@@ -376,6 +378,8 @@ const forgotPassword = async (req, res) => {
         return res.status(500).json({ error: true, message: err.message });
     }
 };
+
+
 
 
 const resendOtp = async (req, res) => {
