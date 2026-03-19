@@ -346,17 +346,66 @@ const loginWithEmail = async (req, res) => {
 };
 
 
+// old code only email
+// const forgotPassword = async (req, res) => {
+//     try {
+//         const { email } = req.body;
+//         if (!email) {
+//             return res.status(400).json({ error: true, message: "Email is required" });
+//         }
+
+//         const user = await Users.findOne({ email });
+//         if (!user) {
+//             return res.status(404).json({ error: true, message: "Email not found" });
+//         }
+
+//         // generate 4 digit OTP
+//         const otp = Math.floor(1000 + Math.random() * 9000);
+
+//         user.otp = otp;
+//         user.otp_expiry = Date.now() + 10 * 60 * 1000; // 10 min validity
+//         await user.save();
+
+//         await mailer.sendMail({
+//             from: '"kridemy" <notifications@kridemy.com>',
+//             to: email,
+//             subject: "Password Reset OTP",
+//             html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
+//         });
+
+//         return res.json({ error: false, message: "OTP sent to email" });
+//     } catch (err) {
+//         return res.status(500).json({ error: true, message: err.message });
+//     }
+// };
 
 const forgotPassword = async (req, res) => {
     try {
-        const { email } = req.body;
-        if (!email) {
-            return res.status(400).json({ error: true, message: "Email is required" });
+        const { email, username } = req.body;
+
+        if (!email && !username) {
+            return res.status(400).json({
+                error: true,
+                message: "Either email or username is required"
+            });
         }
 
-        const user = await Users.findOne({ email });
+        let user;
+        let searchCriteria = {};
+
+        if (email) {
+            searchCriteria = { email };
+        } else if (username) {
+            searchCriteria = { username };
+        }
+
+        user = await Users.findOne(searchCriteria);
+
         if (!user) {
-            return res.status(404).json({ error: true, message: "Email not found" });
+            return res.status(404).json({
+                error: true,
+                message: email ? "Email not found" : "Username not found"
+            });
         }
 
         // generate 4 digit OTP
@@ -366,20 +415,23 @@ const forgotPassword = async (req, res) => {
         user.otp_expiry = Date.now() + 10 * 60 * 1000; // 10 min validity
         await user.save();
 
+        // Send OTP to user's email
         await mailer.sendMail({
             from: '"kridemy" <notifications@kridemy.com>',
-            to: email,
+            to: user.email, // Always send to the user's registered email
             subject: "Password Reset OTP",
             html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
         });
 
-        return res.json({ error: false, message: "OTP sent to email" });
+        return res.json({
+            error: false,
+            message: "OTP sent to registered email",
+            email: user.email // Return email for reference
+        });
     } catch (err) {
         return res.status(500).json({ error: true, message: err.message });
     }
 };
-
-
 
 
 const resendOtp = async (req, res) => {
