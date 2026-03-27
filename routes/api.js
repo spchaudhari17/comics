@@ -22,6 +22,7 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles } = require('../app/controller/api/ComicBundle');
 
 
 
@@ -189,6 +190,17 @@ router.post("/subscription/upgrade-down", authentication, downgradeSubscription)
 router.get("/subscription/schedule-status", authentication, getScheduleStatus);
 router.get("/subscription/payment-method", authentication, getSavedPaymentMethod);
 router.post("/subscription/update-card", authentication, createUpdateCardSession);
+
+//******************************** Market Place ends routes routes started from here ***************************** */
+
+router.post("/user/createBundle", authentication, createBundle);
+router.post("/user/publishBundle", authentication, publishBundle);
+router.get("/user/getTeacherBundles", authentication, getTeacherBundles);
+router.get("/user/getMyPurchases", authentication, getMyPurchases);
+router.get("/user/getMarketplace", getMarketplace);
+router.post("/user/purchase", authentication, purchaseBundle);
+
+
 
 //******************************** subscription ends routes routes started from here ***************************** */
 
