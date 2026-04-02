@@ -54,6 +54,51 @@ const createBundle = async (req, res) => {
     }
 };
 
+const getBundleDetails = async (req, res) => {
+    try {
+        const { bundleId } = req.params;
+
+        const bundle = await ComicBundle.findById(bundleId)
+            .populate("teacherId", "firstname lastname")
+            .populate("comics");
+
+        if (!bundle) {
+            return res.status(404).json({
+                error: true,
+                message: "Bundle not found"
+            });
+        }
+
+        // 🔥 attach thumbnail + extra info
+        const comicsWithDetails = await Promise.all(
+            bundle.comics.map(async (comic) => {
+
+                const page = await ComicPage.findOne({ comicId: comic._id });
+
+                return {
+                    ...comic.toObject(),
+                    thumbnail: page?.imageUrl || null
+                };
+            })
+        );
+
+        return res.json({
+            error: false,
+            data: {
+                ...bundle.toObject(),
+                comics: comicsWithDetails
+            }
+        });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            error: true,
+            message: "Server error"
+        });
+    }
+};
+
 const publishBundle = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
@@ -229,4 +274,4 @@ const getMyPurchases = async (req, res) => {
     }
 };
 
-module.exports = { createBundle, publishBundle, getMarketplace, purchaseBundle, getTeacherBundles, getMyPurchases }
+module.exports = { createBundle, getBundleDetails, publishBundle, getMarketplace, purchaseBundle, getTeacherBundles, getMyPurchases }
