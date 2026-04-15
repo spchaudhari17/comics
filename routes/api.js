@@ -22,8 +22,8 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
-const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails } = require('../app/controller/api/ComicBundle');
-const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart } = require('../app/controller/api/cart');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales } = require('../app/controller/api/ComicBundle');
+const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase } = require('../app/controller/api/cart');
 
 
 
@@ -195,17 +195,18 @@ router.post("/subscription/update-card", authentication, createUpdateCardSession
 //******************************** Market Place ends routes routes started from here ***************************** */
 
 router.post("/user/createBundle", authentication, createBundle);
+router.post("/user/completePurchase", authentication, completePurchase);
 router.get("/user/bundleDetails/:bundleId", getBundleDetails);
 router.post("/user/publishBundle", authentication, publishBundle);
 router.get("/user/getTeacherBundles", authentication, getTeacherBundles);
-router.get("/user/getMyPurchases", authentication, getMyPurchases);
+router.get("/user/mySales", authentication, getMySales);
 router.get("/user/getMarketplace", getMarketplace);
-router.post("/user/purchase", authentication, purchaseBundle);
+router.get("/user/getMyPurchases", authentication, getMyPurchases);
 router.post("/user/addToCart", authentication, addToCart);
 router.delete("/user/cart/:bundleId", authentication, removeFromCart);
 router.get("/user/cart", authentication, getCart);
 router.post("/user/createCheckoutSessionforCart", authentication, createCheckoutSessionforCart);
-
+router.get("/user/transactions", authentication, getTransactions);
 
 
 

@@ -1,4 +1,5 @@
 const Cart = require("../../models/Cart");
+const ComicPage = require("../../models/ComicPage");
 
 const addToCart = async (req, res) => {
     try {
@@ -76,12 +77,40 @@ const getCart = async (req, res) => {
                 ]
             });
 
+        // 🔥 attach thumbnail
+        const updatedCart = await Promise.all(
+            cartItems.map(async (item) => {
+
+                const bundle = item.bundleId;
+
+                const comicsWithThumb = await Promise.all(
+                    bundle.comics.map(async (comic) => {
+                        const page = await ComicPage.findOne({ comicId: comic._id });
+
+                        return {
+                            ...comic.toObject(),
+                            thumbnail: page?.imageUrl || null
+                        };
+                    })
+                );
+
+                return {
+                    ...item.toObject(),
+                    bundleId: {
+                        ...bundle.toObject(),
+                        comics: comicsWithThumb
+                    }
+                };
+            })
+        );
+
         return res.json({
             error: false,
-            data: cartItems
+            data: updatedCart
         });
 
     } catch (error) {
+        console.log(error);
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -89,13 +118,61 @@ const getCart = async (req, res) => {
     }
 };
 
-
 const Stripe = require("stripe");
+const Purchase = require("../../models/Purchase");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// const createCheckoutSessionforCart = async (req, res) => {
+//     try {
+//         const userId = req.user.login_data._id;
+//         const cartItems = await Cart.find({ userId }).populate("bundleId");
+
+//         if (!cartItems.length) {
+//             return res.status(400).json({
+//                 error: true,
+//                 message: "Cart is empty"
+//             });
+//         }
+
+//         // 🔥 Stripe line items
+//         const line_items = cartItems.map((item) => ({
+//             price_data: {
+//                 currency: "inr",
+//                 product_data: {
+//                     name: item.bundleId.title
+//                 },
+//                 unit_amount: item.bundleId.price * 100 // paisa
+//             },
+//             quantity: 1
+//         }));
+
+//         const session = await stripe.checkout.sessions.create({
+//             payment_method_types: ["card"],
+//             mode: "payment",
+//             line_items,
+//             success_url: `${process.env.FRONTEND_URL}/success`,
+//             cancel_url: `${process.env.FRONTEND_URL}/cart`
+//         });
+
+//         return res.json({
+//             error: false,
+//             url: session.url
+//         });
+
+//     } catch (error) {
+//         console.log(error);
+//         return res.status(500).json({
+//             error: true,
+//             message: "Stripe error"
+//         });
+//     }
+// };
+
 
 const createCheckoutSessionforCart = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
+
         const cartItems = await Cart.find({ userId }).populate("bundleId");
 
         if (!cartItems.length) {
@@ -105,14 +182,14 @@ const createCheckoutSessionforCart = async (req, res) => {
             });
         }
 
-        // 🔥 Stripe line items
+        // 🔥 line items
         const line_items = cartItems.map((item) => ({
             price_data: {
-                currency: "inr",
+                currency: "usd", // ✅ FIX
                 product_data: {
                     name: item.bundleId.title
                 },
-                unit_amount: item.bundleId.price * 100 // paisa
+                unit_amount: item.bundleId.price * 100
             },
             quantity: 1
         }));
@@ -121,7 +198,14 @@ const createCheckoutSessionforCart = async (req, res) => {
             payment_method_types: ["card"],
             mode: "payment",
             line_items,
-            success_url: `${process.env.FRONTEND_URL}/success`,
+
+            // 🔥 VERY IMPORTANT
+            metadata: {
+                userId: userId.toString()
+            },
+
+            // success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}&type=cart`,
+            success_url: `${process.env.FRONTEND_URL}/success/cart?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${process.env.FRONTEND_URL}/cart`
         });
 
@@ -139,17 +223,28 @@ const createCheckoutSessionforCart = async (req, res) => {
     }
 };
 
+
 const completePurchase = async (req, res) => {
     try {
+        console.log("🔥 API HIT");
         const userId = req.user.login_data._id;
 
-        const cartItems = await Cart.find({ userId });
+        const cartItems = await Cart.find({ userId }).populate("bundleId");
 
         for (let item of cartItems) {
+
+            const bundle = item.bundleId;
+            const amount = bundle.price;
+
             await Purchase.create({
                 userId,
-                bundleId: item.bundleId,
-                amount: 0,
+                bundleId: bundle._id,
+
+                amount,
+                teacherAmount: amount * 0.6,
+                platformAmount: amount * 0.4,
+
+                paymentIntentId: "demo_txn", // 🔥 replace later
                 paymentStatus: "success"
             });
         }
@@ -168,5 +263,7 @@ const completePurchase = async (req, res) => {
         });
     }
 };
+
+
 
 module.exports = { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase }

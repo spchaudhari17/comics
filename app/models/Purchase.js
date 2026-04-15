@@ -12,11 +12,30 @@ const purchaseSchema = new Schema({
     teacherAmount: Number, // 60%
     platformAmount: Number, // 40%
 
+    paymentIntentId: { type: String }, // 🔥 Stripe
+
+    paymentMethod: {
+        type: String,
+        default: "card"
+    },
+
+    currency: {
+        type: String,
+        default: "USD" // ✅ FIX
+    },
+
+    buyerDetails: {
+        name: String,
+        email: String
+    },
+
     paymentStatus: {
         type: String,
-        enum: ["pending", "success", "failed"],
+        enum: ["pending", "success", "failed", "refunded"],
         default: "pending"
     },
 
     createdAt: { type: Date, default: Date.now }
 });
+
+module.exports = mongoose.model("Purchase", purchaseSchema);
