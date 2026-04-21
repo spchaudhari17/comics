@@ -22,7 +22,7 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
-const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales } = require('../app/controller/api/ComicBundle');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader } = require('../app/controller/api/ComicBundle');
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase } = require('../app/controller/api/cart');
 
 
@@ -207,7 +207,8 @@ router.delete("/user/cart/:bundleId", authentication, removeFromCart);
 router.get("/user/cart", authentication, getCart);
 router.post("/user/createCheckoutSessionforCart", authentication, createCheckoutSessionforCart);
 router.get("/user/transactions", authentication, getTransactions);
-
+router.get("/user/purchasedBundleDetails/:bundleId", authentication, getPurchasedBundleDetails);
+router.get("/user/comic-reader/:comicId", authentication, getComicReader);
 
 
 //******************************** subscription ends routes routes started from here ***************************** */
