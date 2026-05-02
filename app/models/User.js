@@ -67,6 +67,14 @@ var UserSchema = new mongoose.Schema({
     // Billing
     stripeCustomerId: { type: String, default: null },
 
+    // Stripe Connect (Teacher Payout)
+    stripeAccountId: { type: String, default: null },
+    payoutsEnabled: { type: Boolean, default: false },
+    chargesEnabled: { type: Boolean, default: false },
+    bankLast4: { type: String, default: null },
+    bankName: { type: String, default: null },
+    accountVerified: { type: Boolean, default: false },
+
 
 }, { timestamps: true })
 

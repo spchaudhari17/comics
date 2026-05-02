@@ -23,7 +23,7 @@ const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
 const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader } = require('../app/controller/api/ComicBundle');
-const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase } = require('../app/controller/api/cart');
+const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus } = require('../app/controller/api/cart');
 
 
 
@@ -209,6 +209,13 @@ router.post("/user/createCheckoutSessionforCart", authentication, createCheckout
 router.get("/user/transactions", authentication, getTransactions);
 router.get("/user/purchasedBundleDetails/:bundleId", authentication, getPurchasedBundleDetails);
 router.get("/user/comic-reader/:comicId", authentication, getComicReader);
+router.post("/teacher/create-stripe-account", authentication, createStripeAccount);
+router.post("/teacher/onboard", authentication, createOnboardingLink);
+router.get("/teacher/payout-status", authentication, getPayoutStatus);
+
+
+
+
 
 
 //******************************** subscription ends routes routes started from here ***************************** */

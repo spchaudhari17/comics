@@ -1,5 +1,9 @@
 const Cart = require("../../models/Cart");
 const ComicPage = require("../../models/ComicPage");
+const Stripe = require("stripe");
+const Purchase = require("../../models/Purchase");
+const User = require("../../models/User");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const addToCart = async (req, res) => {
     try {
@@ -118,9 +122,7 @@ const getCart = async (req, res) => {
     }
 };
 
-const Stripe = require("stripe");
-const Purchase = require("../../models/Purchase");
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 
 // const createCheckoutSessionforCart = async (req, res) => {
 //     try {
@@ -266,4 +268,108 @@ const completePurchase = async (req, res) => {
 
 
 
-module.exports = { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase }
+
+const createStripeAccount = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        const account = await stripe.accounts.create({
+            type: "express"
+        });
+
+        await User.findByIdAndUpdate(userId, {
+            stripeAccountId: account.id
+        });
+
+        return res.json({
+            error: false,
+            accountId: account.id
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            error: true,
+            message: "Stripe account creation failed"
+        });
+    }
+};
+
+const createOnboardingLink = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        const user = await User.findById(userId);
+
+        if (!user.stripeAccountId) {
+            return res.status(400).json({
+                error: true,
+                message: "Stripe account not found"
+            });
+        }
+
+        const accountLink = await stripe.accountLinks.create({
+            account: user.stripeAccountId,
+            refresh_url: `${process.env.FRONTEND_URL}/reauth`,
+            return_url: `${process.env.FRONTEND_URL}/dashboard`,
+            type: "account_onboarding"
+        });
+
+        return res.json({
+            error: false,
+            url: accountLink.url
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            error: true,
+            message: "Failed to create onboarding link"
+        });
+    }
+};
+
+const getPayoutStatus = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        const user = await User.findById(userId);
+
+        if (!user.stripeAccountId) {
+            return res.json({
+                error: false,
+                connected: false
+            });
+        }
+
+        const account = await stripe.accounts.retrieve(user.stripeAccountId);
+
+        // 🔥 bank details
+        const externalAccounts = await stripe.accounts.listExternalAccounts(
+            user.stripeAccountId,
+            { object: "bank_account" }
+        );
+
+        const bank = externalAccounts.data[0];
+
+        return res.json({
+            error: false,
+            connected: true,
+            payoutsEnabled: account.payouts_enabled,
+            chargesEnabled: account.charges_enabled,
+            bank: bank
+                ? `${bank.bank_name} ****${bank.last4}`
+                : null
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            error: true,
+            message: "Error fetching payout status"
+        });
+    }
+};
+
+
+module.exports = {
+    addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase,
+    createStripeAccount, createOnboardingLink, getPayoutStatus
+}
