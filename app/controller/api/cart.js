@@ -287,6 +287,7 @@ const createStripeAccount = async (req, res) => {
         });
 
     } catch (err) {
+        console.log("❌ STRIPE FULL ERROR:", err);
         return res.status(500).json({
             error: true,
             message: "Stripe account creation failed"
