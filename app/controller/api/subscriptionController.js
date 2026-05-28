@@ -71,6 +71,7 @@ const createCheckoutSession = async (req, res) => {
       mode: "subscription",
       customer: stripeCustomerId,
       payment_method_types: ["card"],
+      allow_promotion_codes: true,
       line_items: [
         {
           price: priceId,
