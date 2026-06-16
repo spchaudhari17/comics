@@ -231,7 +231,22 @@ const getMarketplace = async (req, res) => {
     try {
         const bundles = await ComicBundle.find({ status: "published" })
             .populate("comics") // ✅ FIX
-            .populate("teacherId", "firstname lastname");
+            .populate("teacherId", "firstname lastname")
+            .populate({
+                path: "comics",
+                select: "title subject concept subjectId conceptId",
+                populate: [
+                    {
+                        path: "subjectId",
+                        select: "name"
+                    },
+                    {
+                        path: "conceptId",
+                        select: "name"
+                    }
+                ]
+            })
+            .sort({ createdAt: -1 });
 
         const bundlesWithThumbnails = await Promise.all(
             bundles.map(async (bundle) => {

@@ -370,6 +370,260 @@ const deleteCoupon = async (req, res) => {
 
 
 
+const CouponBanner = require("../../../models/CouponBanner");
+
+// CREATE BANNER
+const createCouponBanner = async (req, res) => {
+
+    try {
+
+        const { headline, couponId } = req.body;
+
+        if (!headline) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Headline is required"
+            });
+        }
+
+        if (couponId) {
+
+            const coupon = await Coupon.findById(couponId);
+
+            if (!coupon) {
+
+                return res.status(404).json({
+                    success: false,
+                    message: "Coupon not found"
+                });
+            }
+        }
+
+        const banner = await CouponBanner.create({
+
+            headline,
+            couponId: couponId || null
+
+        });
+
+        return res.status(201).json({
+
+            success: true,
+            message: "Coupon banner created successfully",
+            data: banner
+
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            success: false,
+            message: error.message
+
+        });
+    }
+};
+
+
+
+// GET ALL BANNERS
+const getCouponBanners = async (req, res) => {
+
+    try {
+
+        const banners = await CouponBanner.find()
+            .populate("couponId")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+
+            success: true,
+            total: banners.length,
+            data: banners
+
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            success: false,
+            message: error.message
+
+        });
+    }
+};
+
+
+
+// GET SINGLE BANNER
+const getCouponBannerDetails = async (req, res) => {
+
+    try {
+
+        const { bannerId } = req.params;
+
+        const banner = await CouponBanner.findById(bannerId)
+            .populate("couponId");
+
+        if (!banner) {
+
+            return res.status(404).json({
+
+                success: false,
+                message: "Coupon banner not found"
+
+            });
+        }
+
+        return res.status(200).json({
+
+            success: true,
+            data: banner
+
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            success: false,
+            message: error.message
+
+        });
+    }
+};
+
+
+
+// UPDATE BANNER
+const updateCouponBanner = async (req, res) => {
+
+    try {
+
+        const { bannerId } = req.params;
+        const { couponId } = req.body;
+
+        if (couponId) {
+
+            const coupon = await Coupon.findById(couponId);
+
+            if (!coupon) {
+
+                return res.status(404).json({
+
+                    success: false,
+                    message: "Coupon not found"
+
+                });
+            }
+        }
+
+        const banner = await CouponBanner.findByIdAndUpdate(
+
+            bannerId,
+            req.body,
+            { new: true }
+
+        ).populate("couponId");
+
+        if (!banner) {
+
+            return res.status(404).json({
+
+                success: false,
+                message: "Coupon banner not found"
+
+            });
+        }
+
+        return res.status(200).json({
+
+            success: true,
+            message: "Coupon banner updated successfully",
+            data: banner
+
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            success: false,
+            message: error.message
+
+        });
+    }
+};
+
+
+
+// DELETE BANNER
+const deleteCouponBanner = async (req, res) => {
+
+    try {
+
+        const { bannerId } = req.params;
+
+        const banner = await CouponBanner.findByIdAndDelete(
+            bannerId
+        );
+
+        if (!banner) {
+
+            return res.status(404).json({
+
+                success: false,
+                message: "Coupon banner not found"
+
+            });
+        }
+
+        return res.status(200).json({
+
+            success: true,
+            message: "Coupon banner deleted successfully"
+
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            success: false,
+            message: error.message
+
+        });
+    }
+};
+
+const getActiveCouponBanner = async (req, res) => {
+
+    try {
+
+        const banner = await CouponBanner
+            .findOne({ status: true })
+            .populate("couponId");
+
+        return res.status(200).json({
+
+            success: true,
+            data: banner
+
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            success: false,
+            message: error.message
+
+        });
+    }
+};
 
 
 module.exports = {
@@ -378,6 +632,12 @@ module.exports = {
     getCoupons,
     getCouponDetails,
     updateCoupon,
-    deleteCoupon
+    deleteCoupon,
+    createCouponBanner,
+    getCouponBanners,
+    getCouponBannerDetails,
+    updateCouponBanner,
+    deleteCouponBanner,
+    getActiveCouponBanner
 
 };

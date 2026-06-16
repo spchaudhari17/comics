@@ -24,7 +24,7 @@ const { createCheckoutSession, createSubscription, getActiveSubscription, getInv
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
 const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader } = require('../app/controller/api/ComicBundle');
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus } = require('../app/controller/api/cart');
-const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon } = require('../app/controller/api/admin/CouponController');
+const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 
 
 
@@ -230,6 +230,18 @@ router.get("/admin/coupon/details/:couponId", authentication, getCouponDetails);
 router.put("/admin/coupon/update/:couponId", authentication, updateCoupon);
 
 router.delete("/admin/coupon/delete/:couponId", authentication, deleteCoupon);
+
+
+router.post("/admin/coupon-banner/create", authentication, createCouponBanner);
+
+router.get("/admin/coupon-banner/list", authentication, getCouponBanners);
+
+router.get("/admin/coupon-banner/details/:bannerId", authentication, getCouponBannerDetails);
+
+router.put("/admin/coupon-banner/update/:bannerId", authentication, updateCouponBanner);
+
+router.delete("/admin/coupon-banner/delete/:bannerId", authentication, deleteCouponBanner);
+router.get("/coupon-banner/active", getActiveCouponBanner);
 
 //******************************** subscription ends routes routes started from here ***************************** */
 
