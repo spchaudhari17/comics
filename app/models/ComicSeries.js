@@ -4,7 +4,7 @@ const { Schema } = mongoose;
 const { ObjectId } = Schema.Types;
 
 const comicSeriesSchema = new Schema({
-    
+
   user_id: { type: ObjectId, ref: "users", required: true },
   themeId: { type: ObjectId, ref: "Theme" },
   styleId: { type: ObjectId, ref: "Style" },
@@ -17,7 +17,7 @@ const comicSeriesSchema = new Schema({
   title: { type: String, required: true, trim: true }, // e.g. "Life Cycle of a Star"
   author: { type: String, trim: true },
   country: { type: String },
-  countries: [{ type: String }], 
+  countries: [{ type: String }],
 
   // Relation with child comics
   parts: [{ type: ObjectId, ref: "Comic" }],
@@ -26,6 +26,11 @@ const comicSeriesSchema = new Schema({
     type: String,
     enum: ["pending", "approved", "rejected"],
     default: "pending"
+  },
+
+  showTextInImage: {
+    type: Boolean,
+    default: false
   },
 
   createdAt: { type: Date, default: Date.now }

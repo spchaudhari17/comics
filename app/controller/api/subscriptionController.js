@@ -141,6 +141,21 @@ const getMySubscription = async (req, res) => {
       status: { $in: ["active", "to_cancel"] },
     }).sort({ createdAt: -1 });
 
+    const user = await User.findById(userId);
+
+    if (user?.isUnlimited) {
+      return res.status(200).json({
+        hasSubscription: true,
+        planType: "unlimited",
+        status: "active",
+        comicsPerWeek: -1,
+        usedThisWeek: 0,
+        comicsLeft: -1,
+        studentsLimit: -1,
+        isUnlimited: true
+      });
+    }
+
     if (!subscription) {
       return res.status(200).json({
         hasSubscription: false,

@@ -22,7 +22,7 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
-const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader } = require('../app/controller/api/ComicBundle');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings } = require('../app/controller/api/ComicBundle');
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 
@@ -213,6 +213,9 @@ router.get("/user/comic-reader/:comicId", authentication, getComicReader);
 router.post("/teacher/create-stripe-account", authentication, createStripeAccount);
 router.post("/teacher/onboard", authentication, createOnboardingLink);
 router.get("/teacher/payout-status", authentication, getPayoutStatus);
+
+router.post("/user/bundle/rate", authentication, rateBundle);
+router.get("/user/bundle/rating/:bundleId", getBundleRatings);
 
 
 

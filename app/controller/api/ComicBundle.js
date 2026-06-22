@@ -6,6 +6,7 @@ const FAQ = require("../../models/FAQ");
 const DidYouKnow = require("../../models/DidYouKnow");
 const Quiz = require("../../models/Quiz");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
+const BundleRating = require("../../models/BundleRating");
 
 const createBundle = async (req, res) => {
     try {
@@ -524,10 +525,78 @@ const getComicReader = async (req, res) => {
     }
 };
 
+const rateBundle = async (req, res) => {
 
+    try {
+
+        const { bundleId, rating } = req.body;
+        const userId = req.user.id;
+
+        await BundleRating.findOneAndUpdate(
+            {
+                bundleId,
+                userId
+            },
+            {
+                rating
+            },
+            {
+                upsert: true,
+                new: true
+            }
+        );
+
+        const ratings = await BundleRating.find({ bundleId });
+
+        const totalRatings = ratings.length;
+
+        const averageRating =
+            ratings.reduce((sum, item) => sum + item.rating, 0) /
+            totalRatings;
+
+        await ComicBundle.findByIdAndUpdate(
+            bundleId,
+            {
+                averageRating: Number(averageRating.toFixed(1)),
+                totalRatings
+            }
+        );
+
+        return res.json({
+            success: true,
+            message: "Rating submitted successfully"
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
+
+const getBundleRatings = async (req, res) => {
+    try {
+
+        const bundle = await ComicBundle.findById(req.params.bundleId).select(
+            "averageRating totalRatings"
+        );
+
+        return res.json({
+            success: true,
+            data: bundle
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
 
 
 module.exports = {
     createBundle, getBundleDetails, publishBundle, getMarketplace, getTeacherBundles, getTransactions, getMySales,
-    getMyPurchases, getPurchasedBundleDetails, getComicReader
+    getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings
 }

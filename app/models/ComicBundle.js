@@ -22,6 +22,17 @@ const comicBundleSchema = new Schema({
         default: "draft"
     },
 
+    // Rating Fields
+    averageRating: {
+        type: Number,
+        default: 0
+    },
+
+    totalRatings: {
+        type: Number,
+        default: 0
+    },
+
     createdAt: { type: Date, default: Date.now }
 });
 

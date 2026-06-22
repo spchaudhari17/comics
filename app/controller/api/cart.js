@@ -3,6 +3,8 @@ const ComicPage = require("../../models/ComicPage");
 const Stripe = require("stripe");
 const Purchase = require("../../models/Purchase");
 const User = require("../../models/User");
+const BundleRating = require("../../models/BundleRating");
+const ComicBundle = require("../../models/ComicBundle");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const addToCart = async (req, res) => {
@@ -368,6 +370,10 @@ const getPayoutStatus = async (req, res) => {
         });
     }
 };
+
+
+
+
 
 
 module.exports = {
