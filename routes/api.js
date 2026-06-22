@@ -216,6 +216,7 @@ router.get("/teacher/payout-status", authentication, getPayoutStatus);
 
 router.post("/user/bundle/rate", authentication, rateBundle);
 router.get("/user/bundle/rating/:bundleId", getBundleRatings);
+router.get("/user/bundle/rating/:bundleId", getBundleRatings);
 
 
 
