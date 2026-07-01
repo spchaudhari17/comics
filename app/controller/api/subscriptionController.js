@@ -8,8 +8,7 @@ const Comic = require("../../models/Comic");
 const createCheckoutSession = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
-    const { priceId, planType } = req.body;
-
+    const { priceId, planType, referral } = req.body;
     // 1️⃣ Validate input
     if (!priceId || !planType) {
       return res.status(400).json({
@@ -66,10 +65,13 @@ const createCheckoutSession = async (req, res) => {
       await user.save();
     }
 
+    console.log("Rewardful Referral:", referral);
+
     // 6️⃣ Create checkout session
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: stripeCustomerId,
+      client_reference_id: referral || undefined,
       payment_method_types: ["card"],
       allow_promotion_codes: true,
       line_items: [
@@ -86,9 +88,13 @@ const createCheckoutSession = async (req, res) => {
       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
     });
 
+    console.log("Stripe Session:", session.id);
+    console.log("Client Reference:", session.client_reference_id);
+
     return res.status(200).json({
       url: session.url,
     });
+
 
   } catch (error) {
     console.error("Create checkout session error:", error);
