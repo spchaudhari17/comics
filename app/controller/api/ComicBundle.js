@@ -596,7 +596,68 @@ const getBundleRatings = async (req, res) => {
 };
 
 
+
+const getTeacherSalesDashboard = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        // 🔥 Get all bundles of this teacher
+        const bundles = await ComicBundle.find({ teacherId: userId });
+        const bundleIds = bundles.map(b => b._id);
+
+        // 🔥 Get all purchases for these bundles
+        const purchases = await Purchase.find({
+            bundleId: { $in: bundleIds },
+            paymentStatus: "success"
+        })
+            .populate("userId", "firstname lastname email")
+            .populate("bundleId", "title")
+            .sort({ createdAt: -1 });
+
+        // 🔥 Calculate statistics
+        const totalSales = purchases.length;
+        const totalRevenue = purchases.reduce((sum, p) => sum + p.teacherAmount, 0);
+        const pendingPayouts = purchases.filter(p => p.teacherPayoutStatus === "pending");
+        const failedPayouts = purchases.filter(p => p.teacherPayoutStatus === "failed");
+
+        // 🔥 Group by bundle
+        const bundleSales = {};
+        purchases.forEach(p => {
+            const bundleTitle = p.bundleId.title;
+            if (!bundleSales[bundleTitle]) {
+                bundleSales[bundleTitle] = {
+                    count: 0,
+                    revenue: 0
+                };
+            }
+            bundleSales[bundleTitle].count++;
+            bundleSales[bundleTitle].revenue += p.teacherAmount;
+        });
+
+        return res.json({
+            error: false,
+            data: {
+                summary: {
+                    totalSales,
+                    totalRevenue,
+                    pendingPayouts: pendingPayouts.length,
+                    failedPayouts: failedPayouts.length
+                },
+                bundleSales,
+                recentSales: purchases.slice(0, 20)
+            }
+        });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            error: true,
+            message: "Error fetching sales dashboard"
+        });
+    }
+};
+
 module.exports = {
     createBundle, getBundleDetails, publishBundle, getMarketplace, getTeacherBundles, getTransactions, getMySales,
-    getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings
+    getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard
 }

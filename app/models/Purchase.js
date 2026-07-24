@@ -3,25 +3,29 @@ const { Schema } = mongoose;
 const { ObjectId } = Schema.Types;
 
 const purchaseSchema = new Schema({
-    userId: { type: ObjectId, ref: "users" },
+    userId: { type: ObjectId, ref: "users", required: true },
+    bundleId: { type: ObjectId, ref: "ComicBundle", required: true },
+    teacherId: { type: ObjectId, ref: "users", index: true },
 
-    bundleId: { type: ObjectId, ref: "ComicBundle" },
+    amount: { type: Number, required: true },
+    currency: { type: String, default: "usd" },
 
-    amount: Number,
+    teacherAmount: { type: Number, required: true },
+    platformAmount: { type: Number, required: true },
 
-    teacherAmount: Number, // 60%
-    platformAmount: Number, // 40%
+    paymentIntentId: { type: String },
+    chargeId: { type: String },
+    transferId: { type: String },
 
-    paymentIntentId: { type: String }, // 🔥 Stripe
+    teacherPayoutStatus: {
+        type: String,
+        enum: ["pending", "transferred", "failed"],
+        default: "pending"
+    },
 
     paymentMethod: {
         type: String,
         default: "card"
-    },
-
-    currency: {
-        type: String,
-        default: "USD" // ✅ FIX
     },
 
     buyerDetails: {
@@ -38,4 +42,5 @@ const purchaseSchema = new Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
+// 🔥 Check export - Yeh sahi hai?
 module.exports = mongoose.model("Purchase", purchaseSchema);

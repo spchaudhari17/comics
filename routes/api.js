@@ -22,8 +22,8 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
-const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings } = require('../app/controller/api/ComicBundle');
-const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus } = require('../app/controller/api/cart');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard } = require('../app/controller/api/ComicBundle');
+const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 
 
@@ -196,13 +196,17 @@ router.post("/subscription/update-card", authentication, createUpdateCardSession
 //******************************** Market Place ends routes routes started from here ***************************** */
 
 router.post("/user/createBundle", authentication, createBundle);
-router.post("/user/completePurchase", authentication, completePurchase);
+// router.post("/user/completePurchase", authentication, completePurchase);
 router.get("/user/bundleDetails/:bundleId", getBundleDetails);
 router.post("/user/publishBundle", authentication, publishBundle);
 router.get("/user/getTeacherBundles", authentication, getTeacherBundles);
 router.get("/user/mySales", authentication, getMySales);
 router.get("/user/getMarketplace", getMarketplace);
 router.get("/user/getMyPurchases", authentication, getMyPurchases);
+router.get("/user/getTeacherSalesDashboard", authentication, getTeacherSalesDashboard);
+
+
+
 router.post("/user/addToCart", authentication, addToCart);
 router.delete("/user/cart/:bundleId", authentication, removeFromCart);
 router.get("/user/cart", authentication, getCart);
@@ -213,6 +217,14 @@ router.get("/user/comic-reader/:comicId", authentication, getComicReader);
 router.post("/teacher/create-stripe-account", authentication, createStripeAccount);
 router.post("/teacher/onboard", authentication, createOnboardingLink);
 router.get("/teacher/payout-status", authentication, getPayoutStatus);
+router.post("/teacher/checkTeacherStripeStatus", authentication, checkTeacherStripeStatus);
+router.get("/user/payment/status/:sessionId", authentication, getPaymentStatus);
+router.get('/teacher/balance', authentication, getTeacherBalance);
+router.get('/teacher/transfers/status', authentication, getTransferStatus);
+router.get('/teacher/payouts', authentication, getTeacherPayouts);
+router.get('/teacher/invoice/:transferId', authentication, getTeacherInvoice);
+
+
 
 router.post("/user/bundle/rate", authentication, rateBundle);
 router.get("/user/bundle/rating/:bundleId", getBundleRatings);
