@@ -499,10 +499,18 @@ const getComicReader = async (req, res) => {
         const facts = await DidYouKnow.find({ comicId });
 
         // 🧠 Quiz
-        const quiz = await Quiz.find({ comicId });
+        const quiz = await Quiz.find({ comicId })
+            .populate({
+                path: "questions",
+                select: "question options correctAnswer explanation difficulty"
+            });
 
         // 🔥 Hardcore Quiz
-        const hardcoreQuiz = await HardcoreQuiz.find({ comicId });
+        const hardcoreQuiz = await HardcoreQuiz.find({ comicId })
+            .populate({
+                path: "questions",
+                select: "question options correctAnswer explanation difficulty hint"
+            });
 
         return res.json({
             error: false,

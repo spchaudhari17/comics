@@ -228,6 +228,7 @@ router.get('/teacher/invoice/:transferId', authentication, getTeacherInvoice);
 
 router.post("/user/bundle/rate", authentication, rateBundle);
 router.get("/user/bundle/rating/:bundleId", getBundleRatings);
+router.get("/user/bundle/rating/:bundleId", getBundleRatings);
 
 
 

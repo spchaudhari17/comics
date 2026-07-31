@@ -10,6 +10,7 @@ const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
 const ComicView = require("../../models/ComicView");
 const HardcoreQuizUserAttempt = require("../../models/HardcoreQuizUserAttempt");
+const Purchase = require("../../models/Purchase");
 
 const createSubject = async (req, res) => {
   try {
@@ -198,154 +199,14 @@ const getAllSubjectsForWeb = async (req, res) => {
 };
 
 
-// old sahi hai 
-// const getAllSubjects = async (req, res) => {
-//   try {
-//     const { search, grade, userId, country } = req.query;
-
-//     const pipeline = [];
-
-//     // 🔍 Optional search filter
-//     if (search) {
-//       pipeline.push({
-//         $match: {
-//           name: { $regex: search, $options: "i" }
-//         }
-//       });
-//     }
-
-//     // 🧩 Link subjects → concepts → comics
-//     pipeline.push(
-//       {
-//         $lookup: {
-//           from: "concepts",
-//           localField: "_id",
-//           foreignField: "subjectId",
-//           as: "concepts"
-//         }
-//       },
-//       {
-//         $addFields: {
-//           conceptIds: { $map: { input: "$concepts", as: "c", in: "$$c._id" } }
-//         }
-//       },
-//       {
-//         $lookup: {
-//           from: "comics",
-//           let: { cids: "$conceptIds" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $and: [
-//                     { $in: ["$conceptId", "$$cids"] },
-//                     { $eq: ["$status", "approved"] },
-//                     // ✅ Country filter updated to use "countries" array
-//                     ...(country
-//                       ? [
-//                         {
-//                           $or: [
-//                             { $in: [country, "$countries"] }, // if country exists in countries array
-//                             { $in: ["ALL", "$countries"] }    // OR globally available comics
-//                           ]
-//                         }
-//                       ]
-//                       : [])
-//                   ]
-//                 }
-//               }
-//             },
-//             { $group: { _id: "$conceptId" } }
-//           ],
-//           as: "approvedConcepts"
-//         }
-//       },
-//       {
-//         $addFields: {
-//           conceptCount: { $size: "$approvedConcepts" }
-//         }
-//       },
-//       {
-//         $project: {
-//           concepts: 0,
-//           conceptIds: 0,
-//           approvedConcepts: 0
-//         }
-//       }
-//     );
-
-//     // 🚀 Run aggregation
-//     let subjects = await Subject.aggregate(pipeline);
-
-//     // 🎓 Grade-based filtering
-//     if (grade) {
-//       const gradeNum = parseInt(grade, 10);
-//       subjects = subjects.filter((s) => {
-//         const match = s.name.match(/Grades?\s*(\d+)(?:–(\d+))?/);
-//         if (match) {
-//           const start = parseInt(match[1], 10);
-//           const end = match[2] ? parseInt(match[2], 10) : start;
-//           return gradeNum >= start && gradeNum <= end;
-//         }
-//         return false;
-//       });
-//     }
-
-//     // 🚫 Only subjects having at least 1 approved concept
-//     subjects = subjects.filter((s) => s.conceptCount >= 1);
-
-//     // 👤 Handle user subject preferences
-//     let prioritySubjects = [];
-//     let remainingSubjects = subjects;
-
-//     if (userId) {
-//       const pref = await UserSubjectPriority.findOne({ userId });
-//       if (pref?.selectedSubjects?.length > 0) {
-//         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
-//         prioritySubjects = selectedIds
-//           .map((id) => subjects.find((s) => s._id.toString() === id))
-//           .filter(Boolean);
-//         remainingSubjects = subjects.filter(
-//           (s) => !selectedIds.includes(s._id.toString())
-//         );
-//       }
-//     }
-
-//     // 🕓 Find latest added subject
-//     let latest = null;
-//     if (subjects.length > 0) {
-//       latest = subjects.reduce((a, b) =>
-//         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
-//       );
-//     }
-
-//     // 📚 Merge prioritized + latest + remaining subjects
-//     let finalSubjects = [...prioritySubjects];
-//     if (latest && !prioritySubjects.find((s) => s._id.toString() === latest._id.toString())) {
-//       finalSubjects.push(latest);
-//       remainingSubjects = remainingSubjects.filter(
-//         (s) => s._id.toString() !== latest._id.toString()
-//       );
-//     }
-
-//     finalSubjects = [...finalSubjects, ...remainingSubjects];
-
-//     res.json(finalSubjects);
-//   } catch (err) {
-//     console.error("❌ Error fetching subjects with counts:", err);
-//     res.status(500).json({ error: "Failed to fetch subjects" });
-//   }
-// };
-
-
-// new visibility and teacher id
+// sahi hai perfect working without bundle
 // const getAllSubjects = async (req, res) => {
 //   try {
 //     const { search, grade, userId, country, teacherId } = req.query;
 
 //     const pipeline = [];
 
-//     // 🔍 Optional search filter
+//     // 🔍 Search filter
 //     if (search) {
 //       pipeline.push({
 //         $match: {
@@ -354,6 +215,7 @@ const getAllSubjectsForWeb = async (req, res) => {
 //       });
 //     }
 
+//     // Subjects → Concepts
 //     pipeline.push(
 //       {
 //         $lookup: {
@@ -370,6 +232,8 @@ const getAllSubjectsForWeb = async (req, res) => {
 //           }
 //         }
 //       },
+
+//       // Concepts → Comics
 //       {
 //         $lookup: {
 //           from: "comics",
@@ -381,9 +245,9 @@ const getAllSubjectsForWeb = async (req, res) => {
 //                   $and: [
 //                     { $in: ["$conceptId", "$$cids"] },
 
-//                     // ⭐ Teacher subjects
 //                     ...(teacherId
 //                       ? [
+//                         // Teacher comics only
 //                         {
 //                           $and: [
 //                             { $eq: ["$visibility", "teacher"] },
@@ -392,11 +256,11 @@ const getAllSubjectsForWeb = async (req, res) => {
 //                         }
 //                       ]
 //                       : [
-//                         // ⭐ Public subjects
+//                         // Public comics
 //                         {
 //                           $and: [
-//                             { $eq: ["$status", "approved"] },
-//                             { $eq: ["$visibility", "public"] }
+//                             { $eq: ["$visibility", "public"] },
+//                             { $eq: ["$status", "approved"] }
 //                           ]
 //                         }
 //                       ]),
@@ -420,6 +284,7 @@ const getAllSubjectsForWeb = async (req, res) => {
 //           as: "approvedConcepts"
 //         }
 //       },
+
 //       {
 //         $addFields: {
 //           conceptCount: { $size: "$approvedConcepts" }
@@ -436,7 +301,7 @@ const getAllSubjectsForWeb = async (req, res) => {
 
 //     let subjects = await Subject.aggregate(pipeline);
 
-//     // 🎓 Grade filtering
+//     // 🎓 Grade filter
 //     if (grade) {
 //       const gradeNum = parseInt(grade, 10);
 //       subjects = subjects.filter((s) => {
@@ -463,9 +328,7 @@ const getAllSubjectsForWeb = async (req, res) => {
 //         const selectedIds = pref.selectedSubjects.map((id) => id.toString());
 
 //         prioritySubjects = selectedIds
-//           .map((id) =>
-//             subjects.find((s) => s._id.toString() === id)
-//           )
+//           .map((id) => subjects.find((s) => s._id.toString() === id))
 //           .filter(Boolean);
 
 //         remainingSubjects = subjects.filter(
@@ -474,8 +337,8 @@ const getAllSubjectsForWeb = async (req, res) => {
 //       }
 //     }
 
+//     // Latest subject
 //     let latest = null;
-
 //     if (subjects.length > 0) {
 //       latest = subjects.reduce((a, b) =>
 //         new Date(a.createdAt) > new Date(b.createdAt) ? a : b
@@ -511,59 +374,153 @@ const getAllSubjects = async (req, res) => {
   try {
     const { search, grade, userId, country, teacherId } = req.query;
 
+    // ===========================
+    // Get Purchased Comic Ids
+    // ===========================
+    console.log("UserId:", userId);
+
+    let purchasedComicIds = [];
+
+    if (teacherId) {
+      const purchases = await Purchase.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(teacherId),
+            paymentStatus: "success",
+          },
+        },
+        {
+          $lookup: {
+            from: "comicbundles",
+            localField: "bundleId",
+            foreignField: "_id",
+            as: "bundle",
+          },
+        },
+        {
+          $unwind: "$bundle",
+        },
+        {
+          $project: {
+            comics: "$bundle.comics",
+          },
+        },
+      ]);
+
+      purchasedComicIds = purchases.flatMap((p) => p.comics || []);
+
+      console.log("Purchased Comic Ids", purchasedComicIds);
+
+      const purchasedComics = await Comic.find({
+        _id: { $in: purchasedComicIds }
+      });
+
+      console.log(
+        purchasedComics.map(c => ({
+          id: c._id,
+          user_id: c.user_id,
+          visibility: c.visibility,
+          conceptId: c.conceptId,
+          countries: c.countries
+        }))
+      );
+    }
+
+    // ===========================
+    // Subject Pipeline
+    // ===========================
+
     const pipeline = [];
 
-    // 🔍 Search filter
+    // Search
     if (search) {
       pipeline.push({
         $match: {
-          name: { $regex: search, $options: "i" }
-        }
+          name: {
+            $regex: search,
+            $options: "i",
+          },
+        },
       });
     }
 
-    // Subjects → Concepts
     pipeline.push(
       {
         $lookup: {
           from: "concepts",
           localField: "_id",
           foreignField: "subjectId",
-          as: "concepts"
-        }
+          as: "concepts",
+        },
       },
+
       {
         $addFields: {
           conceptIds: {
-            $map: { input: "$concepts", as: "c", in: "$$c._id" }
-          }
-        }
+            $map: {
+              input: "$concepts",
+              as: "c",
+              in: "$$c._id",
+            },
+          },
+        },
       },
 
-      // Concepts → Comics
+      // ===========================
+      // Comics Lookup
+      // ===========================
+
       {
         $lookup: {
           from: "comics",
-          let: { cids: "$conceptIds" },
+          let: {
+            cids: "$conceptIds",
+          },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $in: ["$conceptId", "$$cids"] },
+                    {
+                      $in: ["$conceptId", "$$cids"]
+                    },
 
                     ...(teacherId
                       ? [
-                        // Teacher comics only
                         {
-                          $and: [
-                            { $eq: ["$visibility", "teacher"] },
-                            { $eq: ["$user_id", { $toObjectId: teacherId }] }
+                          $or: [
+
+                            // Teacher ki apni comics
+                            {
+                              $and: [
+                                {
+                                  $eq: ["$visibility", "teacher"]
+                                },
+                                {
+                                  $eq: [
+                                    "$user_id",
+                                    new mongoose.Types.ObjectId(teacherId)
+                                  ]
+                                }
+                              ]
+                            },
+
+                            // Teacher ke purchased bundle comics
+                            ...(purchasedComicIds.length
+                              ? [
+                                {
+                                  $in: [
+                                    "$_id",
+                                    purchasedComicIds
+                                  ]
+                                }
+                              ]
+                              : [])
+
                           ]
                         }
                       ]
                       : [
-                        // Public comics
                         {
                           $and: [
                             { $eq: ["$visibility", "public"] },
@@ -586,69 +543,110 @@ const getAllSubjects = async (req, res) => {
                 }
               }
             },
-            { $group: { _id: "$conceptId" } }
+
+            {
+              $group: {
+                _id: "$conceptId",
+              },
+            },
           ],
-          as: "approvedConcepts"
-        }
+
+          as: "approvedConcepts",
+        },
       },
 
       {
         $addFields: {
-          conceptCount: { $size: "$approvedConcepts" }
-        }
+          conceptCount: {
+            $size: "$approvedConcepts",
+          },
+        },
       },
+
       {
         $project: {
           concepts: 0,
           conceptIds: 0,
-          approvedConcepts: 0
-        }
+          approvedConcepts: 0,
+        },
       }
     );
 
     let subjects = await Subject.aggregate(pipeline);
+    // ===========================
+    // Grade Filter
+    // ===========================
 
-    // 🎓 Grade filter
+
     if (grade) {
       const gradeNum = parseInt(grade, 10);
+
       subjects = subjects.filter((s) => {
         const match = s.name.match(/Grades?\s*(\d+)(?:–(\d+))?/);
+
         if (match) {
           const start = parseInt(match[1], 10);
           const end = match[2] ? parseInt(match[2], 10) : start;
+
           return gradeNum >= start && gradeNum <= end;
         }
+
         return false;
       });
     }
 
+    // ===========================
+    // Only Subjects Having Comics
+    // ===========================
+
     subjects = subjects.filter((s) => s.conceptCount >= 1);
 
-    // ⭐ Subject priority
+    // ===========================
+    // Subject Priority
+    // ===========================
+
     let prioritySubjects = [];
     let remainingSubjects = subjects;
 
     if (userId) {
-      const pref = await UserSubjectPriority.findOne({ userId });
+      const pref = await UserSubjectPriority.findOne({
+        userId,
+      });
 
       if (pref?.selectedSubjects?.length > 0) {
-        const selectedIds = pref.selectedSubjects.map((id) => id.toString());
+        const selectedIds = pref.selectedSubjects.map((id) =>
+          id.toString()
+        );
 
         prioritySubjects = selectedIds
-          .map((id) => subjects.find((s) => s._id.toString() === id))
+          .map((id) =>
+            subjects.find(
+              (s) => s._id.toString() === id
+            )
+          )
           .filter(Boolean);
 
         remainingSubjects = subjects.filter(
-          (s) => !selectedIds.includes(s._id.toString())
+          (s) =>
+            !selectedIds.includes(
+              s._id.toString()
+            )
         );
       }
     }
 
-    // Latest subject
+    // ===========================
+    // Latest Subject
+    // ===========================
+
     let latest = null;
+
     if (subjects.length > 0) {
       latest = subjects.reduce((a, b) =>
-        new Date(a.createdAt) > new Date(b.createdAt) ? a : b
+        new Date(a.createdAt) >
+          new Date(b.createdAt)
+          ? a
+          : b
       );
     }
 
@@ -657,23 +655,40 @@ const getAllSubjects = async (req, res) => {
     if (
       latest &&
       !prioritySubjects.find(
-        (s) => s._id.toString() === latest._id.toString()
+        (s) =>
+          s._id.toString() ===
+          latest._id.toString()
       )
     ) {
       finalSubjects.push(latest);
 
-      remainingSubjects = remainingSubjects.filter(
-        (s) => s._id.toString() !== latest._id.toString()
-      );
+      remainingSubjects =
+        remainingSubjects.filter(
+          (s) =>
+            s._id.toString() !==
+            latest._id.toString()
+        );
     }
 
-    finalSubjects = [...finalSubjects, ...remainingSubjects];
+    finalSubjects = [
+      ...finalSubjects,
+      ...remainingSubjects,
+    ];
 
-    res.json(finalSubjects);
+    // ===========================
+    // Response
+    // ===========================
 
+    return res.json(finalSubjects);
   } catch (err) {
-    console.error("❌ Error fetching subjects with counts:", err);
-    res.status(500).json({ error: "Failed to fetch subjects" });
+    console.error(
+      "❌ Error fetching subjects:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to fetch subjects",
+    });
   }
 };
 
