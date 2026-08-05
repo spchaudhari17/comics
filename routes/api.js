@@ -23,7 +23,7 @@ const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
 const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard } = require('../app/controller/api/ComicBundle');
-const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice } = require('../app/controller/api/cart');
+const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice, getStripeDashboardLink } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 
 
@@ -223,7 +223,7 @@ router.get('/teacher/balance', authentication, getTeacherBalance);
 router.get('/teacher/transfers/status', authentication, getTransferStatus);
 router.get('/teacher/payouts', authentication, getTeacherPayouts);
 router.get('/teacher/invoice/:transferId', authentication, getTeacherInvoice);
-
+router.post("/teacher/stripe-dashboard", authentication, getStripeDashboardLink);
 
 
 router.post("/user/bundle/rate", authentication, rateBundle);

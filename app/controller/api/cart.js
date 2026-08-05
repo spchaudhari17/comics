@@ -397,25 +397,127 @@ const createOnboardingLink = async (req, res) => {
 // };
 
 
-// controllers/stripeController.js
 
 // controllers/stripeController.js
+// old sahi hai magar chekcing nhi hai 
+// const createStripeAccount = async (req, res) => {
+//     try {
+//         const userId = req.user.login_data._id;
+//         const user = await User.findById(userId);
+
+//         // 🔥 Check if account already exists
+//         if (user.stripeAccountId) {
+//             try {
+//                 const account = await stripe.accounts.retrieve(user.stripeAccountId);
+
+//                 // 🔥 Account exists, generate onboarding link
+//                 const accountLink = await stripe.accountLinks.create({
+//                     account: account.id,
+//                     refresh_url: `${process.env.FRONTEND_URL}/reauth`,
+//                     return_url: `${process.env.FRONTEND_URL}/my-account`,
+//                     type: "account_onboarding"
+//                 });
+
+//                 return res.json({
+//                     error: false,
+//                     accountId: account.id,
+//                     onboardingUrl: accountLink.url,
+//                     message: "Account exists. Please complete onboarding."
+//                 });
+
+//             } catch (err) {
+//                 // 🔥 Account doesn't exist - create new
+//                 console.log("Invalid account, creating new...");
+//                 user.stripeAccountId = null;
+//                 await user.save();
+//             }
+//         }
+
+//         // 🔥 Create new Stripe account
+//         const account = await stripe.accounts.create({
+//             type: "express",
+//             country: "US",
+//             email: user.email,
+//             capabilities: {
+//                 transfers: { requested: true },
+//                 card_payments: { requested: true }
+//             }
+//         });
+
+//         // 🔥 Save to user
+//         user.stripeAccountId = account.id;
+//         await user.save();
+
+//         // 🔥 Generate onboarding link
+//         const accountLink = await stripe.accountLinks.create({
+//             account: account.id,
+//             refresh_url: `${process.env.FRONTEND_URL}/reauth`,
+//             return_url: `${process.env.FRONTEND_URL}/my-account`,
+//             type: "account_onboarding"
+//         });
+
+//         return res.json({
+//             error: false,
+//             accountId: account.id,
+//             onboardingUrl: accountLink.url,
+//             message: "Account created. Please complete onboarding."
+//         });
+
+//     } catch (err) {
+//         console.log("❌ STRIPE ERROR:", err);
+//         return res.status(500).json({
+//             error: true,
+//             message: err.message || "Stripe account creation failed"
+//         });
+//     }
+// };
+
 
 const createStripeAccount = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
         const user = await User.findById(userId);
 
-        // 🔥 Check if account already exists
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+        // 🔥 If account exists, check status
         if (user.stripeAccountId) {
             try {
                 const account = await stripe.accounts.retrieve(user.stripeAccountId);
+                console.log("📊 Existing account:", account.id);
 
-                // 🔥 Account exists, generate onboarding link
+                // Check if has bank
+                let hasBank = false;
+                try {
+                    const externalAccounts = await stripe.accounts.listExternalAccounts(
+                        user.stripeAccountId,
+                        { object: "bank_account", limit: 1 }
+                    );
+                    hasBank = externalAccounts.data.length > 0;
+                } catch (bankErr) {
+                    console.log("Bank fetch error:", bankErr.message);
+                }
+
+                // If fully set up
+                if (account.charges_enabled && account.payouts_enabled && hasBank) {
+                    user.payoutsEnabled = true;
+                    user.chargesEnabled = true;
+                    await user.save();
+
+                    return res.json({
+                        error: false,
+                        accountId: account.id,
+                        alreadySetUp: true,
+                        message: "✅ Account is already fully set up!",
+
+                    });
+                }
+
+                // Generate onboarding link
                 const accountLink = await stripe.accountLinks.create({
                     account: account.id,
-                    refresh_url: `${process.env.FRONTEND_URL}/reauth`,
-                    return_url: `${process.env.FRONTEND_URL}/my-account`,
+                    refresh_url: `${frontendUrl}/reauth`,
+                    return_url: `${frontendUrl}/my-account`,
                     type: "account_onboarding"
                 });
 
@@ -423,21 +525,22 @@ const createStripeAccount = async (req, res) => {
                     error: false,
                     accountId: account.id,
                     onboardingUrl: accountLink.url,
-                    message: "Account exists. Please complete onboarding."
+                    message: hasBank ? "Complete verification" : "Add bank account"
                 });
 
             } catch (err) {
-                // 🔥 Account doesn't exist - create new
-                console.log("Invalid account, creating new...");
+                console.log("❌ Invalid account, creating new...");
                 user.stripeAccountId = null;
                 await user.save();
             }
         }
 
-        // 🔥 Create new Stripe account
+        // 🔥 Create new Stripe account (Simple version - works!)
+        console.log("🆕 Creating new Stripe account for:", user.email);
+
         const account = await stripe.accounts.create({
             type: "express",
-            country: "US",
+            country: user.countryCode || "US",
             email: user.email,
             capabilities: {
                 transfers: { requested: true },
@@ -445,15 +548,17 @@ const createStripeAccount = async (req, res) => {
             }
         });
 
-        // 🔥 Save to user
+        console.log("✅ Account created:", account.id);
+
+        // Save to user
         user.stripeAccountId = account.id;
         await user.save();
 
-        // 🔥 Generate onboarding link
+        // Generate onboarding link
         const accountLink = await stripe.accountLinks.create({
             account: account.id,
-            refresh_url: `${process.env.FRONTEND_URL}/reauth`,
-            return_url: `${process.env.FRONTEND_URL}/my-account`,
+            refresh_url: `${frontendUrl}/reauth`,
+            return_url: `${frontendUrl}/my-account`,
             type: "account_onboarding"
         });
 
@@ -472,6 +577,23 @@ const createStripeAccount = async (req, res) => {
         });
     }
 };
+// 🔥 Helper function to get update link
+const getAccountUpdateLink = async (accountId) => {
+    try {
+        const accountLink = await stripe.accountLinks.create({
+            account: accountId,
+            refresh_url: `${process.env.FRONTEND_URL}/reauth`,
+            return_url: `${process.env.FRONTEND_URL}/my-account`,
+            type: "account_onboarding",
+        });
+        return accountLink.url;
+    } catch (err) {
+        console.log("Update link error:", err.message);
+        return null;
+    }
+};
+
+
 
 const checkTeacherStripeStatus = async (req, res) => {
     try {
@@ -989,10 +1111,59 @@ const getTeacherInvoice = async (req, res) => {
 };
 
 
+const getStripeDashboardLink = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        const user = await User.findById(userId);
+
+        if (!user.stripeAccountId) {
+            return res.status(400).json({
+                error: true,
+                message: "Stripe account not found"
+            });
+        }
+
+        const account = await stripe.accounts.retrieve(user.stripeAccountId);
+
+        if (!account.details_submitted) {
+            const onboardingLink = await stripe.accountLinks.create({
+                account: account.id,
+                refresh_url: `${process.env.FRONTEND_URL}/reauth`,
+                return_url: `${process.env.FRONTEND_URL}/my-account`,
+                type: "account_onboarding"
+            });
+
+            return res.json({
+                error: false,
+                url: onboardingLink.url,
+                type: "onboarding"
+            });
+        }
+
+        const loginLink = await stripe.accounts.createLoginLink(
+            user.stripeAccountId
+        );
+
+        return res.json({
+            error: false,
+            url: loginLink.url,
+            type: "dashboard"
+        });
+
+    } catch (err) {
+        console.log(err);
+
+        return res.status(500).json({
+            error: true,
+            message: err.message
+        });
+    }
+};
 
 
 module.exports = {
     addToCart, removeFromCart, getCart, createCheckoutSessionforCart,
     createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus,
-    getTransferStatus, getTeacherBalance, getTeacherPayouts, getTeacherInvoice
+    getTransferStatus, getTeacherBalance, getTeacherPayouts, getTeacherInvoice, getStripeDashboardLink
 }
