@@ -7,7 +7,7 @@ const Purchase = require("../../models/Purchase");
 const Cart = require("../../models/Cart");
 
 // 🔥 IMPORTANT: Raw body middleware use karo
-router.post("/stripe-webhook",
+router.post("/stripe-webhook-for-bundle",
     express.raw({ type: "application/json" }),
     async (req, res) => {
         console.log("✅ Webhook triggered");
