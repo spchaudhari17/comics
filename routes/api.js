@@ -22,7 +22,7 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
-const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard } = require('../app/controller/api/ComicBundle');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard, getMarketplaceStatus } = require('../app/controller/api/ComicBundle');
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice, getStripeDashboardLink } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 
@@ -202,9 +202,9 @@ router.post("/user/publishBundle", authentication, publishBundle);
 router.get("/user/getTeacherBundles", authentication, getTeacherBundles);
 router.get("/user/mySales", authentication, getMySales);
 router.get("/user/getMarketplace", getMarketplace);
+router.post("/user/marketplace-status", getMarketplaceStatus);
 router.get("/user/getMyPurchases", authentication, getMyPurchases);
 router.get("/user/getTeacherSalesDashboard", authentication, getTeacherSalesDashboard);
-
 
 
 router.post("/user/addToCart", authentication, addToCart);

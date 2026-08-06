@@ -7,6 +7,8 @@ const DidYouKnow = require("../../models/DidYouKnow");
 const Quiz = require("../../models/Quiz");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const BundleRating = require("../../models/BundleRating");
+const User = require("../../models/User");
+const ComicSeries = require("../../models/ComicSeries");
 
 const createBundle = async (req, res) => {
     try {
@@ -59,13 +61,85 @@ const createBundle = async (req, res) => {
     }
 };
 
+// const getBundleDetails = async (req, res) => {
+//     try {
+//         const { bundleId } = req.params;
+
+//         const bundle = await ComicBundle.findById(bundleId)
+//             .populate("teacherId", "firstname lastname")
+//             .populate("comics");
+
+//         if (!bundle) {
+//             return res.status(404).json({
+//                 error: true,
+//                 message: "Bundle not found"
+//             });
+//         }
+
+//         // 🔥 attach thumbnail + extra info
+//         const comicsWithDetails = await Promise.all(
+//             bundle.comics.map(async (comic) => {
+
+//                 const page = await ComicPage.findOne({ comicId: comic._id });
+
+//                 return {
+//                     ...comic.toObject(),
+//                     thumbnail: page?.imageUrl || null
+//                 };
+//             })
+//         );
+
+//         return res.json({
+//             error: false,
+//             data: {
+//                 ...bundle.toObject(),
+//                 comics: comicsWithDetails
+//             }
+//         });
+
+//     } catch (error) {
+//         console.log(error);
+//         return res.status(500).json({
+//             error: true,
+//             message: "Server error"
+//         });
+//     }
+// };
+
 const getBundleDetails = async (req, res) => {
     try {
         const { bundleId } = req.params;
 
         const bundle = await ComicBundle.findById(bundleId)
-            .populate("teacherId", "firstname lastname")
-            .populate("comics");
+            .populate({
+                path: "teacherId",
+                select: "firstname lastname email"
+            })
+            .populate({
+                path: "comics",
+                populate: [
+                    {
+                        path: "subjectId",
+                        select: "name"
+                    },
+                    {
+                        path: "conceptId",
+                        select: "name"
+                    },
+                    {
+                        path: "seriesId",
+                        select: "title concept grade country subjectId conceptId"
+                    },
+                    {
+                        path: "themeId",
+                        select: "name"
+                    },
+                    {
+                        path: "styleId",
+                        select: "name"
+                    }
+                ]
+            });
 
         if (!bundle) {
             return res.status(404).json({
@@ -74,25 +148,47 @@ const getBundleDetails = async (req, res) => {
             });
         }
 
-        // 🔥 attach thumbnail + extra info
-        const comicsWithDetails = await Promise.all(
+        // 🔥 attach thumbnail
+        const comicsWithThumb = await Promise.all(
             bundle.comics.map(async (comic) => {
-
                 const page = await ComicPage.findOne({ comicId: comic._id });
+
+                let seriesDetails = null;
+                if (comic.seriesId) {
+                    const series = await ComicSeries.findById(comic.seriesId)
+                        .populate("subjectId", "name")
+                        .populate("conceptId", "name");
+                    seriesDetails = series;
+                }
 
                 return {
                     ...comic.toObject(),
-                    thumbnail: page?.imageUrl || null
+                    thumbnail: page?.imageUrl || null,
+                    series: seriesDetails ? {
+                        _id: seriesDetails._id,
+                        title: seriesDetails.title,
+                        concept: seriesDetails.concept,
+                        conceptName: seriesDetails.conceptId?.name || null,
+                        grade: seriesDetails.grade,
+                        country: seriesDetails.country,
+                        countries: seriesDetails.countries,
+                        subjectName: seriesDetails.subjectId?.name || null,
+                        partNumber: comic.partNumber
+                    } : null,
+                    subjectName: comic.subjectId?.name || comic.subject || "N/A",
+                    conceptName: comic.conceptId?.name || comic.concept || "N/A"
                 };
             })
         );
 
+        const response = {
+            ...bundle.toObject(),
+            comics: comicsWithThumb
+        };
+
         return res.json({
             error: false,
-            data: {
-                ...bundle.toObject(),
-                comics: comicsWithDetails
-            }
+            data: response
         });
 
     } catch (error) {
@@ -231,11 +327,11 @@ const getTeacherBundles = async (req, res) => {
 const getMarketplace = async (req, res) => {
     try {
         const bundles = await ComicBundle.find({ status: "published" })
-            .populate("comics") // ✅ FIX
+            .populate("comics")
             .populate("teacherId", "firstname lastname")
             .populate({
                 path: "comics",
-                select: "title subject concept subjectId conceptId",
+                select: "title subject concept subjectId conceptId grade country",
                 populate: [
                     {
                         path: "subjectId",
@@ -284,6 +380,57 @@ const getMarketplace = async (req, res) => {
         });
     }
 };
+
+
+
+
+const getMarketplaceStatus = async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({
+                error: true,
+                message: "User ID is required"
+            });
+        }
+
+        // User exists?
+        const user = await User.findById(userId).select("_id");
+
+        if (!user) {
+            return res.status(404).json({
+                error: true,
+                message: "User not found"
+            });
+        }
+
+        // Purchased Bundles
+        const purchasedBundleIds = await Purchase.find({ userId })
+            .distinct("bundleId");
+
+        // Own Bundles
+        const ownBundleIds = await ComicBundle.find({
+            teacherId: userId
+        }).distinct("_id");
+
+        return res.json({
+            error: false,
+            purchasedBundleIds,
+            ownBundleIds
+        });
+
+    } catch (err) {
+        console.log(err);
+
+        return res.status(500).json({
+            error: true,
+            message: "Server Error"
+        });
+    }
+};
+
+
 
 // const purchaseBundle = async (req, res) => {
 //     try {
@@ -386,19 +533,20 @@ const getTransactions = async (req, res) => {
 
 
 
+
 const getPurchasedBundleDetails = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
         const { bundleId } = req.params;
 
-        // 🔒 check purchase
-        const isPurchased = await Purchase.findOne({
+        // 🔒 check purchase and get purchase details
+        const purchase = await Purchase.findOne({
             userId,
             bundleId,
             paymentStatus: "success"
         });
 
-        if (!isPurchased) {
+        if (!purchase) {
             return res.status(403).json({
                 error: true,
                 message: "Access denied. Please purchase this bundle."
@@ -409,10 +557,32 @@ const getPurchasedBundleDetails = async (req, res) => {
         const bundle = await ComicBundle.findById(bundleId)
             .populate({
                 path: "teacherId",
-                select: "firstname lastname"
+                select: "firstname lastname email"
             })
             .populate({
-                path: "comics"
+                path: "comics",
+                populate: [
+                    {
+                        path: "subjectId",
+                        select: "name"
+                    },
+                    {
+                        path: "conceptId",
+                        select: "name"
+                    },
+                    {
+                        path: "seriesId",
+                        select: "title concept grade country subjectId conceptId"
+                    },
+                    {
+                        path: "themeId",
+                        select: "name"
+                    },
+                    {
+                        path: "styleId",
+                        select: "name"
+                    }
+                ]
             });
 
         if (!bundle) {
@@ -422,23 +592,47 @@ const getPurchasedBundleDetails = async (req, res) => {
             });
         }
 
-        // 🔥 attach pages + thumbnail
+        // 🔥 attach pages + thumbnail + enriched data
         const comicsWithDetails = await Promise.all(
             bundle.comics.map(async (comic) => {
-
                 const pages = await ComicPage.find({ comicId: comic._id });
+
+                let seriesDetails = null;
+                if (comic.seriesId) {
+                    const series = await ComicSeries.findById(comic.seriesId)
+                        .populate("subjectId", "name")
+                        .populate("conceptId", "name");
+                    seriesDetails = series;
+                }
 
                 return {
                     ...comic.toObject(),
-                    pages, // 🔥 full pages
-                    thumbnail: pages?.[0]?.imageUrl || null
+                    pages,
+                    thumbnail: pages?.[0]?.imageUrl || null,
+                    series: seriesDetails ? {
+                        _id: seriesDetails._id,
+                        title: seriesDetails.title,
+                        concept: seriesDetails.concept,
+                        conceptName: seriesDetails.conceptId?.name || null,
+                        grade: seriesDetails.grade,
+                        country: seriesDetails.country,
+                        countries: seriesDetails.countries,
+                        subjectName: seriesDetails.subjectId?.name || null,
+                        partNumber: comic.partNumber
+                    } : null,
+                    subjectName: comic.subjectId?.name || comic.subject || "N/A",
+                    conceptName: comic.conceptId?.name || comic.concept || "N/A"
                 };
             })
         );
 
         const response = {
             ...bundle.toObject(),
-            comics: comicsWithDetails
+            comics: comicsWithDetails,
+            // ✅ Add purchase details
+            purchaseDate: purchase.createdAt,
+            purchaseId: purchase._id,
+            transactionId: purchase.transactionId || null
         };
 
         return res.json({
@@ -667,5 +861,6 @@ const getTeacherSalesDashboard = async (req, res) => {
 
 module.exports = {
     createBundle, getBundleDetails, publishBundle, getMarketplace, getTeacherBundles, getTransactions, getMySales,
-    getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard
+    getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard,
+    getMarketplaceStatus
 }
