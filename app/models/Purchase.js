@@ -39,6 +39,11 @@ const purchaseSchema = new Schema({
         default: "pending"
     },
 
+    receiptUrl: {
+        type: String,
+        default: null
+    },
+
     createdAt: { type: Date, default: Date.now }
 });
 

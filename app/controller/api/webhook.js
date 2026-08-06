@@ -54,8 +54,20 @@ async function handleSuccessfulPayment(session) {
     const userId = session.metadata.userId;
     const cartItems = JSON.parse(session.metadata.cartItems);
 
-    const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
-    const chargeId = paymentIntent.latest_charge;
+    // const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+    // const chargeId = paymentIntent.latest_charge;
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+        session.payment_intent,
+        {
+            expand: ["latest_charge"]
+        }
+    );
+
+    const charge = paymentIntent.latest_charge;
+
+    const chargeId = charge.id;
+    const receiptUrl = charge.receipt_url;
 
     for (let item of cartItems) {
         console.log(`📦 Processing: ${item.title} (${item.bundleId})`);
@@ -74,6 +86,7 @@ async function handleSuccessfulPayment(session) {
             platformAmount,
             paymentIntentId: session.payment_intent,
             chargeId,
+            receiptUrl,
             paymentStatus: "success",
             paymentMethod: "card",
             buyerDetails: {
