@@ -345,58 +345,6 @@ const createOnboardingLink = async (req, res) => {
 
 
 
-// const createStripeAccount = async (req, res) => {
-//     try {
-//         const userId = req.user.login_data._id;
-
-//         // 🔥 Check if already has account
-//         const user = await User.findById(userId);
-//         if (user.stripeAccountId) {
-//             return res.json({
-//                 error: false,
-//                 accountId: user.stripeAccountId,
-//                 message: "Account already exists"
-//             });
-//         }
-
-//         // 🔥 Create Express Account
-//         const account = await stripe.accounts.create({
-//             type: "express",
-//             country: "US", // Change as per your country
-//             email: user.email,
-//             capabilities: {
-//                 transfers: { requested: true }
-//             }
-//         });
-
-//         // 🔥 Save to user
-//         user.stripeAccountId = account.id;
-//         await user.save();
-
-//         // 🔥 Generate Onboarding Link
-//         const accountLink = await stripe.accountLinks.create({
-//             account: account.id,
-//             refresh_url: `${process.env.FRONTEND_URL}/reauth`,
-//             return_url: `${process.env.FRONTEND_URL}/my-account`,
-//             type: "account_onboarding"
-//         });
-
-//         return res.json({
-//             error: false,
-//             accountId: account.id,
-//             onboardingUrl: accountLink.url
-//         });
-
-//     } catch (err) {
-//         console.log("❌ STRIPE ERROR:", err);
-//         return res.status(500).json({
-//             error: true,
-//             message: err.message || "Stripe account creation failed"
-//         });
-//     }
-// };
-
-
 
 // controllers/stripeController.js
 // old sahi hai magar chekcing nhi hai 
@@ -540,7 +488,7 @@ const createStripeAccount = async (req, res) => {
 
         const account = await stripe.accounts.create({
             type: "express",
-            country: user.countryCode || "US",
+            country: user.country || "US",
             email: user.email,
             capabilities: {
                 transfers: { requested: true },
@@ -577,6 +525,7 @@ const createStripeAccount = async (req, res) => {
         });
     }
 };
+
 // 🔥 Helper function to get update link
 const getAccountUpdateLink = async (accountId) => {
     try {

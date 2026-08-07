@@ -61,6 +61,48 @@ const createBundle = async (req, res) => {
     }
 };
 
+
+const deleteBundle = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+        const { bundleId } = req.params;
+
+        // Find bundle
+        const bundle = await ComicBundle.findById(bundleId);
+
+        if (!bundle) {
+            return res.status(404).json({
+                error: true,
+                message: "Bundle not found"
+            });
+        }
+
+        // Check ownership
+        if (bundle.teacherId.toString() !== userId.toString()) {
+            return res.status(403).json({
+                error: true,
+                message: "You are not authorized to delete this bundle"
+            });
+        }
+
+        // Delete bundle
+        await ComicBundle.findByIdAndDelete(bundleId);
+
+        return res.status(200).json({
+            error: false,
+            message: "Bundle deleted successfully"
+        });
+
+    } catch (error) {
+        console.log(error);
+
+        return res.status(500).json({
+            error: true,
+            message: "Something went wrong"
+        });
+    }
+};
+
 // const getBundleDetails = async (req, res) => {
 //     try {
 //         const { bundleId } = req.params;
@@ -862,5 +904,5 @@ const getTeacherSalesDashboard = async (req, res) => {
 module.exports = {
     createBundle, getBundleDetails, publishBundle, getMarketplace, getTeacherBundles, getTransactions, getMySales,
     getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard,
-    getMarketplaceStatus
+    getMarketplaceStatus, deleteBundle
 }
