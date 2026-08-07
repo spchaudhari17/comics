@@ -1,5 +1,3 @@
-// app/controller/api/webhook.js
-
 const express = require("express");
 const router = express.Router();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -13,7 +11,7 @@ router.post("/stripe-webhook-for-bundle",
         console.log("✅ Webhook triggered");
 
         const sig = req.headers["stripe-signature"];
-        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        const webhookSecret = process.env.STRIPE_BUNDLE_WEBHOOK_SECRET;
 
         // Debug logs
         console.log("🔑 Signature:", sig ? "Present" : "Missing");
