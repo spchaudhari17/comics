@@ -163,7 +163,7 @@ function safeJsonParse(str) {
 // };
 
 
-
+// Generate 2–4 FAQs with short answers based on the comic below.
 const generateFAQs = async (req, res) => {
   const { comicId } = req.body;
 
@@ -192,7 +192,7 @@ const generateFAQs = async (req, res) => {
     const faqPrompt = `
 You are an educational expert.
 
-Generate 2–4 FAQs with short answers based on the comic below.
+Generate EXACTLY 1 FAQ with a short answer based on the comic below.
 
 Context:
 - Subject: ${comic.subject || comic.subjectId?.name || "General Knowledge"}

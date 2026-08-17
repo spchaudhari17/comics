@@ -158,7 +158,7 @@ function safeJsonParse(str) {
 // };
 
 
-
+// Generate 1–2 fun and educational "Did You Know?" facts.
 const generateDidYouKnow = async (req, res) => {
   const { comicId } = req.body;
 
@@ -189,7 +189,7 @@ const generateDidYouKnow = async (req, res) => {
     const factPrompt = `
 You are an expert educational content creator.
 
-Generate 1–2 fun and educational "Did You Know?" facts.
+Generate EXACTLY 1 fun and educational "Did You Know?" fact.
 
 Rules:
 - ❌ Do NOT use dialogues
