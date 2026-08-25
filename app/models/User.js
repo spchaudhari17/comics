@@ -75,6 +75,26 @@ var UserSchema = new mongoose.Schema({
     bankName: { type: String, default: null },
     accountVerified: { type: Boolean, default: false },
 
+    // FoundingTeacher
+    isFoundingTeacher: {
+        type: Boolean,
+        default: false,
+    },
+
+    foundingTeacherPurchasedAt: {
+        type: Date,
+        default: null,
+    },
+
+    foundingTeacherPaymentIntentId: {
+        type: String,
+        default: null,
+    },
+
+    foundingTeacherSessionId: {
+        type: String,
+        default: null,
+    },
 
 }, { timestamps: true })
 

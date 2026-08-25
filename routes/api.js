@@ -25,6 +25,7 @@ const { stripeWebhook } = require('../app/controller/api/stripeWebhookController
 const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard, getMarketplaceStatus, deleteBundle } = require('../app/controller/api/ComicBundle');
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice, getStripeDashboardLink } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
+const { createFoundingTeacherCheckout, getFoundingTeacher, getFoundingTeacherPayment } = require('../app/controller/api/foundingTeacherController');
 
 
 
@@ -232,8 +233,12 @@ router.get("/user/bundle/rating/:bundleId", getBundleRatings);
 router.get("/user/bundle/rating/:bundleId", getBundleRatings);
 
 
+//******************************** coupon routes routes started from here ***************************** */
 
+router.post("/teacher/create-founding-teacher-checkout", authentication, createFoundingTeacherCheckout);
 
+router.get("/teacher/get-founding-teacher", authentication, getFoundingTeacher);
+router.get("/teacher/get-founding-teacher-payment-details", authentication, getFoundingTeacherPayment);
 
 
 

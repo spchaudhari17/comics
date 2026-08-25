@@ -19,6 +19,8 @@ module.exports = {
   // },
 
   bundle: {
+
+    // Standard
     price_1Tg6gMKGzJOFnjXy2PgwwAMo: {    // 16.49
       comicsPerWeek: 5,
       studentsLimit: 20,
@@ -31,6 +33,30 @@ module.exports = {
       comicsPerWeek: 20,
       studentsLimit: 100,
     },
+
+    // Starter - $16.49/month
+    price_1U7yXcKGzJOFnjXyUqNXGdtY: {
+      comicsPerWeek: 5,
+      studentsLimit: 20,
+      spotlightBundles: 2,
+    },
+
+    // Growth - $25.99/month
+    price_1U7yYBKGzJOFnjXyo06tdvCt: {
+      comicsPerWeek: 10,
+      studentsLimit: 50,
+      spotlightBundles: 4,
+    },
+
+    // Pro - $48.75/month
+    price_1U7yYdKGzJOFnjXye89jPIzA: {
+      comicsPerWeek: 20,
+      studentsLimit: 100,
+      spotlightBundles: 16,
+    },
+
+
+
   },
 
 
