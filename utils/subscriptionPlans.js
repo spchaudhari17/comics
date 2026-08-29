@@ -41,7 +41,7 @@ module.exports = {
       spotlightBundles: 2,
     },
 
-    // Growth - $25.99/month
+    // Growth - $25.99/month 
     price_1U7yYBKGzJOFnjXyo06tdvCt: {
       comicsPerWeek: 10,
       studentsLimit: 50,
