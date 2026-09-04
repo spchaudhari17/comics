@@ -1,101 +1,47 @@
 // config/subscriptionPlans.js
+
 module.exports = {
-
-  // test
-
-  // bundle: {
-  //   price_1T6wmqKGzJOFnjXyBIZOJshc: {    // 24.99
-  //     comicsPerWeek: 5,
-  //     studentsLimit: 20,
-  //   },
-  //   price_1T6wnaKGzJOFnjXyp4bSkk8m: {    // 39.99
-  //     comicsPerWeek: 10,
-  //     studentsLimit: 50,
-  //   },
-  //   price_1T6wnnKGzJOFnjXytLtCaPg3: {  // 59.99
-  //     comicsPerWeek: 20,
-  //     studentsLimit: 100,
-  //   },
-  // },
 
   bundle: {
 
     // Standard
-    price_1Tg6gMKGzJOFnjXy2PgwwAMo: {    // 16.49
+    price_1Tg6gMKGzJOFnjXy2PgwwAMo: {    // 24.99
       comicsPerWeek: 5,
       studentsLimit: 20,
     },
-    price_1Tg6gaKGzJOFnjXyHeKvQNek: {    // 25.99
+
+    price_1Tg6gaKGzJOFnjXyHeKvQNek: {    // 39.99
       comicsPerWeek: 10,
       studentsLimit: 50,
     },
-    price_1Tg6gmKGzJOFnjXyPWJj1paZ: {  // 48.75
+
+    price_1Tg6gmKGzJOFnjXyPWJj1paZ: {  // 74.99
       comicsPerWeek: 20,
       studentsLimit: 100,
     },
 
     // Starter - $16.49/month
-    price_1U7yXcKGzJOFnjXyUqNXGdtY: {
+    price_1U7yXcKGzJOFnjXyUqNXGdtY: {  // 16.49
       comicsPerWeek: 5,
       studentsLimit: 20,
-      spotlightBundles: 2,
     },
 
     // Growth - $25.99/month 
-    price_1U7yYBKGzJOFnjXyo06tdvCt: {
+    price_1U7yYBKGzJOFnjXyo06tdvCt: { // 25.99
       comicsPerWeek: 10,
       studentsLimit: 50,
-      spotlightBundles: 4,
     },
 
     // Pro - $48.75/month
-    price_1U7yYdKGzJOFnjXye89jPIzA: {
+    price_1U7yYdKGzJOFnjXye89jPIzA: { // 48.75
       comicsPerWeek: 20,
       studentsLimit: 100,
-      spotlightBundles: 16,
     },
 
 
 
   },
 
-
-  // bundle: {
-  //   price_1T7dNbKGzJOFnjXyfFxrlv7m: {    // 4.99
-  //     comicsPerWeek: 5,
-  //     studentsLimit: 20,
-  //   },
-  //   price_1T7dO3KGzJOFnjXy2lPD3Ldz: {    // 7.99
-  //     comicsPerWeek: 10,
-  //     studentsLimit: 50,
-  //   },
-  //   price_1T7dODKGzJOFnjXywACAu03j: {  // 11.99
-  //     comicsPerWeek: 20,
-  //     studentsLimit: 100,
-  //   },
-  // },
-
-
-
-
-  // test
-  // dashboard: {
-  //   price_1T6wozKGzJOFnjXyD61eBJYK: {    // 4.99
-  //     comicsPerWeek: 0,
-  //     studentsLimit: 20,
-  //   },
-  //   price_1T6wpFKGzJOFnjXy1u6aLEx0: {   // 9.99
-  //     comicsPerWeek: 0,
-  //     studentsLimit: 50,
-  //   },
-  //   price_1T6wpSKGzJOFnjXyPps9FMUG: {   // 19.99
-  //     comicsPerWeek: 0,
-  //     studentsLimit: 100,
-  //   },
-  // },
-
-
-  // live 
   dashboard: {
     price_1T7dOiKGzJOFnjXyWL0P3An7: {    // 4.99
       comicsPerWeek: 0,
