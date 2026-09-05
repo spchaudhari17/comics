@@ -5,17 +5,17 @@ module.exports = {
   bundle: {
 
     // Standard
-    price_1Tg6gMKGzJOFnjXy2PgwwAMo: {    // 24.99
+    price_1T6wmqKGzJOFnjXyBIZOJshc: {    // 24.99
       comicsPerWeek: 5,
       studentsLimit: 20,
     },
 
-    price_1Tg6gaKGzJOFnjXyHeKvQNek: {    // 39.99
+    price_1T6wnaKGzJOFnjXyp4bSkk8m: {    // 39.99
       comicsPerWeek: 10,
       studentsLimit: 50,
     },
 
-    price_1Tg6gmKGzJOFnjXyPWJj1paZ: {  // 74.99
+    price_1UBx9sKGzJOFnjXyOLqBc8wB: {  // 74.99
       comicsPerWeek: 20,
       studentsLimit: 100,
     },

@@ -13,11 +13,20 @@ const safeDate = (unix) => {
 };
 
 const stripeWebhook = async (req, res) => {
+
+  console.log("======================================");
+  console.log("🔥 SUBSCRIPTION WEBHOOK HIT");
+
   const sig = req.headers["stripe-signature"];
+
+
+
   let event;
 
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    console.log("✅ SUBSCRIPTION WEBHOOK VERIFIED");
+    console.log("🔥 EVENT TYPE:", event.type);
   } catch (err) {
     console.error("❌ Signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -53,11 +62,26 @@ const stripeWebhook = async (req, res) => {
       const priceId = stripeSub.items.data[0]?.price?.id;
       if (!priceId) return res.json({ received: true });
 
-      const user = await User.findOne({
-        stripeCustomerId: stripeSub.customer,
-      });
+      // const user = await User.findOne({
+      //   stripeCustomerId: stripeSub.customer,
+      // });
 
-      if (!user) return res.json({ received: true });
+      const userId = stripeSub.metadata?.userId;
+
+      const user = userId
+        ? await User.findById(userId)
+        : await User.findOne({
+          stripeCustomerId: stripeSub.customer,
+        });
+
+      if (!user) {
+        console.log(
+          "❌ User not found for subscription:",
+          stripeSub.id
+        );
+
+        return res.json({ received: true });
+      }
 
       let planType = null;
       let planConfig = null;

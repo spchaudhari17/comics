@@ -74,16 +74,31 @@ const createCheckoutSession = async (req, res) => {
       client_reference_id: referral || undefined,
       payment_method_types: ["card"],
       allow_promotion_codes: true,
+
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
+
+      // Checkout Session metadata
       metadata: {
         userId: user._id.toString(),
         planType,
+        purchaseType: "subscription",
       },
+
+      // IMPORTANT:
+      // Copy metadata to the actual Stripe Subscription
+      subscription_data: {
+        metadata: {
+          userId: user._id.toString(),
+          planType,
+          purchaseType: "subscription",
+        },
+      },
+
       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
     });

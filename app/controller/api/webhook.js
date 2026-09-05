@@ -33,9 +33,21 @@ router.post("/stripe-webhook-for-bundle",
         if (event.type === "checkout.session.completed") {
             const session = event.data.object;
 
+            // Only handle Bundle/Cart checkout payments
+            if (
+                session.mode !== "payment" ||
+                !session.metadata?.cartItems
+            ) {
+                console.log(
+                    "⏭️ Ignoring checkout session - not a bundle/cart payment"
+                );
+
+                return res.json({ received: true });
+            }
+
             try {
                 await handleSuccessfulPayment(session);
-                console.log("✅ Payment processed successfully");
+                console.log("✅ Bundle payment processed successfully");
             } catch (error) {
                 console.log("❌ Payment handling error:", error);
             }
@@ -50,7 +62,18 @@ async function handleSuccessfulPayment(session) {
     console.log("💰 Payment successful:", session.id);
 
     const userId = session.metadata.userId;
-    const cartItems = JSON.parse(session.metadata.cartItems);
+    const cartItemsRaw = session.metadata?.cartItems;
+
+    if (!userId) {
+        throw new Error("userId missing in bundle checkout metadata");
+    }
+
+    if (!cartItemsRaw) {
+        throw new Error("cartItems missing in bundle checkout metadata");
+    }
+
+    const cartItems = JSON.parse(cartItemsRaw);
+
 
     // const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
     // const chargeId = paymentIntent.latest_charge;
