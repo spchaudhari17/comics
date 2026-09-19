@@ -106,7 +106,9 @@ const stripeWebhook = async (req, res) => {
           priceId,
           comicsPerWeek: planConfig.comicsPerWeek,
           studentsLimit: planConfig.studentsLimit,
-          status: "active",
+          status: stripeSub.status === "trialing"
+            ? "trialing"
+            : "active",
           startDate: safeDate(stripeSub.items.data[0]?.current_period_start),
           endDate: safeDate(stripeSub.items.data[0]?.current_period_end),
           pendingPlanType: null,
@@ -118,9 +120,14 @@ const stripeWebhook = async (req, res) => {
         { upsert: true }
       );
 
+      const historyStatus =
+        stripeSub.status === "trialing"
+          ? "trial_started"
+          : "created";
+
       const existingHistory = await SubscriptionHistory.findOne({
         stripeSubscriptionId: stripeSub.id,
-        status: "created",
+        status: historyStatus,
       });
 
       if (!existingHistory) {
@@ -136,7 +143,7 @@ const stripeWebhook = async (req, res) => {
           stripeInvoiceId: latestInvoice?.id || null,
           amount: latestInvoice ? latestInvoice.amount_paid / 100 : 0,
           currency: latestInvoice?.currency || "usd",
-          status: "created",
+          status: historyStatus,
           startDate: safeDate(stripeSub.items.data[0]?.current_period_start),
           endDate: safeDate(stripeSub.items.data[0]?.current_period_end),
         });
@@ -155,34 +162,72 @@ const stripeWebhook = async (req, res) => {
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object;
 
-      const sub = await Subscription.findOne({
-        stripeSubscriptionId: invoice.subscription,
-      });
+      console.log("======================================");
+      console.log("💰 INVOICE PAYMENT SUCCEEDED");
+      console.log("Invoice ID:", invoice.id);
+      console.log("Customer ID:", invoice.customer);
+      console.log("Amount Paid:", invoice.amount_paid / 100);
+      console.log("Currency:", invoice.currency);
+      console.log("Status:", invoice.status);
+      console.log("======================================");
 
-      if (!sub) return res.json({ received: true });
+      let stripeSubscriptionId = invoice.subscription;
 
-      sub.status = "active";
-      sub.startDate = safeDate(invoice.period_start) || sub.startDate;
-      sub.endDate = safeDate(invoice.period_end) || sub.endDate;
-      sub.comicsUsedThisWeek = 0;
+      // If subscription is not directly available on invoice,
+      // retrieve customer's active subscription
+      if (!stripeSubscriptionId && invoice.customer) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: invoice.customer,
+          status: "active",
+          limit: 10,
+        });
 
-      // 🔥 Activate Pending Plan
-      if (sub.pendingPriceId) {
-        sub.planType = sub.pendingPlanType;
-        sub.priceId = sub.pendingPriceId;
-        sub.comicsPerWeek = sub.pendingComicsPerWeek;
-        sub.studentsLimit = sub.pendingStudentsLimit;
+        const matchingSubscription = subscriptions.data.find(
+          (s) => s.items.data.some(
+            (item) =>
+              item.price.id === "price_1T6wmqKGzJOFnjXyBIZOJshc"
+          )
+        );
 
-        sub.pendingPlanType = null;
-        sub.pendingPriceId = null;
-        sub.pendingComicsPerWeek = null;
-        sub.pendingStudentsLimit = null;
-        sub.pendingApplyDate = null;
-
-        console.log("🚀 Scheduled plan activated on renewal");
+        stripeSubscriptionId = matchingSubscription?.id;
       }
 
+      console.log(
+        "🔎 Resolved Subscription ID:",
+        stripeSubscriptionId
+      );
+
+      if (!stripeSubscriptionId) {
+        console.log("❌ Could not resolve subscription ID");
+        return res.json({ received: true });
+      }
+
+      const sub = await Subscription.findOne({
+        stripeSubscriptionId: stripeSubscriptionId,
+      });
+
+      if (!sub) {
+        console.log(
+          "❌ Subscription not found in DB:",
+          stripeSubscriptionId
+        );
+
+        return res.json({ received: true });
+      }
+
+      sub.status = "active";
+
+      sub.startDate =
+        safeDate(invoice.period_start) || sub.startDate;
+
+      sub.endDate =
+        safeDate(invoice.period_end) || sub.endDate;
+
+      sub.comicsUsedThisWeek = 0;
+
       await sub.save();
+
+      console.log("✅ Subscription DB updated");
 
       const exists = await SubscriptionHistory.findOne({
         stripeInvoiceId: invoice.id,
@@ -193,7 +238,7 @@ const stripeWebhook = async (req, res) => {
           userId: sub.userId,
           planType: sub.planType,
           priceId: sub.priceId,
-          stripeSubscriptionId: invoice.subscription,
+          stripeSubscriptionId: stripeSubscriptionId,
           stripeInvoiceId: invoice.id,
           amount: invoice.amount_paid / 100,
           currency: invoice.currency,
@@ -201,6 +246,10 @@ const stripeWebhook = async (req, res) => {
           startDate: sub.startDate,
           endDate: sub.endDate,
         });
+
+        console.log("✅ SubscriptionHistory CREATED");
+      } else {
+        console.log("ℹ️ SubscriptionHistory already exists");
       }
 
       return res.json({ received: true });
@@ -237,6 +286,30 @@ const stripeWebhook = async (req, res) => {
     /* =========================================
        5️⃣ CANCEL AT PERIOD END
     ========================================== */
+    // if (event.type === "customer.subscription.updated") {
+    //   const stripeSub = event.data.object;
+
+    //   const sub = await Subscription.findOne({
+    //     stripeSubscriptionId: stripeSub.id,
+    //   });
+
+    //   if (!sub) return res.json({ received: true });
+
+    //   if (stripeSub.cancel_at_period_end) {
+    //     sub.status = "to_cancel";
+    //   } else if (stripeSub.status === "trialing") {
+    //     sub.status = "trialing";
+    //   } else if (stripeSub.status === "active") {
+    //     sub.status = "active";
+    //   }
+
+    //   sub.endDate = safeDate(stripeSub.current_period_end) || sub.endDate;
+
+    //   await sub.save();
+
+    //   return res.json({ received: true });
+    // }
+
     if (event.type === "customer.subscription.updated") {
       const stripeSub = event.data.object;
 
@@ -246,14 +319,33 @@ const stripeWebhook = async (req, res) => {
 
       if (!sub) return res.json({ received: true });
 
-      sub.status = stripeSub.cancel_at_period_end
-        ? "to_cancel"
-        : "active";
+      if (stripeSub.cancel_at_period_end) {
+        sub.status = "to_cancel";
+      } else if (stripeSub.status === "trialing") {
+        sub.status = "trialing";
+      } else if (stripeSub.status === "active") {
+        sub.status = "active";
+      }
+
+      // ✅ For flexible billing, use subscription item's period dates
+      const currentPeriodStart =
+        stripeSub.items?.data?.[0]?.current_period_start;
+
+      const currentPeriodEnd =
+        stripeSub.items?.data?.[0]?.current_period_end;
+
+      sub.startDate =
+        safeDate(currentPeriodStart) || sub.startDate;
 
       sub.endDate =
-        safeDate(stripeSub.current_period_end) || sub.endDate;
+        safeDate(currentPeriodEnd) || sub.endDate;
 
       await sub.save();
+
+      console.log("✅ Subscription updated");
+      console.log("Status:", sub.status);
+      console.log("Start Date:", sub.startDate);
+      console.log("End Date:", sub.endDate);
 
       return res.json({ received: true });
     }

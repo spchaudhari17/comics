@@ -5,10 +5,127 @@ const stripe = require("../../../utils/stripe");
 const SubscriptionHistory = require("../../models/SubscriptionHistory");
 const Comic = require("../../models/Comic");
 
+// perfect working no problem
+// const createCheckoutSession = async (req, res) => {
+//   try {
+//     const userId = req.user.login_data._id;
+//     const { priceId, planType, referral } = req.body;
+//     // 1️⃣ Validate input
+//     if (!priceId || !planType) {
+//       return res.status(400).json({
+//         message: "priceId and planType are required"
+//       });
+//     }
+
+//     // 2️⃣ Validate plan
+//     const planConfig =
+//       planType === "bundle"
+//         ? PLANS.bundle[priceId]
+//         : PLANS.dashboard[priceId];
+
+//     if (!planConfig) {
+//       return res.status(400).json({
+//         message: "Invalid plan selected"
+//       });
+//     }
+
+//     // 3️⃣ Get user
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({
+//         message: "User not found"
+//       });
+//     }
+
+//     // 🔥 4️⃣ IMPORTANT — Prevent multiple subscriptions
+//     const existing = await Subscription.findOne({
+//       userId,
+//       status: { $in: ["active", "to_cancel"] }
+//     });
+
+//     if (existing) {
+//       return res.status(400).json({
+//         message: "You already have a subscription. Use upgrade or downgrade option."
+//       });
+//     }
+
+//     // 5️⃣ Reuse Stripe customer if exists
+//     let stripeCustomerId = user.stripeCustomerId;
+
+//     if (!stripeCustomerId) {
+//       const customer = await stripe.customers.create({
+//         email: user.email,
+//         metadata: {
+//           userId: user._id.toString(),
+//         },
+//       });
+
+//       stripeCustomerId = customer.id;
+
+//       user.stripeCustomerId = stripeCustomerId;
+//       await user.save();
+//     }
+
+//     console.log("Rewardful Referral:", referral);
+
+//     // 6️⃣ Create checkout session
+//     const session = await stripe.checkout.sessions.create({
+//       mode: "subscription",
+//       customer: stripeCustomerId,
+//       client_reference_id: referral || undefined,
+//       payment_method_types: ["card"],
+//       allow_promotion_codes: true,
+
+//       line_items: [
+//         {
+//           price: priceId,
+//           quantity: 1,
+//         },
+//       ],
+
+//       // Checkout Session metadata
+//       metadata: {
+//         userId: user._id.toString(),
+//         planType,
+//         purchaseType: "subscription",
+//       },
+
+//       // IMPORTANT:
+//       // Copy metadata to the actual Stripe Subscription
+//       subscription_data: {
+//         metadata: {
+//           userId: user._id.toString(),
+//           planType,
+//           purchaseType: "subscription",
+//         },
+//       },
+
+//       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+//       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+//     });
+
+//     console.log("Stripe Session:", session.id);
+//     console.log("Client Reference:", session.client_reference_id);
+
+//     return res.status(200).json({
+//       url: session.url,
+//     });
+
+
+//   } catch (error) {
+//     console.error("Create checkout session error:", error);
+//     return res.status(500).json({
+//       message: "Unable to create checkout session",
+//     });
+//   }
+// };
+
+// checking free trial functionality
 const createCheckoutSession = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
     const { priceId, planType, referral } = req.body;
+
     // 1️⃣ Validate input
     if (!priceId || !planType) {
       return res.status(400).json({
@@ -30,21 +147,23 @@ const createCheckoutSession = async (req, res) => {
 
     // 3️⃣ Get user
     const user = await User.findById(userId);
+
     if (!user) {
       return res.status(404).json({
         message: "User not found"
       });
     }
 
-    // 🔥 4️⃣ IMPORTANT — Prevent multiple subscriptions
+    // 4️⃣ Prevent multiple subscriptions
     const existing = await Subscription.findOne({
       userId,
-      status: { $in: ["active", "to_cancel"] }
+      status: { $in: ["active", "trialing", "to_cancel"] }
     });
 
     if (existing) {
       return res.status(400).json({
-        message: "You already have a subscription. Use upgrade or downgrade option."
+        message:
+          "You already have a subscription. Use upgrade or downgrade option."
       });
     }
 
@@ -67,7 +186,23 @@ const createCheckoutSession = async (req, res) => {
 
     console.log("Rewardful Referral:", referral);
 
-    // 6️⃣ Create checkout session
+    // 6️⃣ Subscription data
+    const subscriptionData = {
+      metadata: {
+        userId: user._id.toString(),
+        planType,
+        purchaseType: "subscription",
+      },
+    };
+
+    // 🔥 Only plans with trialDays > 0 will get a trial
+    if (planConfig.trialDays > 0) {
+      subscriptionData.trial_period_days = planConfig.trialDays;
+    }
+
+    console.log("Subscription Data:", subscriptionData);
+
+    // 7️⃣ Create Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: stripeCustomerId,
@@ -89,18 +224,14 @@ const createCheckoutSession = async (req, res) => {
         purchaseType: "subscription",
       },
 
-      // IMPORTANT:
-      // Copy metadata to the actual Stripe Subscription
-      subscription_data: {
-        metadata: {
-          userId: user._id.toString(),
-          planType,
-          purchaseType: "subscription",
-        },
-      },
+      // Stripe Subscription data
+      subscription_data: subscriptionData,
 
-      success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+      success_url:
+        `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+
+      cancel_url:
+        `${process.env.FRONTEND_URL}/cancel`,
     });
 
     console.log("Stripe Session:", session.id);
@@ -110,15 +241,14 @@ const createCheckoutSession = async (req, res) => {
       url: session.url,
     });
 
-
   } catch (error) {
     console.error("Create checkout session error:", error);
+
     return res.status(500).json({
       message: "Unable to create checkout session",
     });
   }
 };
-
 
 
 const getActiveSubscription = async (req, res) => {
@@ -127,7 +257,7 @@ const getActiveSubscription = async (req, res) => {
 
     const subscription = await Subscription.findOne({
       userId,
-      status: "active",
+      status: { $in: ["active", "trialing"] },
       endDate: { $gte: new Date() },
     }).select("-__v");
 
@@ -159,7 +289,7 @@ const getMySubscription = async (req, res) => {
 
     const subscription = await Subscription.findOne({
       userId,
-      status: { $in: ["active", "to_cancel"] },
+      status: { $in: ["active", "trialing", "to_cancel"] },
     }).sort({ createdAt: -1 });
 
     const user = await User.findById(userId);
@@ -212,7 +342,8 @@ const getMySubscription = async (req, res) => {
       studentsLimit: subscription.studentsLimit,
       startDate: subscription.startDate,
       endDate: subscription.endDate,
-      canCancel: subscription.status === "active",
+      // canCancel: subscription.status === "active",
+      canCancel: ["active", "trialing"].includes(subscription.status),
 
       // 🔥 Pending Info (Important)
       pendingPriceId: subscription.pendingPriceId,
@@ -232,20 +363,59 @@ const getMySubscription = async (req, res) => {
 
 
 
+// const cancelSubscription = async (req, res) => {
+//   try {
+//     const userId = req.user.login_data._id;
+
+//     const sub = await Subscription.findOne({
+//       userId,
+//       status: "active",
+//     });
+
+//     if (!sub) {
+//       return res.status(404).json({ message: "No active subscription found" });
+//     }
+
+//     // ❗ Cancel at period end (recommended)
+//     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+//       cancel_at_period_end: true,
+//     });
+
+//     await SubscriptionHistory.create({
+//       userId: sub.userId,
+//       planType: sub.planType,
+//       priceId: sub.priceId,
+//       stripeSubscriptionId: sub.stripeSubscriptionId,
+//       status: "cancel_requested",
+//       startDate: sub.startDate,
+//       endDate: sub.endDate,
+//     });
+
+//     return res.json({
+//       message: "Subscription will be cancelled at the end of billing cycle",
+//     });
+//   } catch (err) {
+//     console.error("Cancel subscription error:", err);
+//     res.status(500).json({ message: "Unable to cancel subscription" });
+//   }
+// };
+
 const cancelSubscription = async (req, res) => {
   try {
     const userId = req.user.login_data._id;
 
     const sub = await Subscription.findOne({
       userId,
-      status: "active",
+      status: { $in: ["active", "trialing"] },
     });
 
     if (!sub) {
-      return res.status(404).json({ message: "No active subscription found" });
+      return res.status(404).json({
+        message: "No active subscription found",
+      });
     }
 
-    // ❗ Cancel at period end (recommended)
+    // Cancel at the end of current period/trial
     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
@@ -261,14 +431,20 @@ const cancelSubscription = async (req, res) => {
     });
 
     return res.json({
-      message: "Subscription will be cancelled at the end of billing cycle",
+      message:
+        sub.status === "trialing"
+          ? "Your free trial will be cancelled at the end of the trial period."
+          : "Subscription will be cancelled at the end of the billing cycle",
     });
+
   } catch (err) {
     console.error("Cancel subscription error:", err);
-    res.status(500).json({ message: "Unable to cancel subscription" });
+
+    return res.status(500).json({
+      message: "Unable to cancel subscription",
+    });
   }
 };
-
 
 const getInvoices = async (req, res) => {
   try {

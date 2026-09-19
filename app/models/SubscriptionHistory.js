@@ -24,7 +24,7 @@ const subscriptionHistorySchema = new Schema(
 
     status: {
       type: String,
-      enum: ["created", "renewed", "cancelled", "expired", "payment_failed", "cancel_requested", "replaced_by_new_plan"],
+      enum: ["created", "trial_started", "renewed", "cancelled", "expired", "payment_failed", "cancel_requested", "replaced_by_new_plan"],
       required: true,
     },
 
@@ -34,4 +34,4 @@ const subscriptionHistorySchema = new Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("SubscriptionHistory",subscriptionHistorySchema);
+module.exports = mongoose.model("SubscriptionHistory", subscriptionHistorySchema);
