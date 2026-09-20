@@ -129,7 +129,7 @@ const createCheckoutSession = async (req, res) => {
     // 1️⃣ Validate input
     if (!priceId || !planType) {
       return res.status(400).json({
-        message: "priceId and planType are required"
+        message: "priceId and planType are required",
       });
     }
 
@@ -141,7 +141,7 @@ const createCheckoutSession = async (req, res) => {
 
     if (!planConfig) {
       return res.status(400).json({
-        message: "Invalid plan selected"
+        message: "Invalid plan selected",
       });
     }
 
@@ -150,24 +150,34 @@ const createCheckoutSession = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found"
+        message: "User not found",
       });
     }
 
     // 4️⃣ Prevent multiple subscriptions
     const existing = await Subscription.findOne({
       userId,
-      status: { $in: ["active", "trialing", "to_cancel"] }
+      status: { $in: ["active", "trialing", "to_cancel"] },
     });
 
     if (existing) {
       return res.status(400).json({
         message:
-          "You already have a subscription. Use upgrade or downgrade option."
+          "You already have a subscription. Use upgrade or downgrade option.",
       });
     }
 
-    // 5️⃣ Reuse Stripe customer if exists
+    // 5️⃣ Check whether user has already used free trial
+    const previousTrial = await SubscriptionHistory.findOne({
+      userId,
+      status: "trial_started",
+    });
+
+    const hasUsedFreeTrial = !!previousTrial;
+
+    console.log("Has user used free trial:", hasUsedFreeTrial);
+
+    // 6️⃣ Reuse Stripe customer if exists
     let stripeCustomerId = user.stripeCustomerId;
 
     if (!stripeCustomerId) {
@@ -186,7 +196,7 @@ const createCheckoutSession = async (req, res) => {
 
     console.log("Rewardful Referral:", referral);
 
-    // 6️⃣ Subscription data
+    // 7️⃣ Subscription data
     const subscriptionData = {
       metadata: {
         userId: user._id.toString(),
@@ -195,14 +205,22 @@ const createCheckoutSession = async (req, res) => {
       },
     };
 
-    // 🔥 Only plans with trialDays > 0 will get a trial
-    if (planConfig.trialDays > 0) {
+    // 🔥 Give trial ONLY if:
+    // 1. Selected plan has trialDays
+    // 2. User has NEVER used a free trial before
+    if (planConfig.trialDays > 0 && !hasUsedFreeTrial) {
       subscriptionData.trial_period_days = planConfig.trialDays;
+
+      console.log(
+        `🎁 Free trial applied: ${planConfig.trialDays} days`
+      );
+    } else {
+      console.log("🚫 Free trial not applied");
     }
 
     console.log("Subscription Data:", subscriptionData);
 
-    // 7️⃣ Create Checkout Session
+    // 8️⃣ Create Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: stripeCustomerId,
@@ -249,7 +267,6 @@ const createCheckoutSession = async (req, res) => {
     });
   }
 };
-
 
 const getActiveSubscription = async (req, res) => {
   try {
