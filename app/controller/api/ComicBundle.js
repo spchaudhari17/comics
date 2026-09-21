@@ -108,8 +108,35 @@ const deleteBundle = async (req, res) => {
 //         const { bundleId } = req.params;
 
 //         const bundle = await ComicBundle.findById(bundleId)
-//             .populate("teacherId", "firstname lastname")
-//             .populate("comics");
+//             .populate({
+//                 path: "teacherId",
+//                 select: "firstname lastname email"
+//             })
+//             .populate({
+//                 path: "comics",
+//                 populate: [
+//                     {
+//                         path: "subjectId",
+//                         select: "name"
+//                     },
+//                     {
+//                         path: "conceptId",
+//                         select: "name"
+//                     },
+//                     {
+//                         path: "seriesId",
+//                         select: "title concept grade country subjectId conceptId"
+//                     },
+//                     {
+//                         path: "themeId",
+//                         select: "name"
+//                     },
+//                     {
+//                         path: "styleId",
+//                         select: "name"
+//                     }
+//                 ]
+//             });
 
 //         if (!bundle) {
 //             return res.status(404).json({
@@ -118,25 +145,47 @@ const deleteBundle = async (req, res) => {
 //             });
 //         }
 
-//         // 🔥 attach thumbnail + extra info
-//         const comicsWithDetails = await Promise.all(
+//         // 🔥 attach thumbnail
+//         const comicsWithThumb = await Promise.all(
 //             bundle.comics.map(async (comic) => {
-
 //                 const page = await ComicPage.findOne({ comicId: comic._id });
+
+//                 let seriesDetails = null;
+//                 if (comic.seriesId) {
+//                     const series = await ComicSeries.findById(comic.seriesId)
+//                         .populate("subjectId", "name")
+//                         .populate("conceptId", "name");
+//                     seriesDetails = series;
+//                 }
 
 //                 return {
 //                     ...comic.toObject(),
-//                     thumbnail: page?.imageUrl || null
+//                     thumbnail: page?.imageUrl || null,
+//                     series: seriesDetails ? {
+//                         _id: seriesDetails._id,
+//                         title: seriesDetails.title,
+//                         concept: seriesDetails.concept,
+//                         conceptName: seriesDetails.conceptId?.name || null,
+//                         grade: seriesDetails.grade,
+//                         country: seriesDetails.country,
+//                         countries: seriesDetails.countries,
+//                         subjectName: seriesDetails.subjectId?.name || null,
+//                         partNumber: comic.partNumber
+//                     } : null,
+//                     subjectName: comic.subjectId?.name || comic.subject || "N/A",
+//                     conceptName: comic.conceptId?.name || comic.concept || "N/A"
 //                 };
 //             })
 //         );
 
+//         const response = {
+//             ...bundle.toObject(),
+//             comics: comicsWithThumb
+//         };
+
 //         return res.json({
 //             error: false,
-//             data: {
-//                 ...bundle.toObject(),
-//                 comics: comicsWithDetails
-//             }
+//             data: response
 //         });
 
 //     } catch (error) {
@@ -153,12 +202,29 @@ const getBundleDetails = async (req, res) => {
         const { bundleId } = req.params;
 
         const bundle = await ComicBundle.findById(bundleId)
+            .select(
+                "_id title price description teacherId comics createdAt averageRating totalRatings"
+            )
             .populate({
                 path: "teacherId",
-                select: "firstname lastname email"
+                select: "_id firstname lastname email"
             })
             .populate({
                 path: "comics",
+                select: `
+                    _id
+                    title
+                    subject
+                    concept
+                    subjectId
+                    conceptId
+                    seriesId
+                    themeId
+                    styleId
+                    hasQuiz
+                    createdAt
+                    partNumber
+                `,
                 populate: [
                     {
                         path: "subjectId",
@@ -170,7 +236,17 @@ const getBundleDetails = async (req, res) => {
                     },
                     {
                         path: "seriesId",
-                        select: "title concept grade country subjectId conceptId"
+                        select: "title concept grade country countries subjectId conceptId",
+                        populate: [
+                            {
+                                path: "subjectId",
+                                select: "name"
+                            },
+                            {
+                                path: "conceptId",
+                                select: "name"
+                            }
+                        ]
                     },
                     {
                         path: "themeId",
@@ -190,42 +266,78 @@ const getBundleDetails = async (req, res) => {
             });
         }
 
-        // 🔥 attach thumbnail
-        const comicsWithThumb = await Promise.all(
+        // Attach thumbnail + required comic details
+        const comics = await Promise.all(
             bundle.comics.map(async (comic) => {
-                const page = await ComicPage.findOne({ comicId: comic._id });
+                const page = await ComicPage.findOne(
+                    { comicId: comic._id },
+                    { imageUrl: 1 }
+                ).lean();
 
-                let seriesDetails = null;
-                if (comic.seriesId) {
-                    const series = await ComicSeries.findById(comic.seriesId)
-                        .populate("subjectId", "name")
-                        .populate("conceptId", "name");
-                    seriesDetails = series;
-                }
+                const series = comic.seriesId;
 
                 return {
-                    ...comic.toObject(),
+                    _id: comic._id,
+                    title: comic.title,
+
                     thumbnail: page?.imageUrl || null,
-                    series: seriesDetails ? {
-                        _id: seriesDetails._id,
-                        title: seriesDetails.title,
-                        concept: seriesDetails.concept,
-                        conceptName: seriesDetails.conceptId?.name || null,
-                        grade: seriesDetails.grade,
-                        country: seriesDetails.country,
-                        countries: seriesDetails.countries,
-                        subjectName: seriesDetails.subjectId?.name || null,
-                        partNumber: comic.partNumber
-                    } : null,
-                    subjectName: comic.subjectId?.name || comic.subject || "N/A",
-                    conceptName: comic.conceptId?.name || comic.concept || "N/A"
+
+                    subjectName:
+                        comic.subjectId?.name ||
+                        comic.subject ||
+                        "N/A",
+
+                    conceptName:
+                        comic.conceptId?.name ||
+                        comic.concept ||
+                        "N/A",
+
+                    theme: comic.themeId?.name || "N/A",
+                    style: comic.styleId?.name || "N/A",
+
+                    hasQuiz: comic.hasQuiz || false,
+                    createdAt: comic.createdAt,
+
+                    series: series
+                        ? {
+                            _id: series._id,
+                            title: series.title,
+                            concept: series.concept,
+                            conceptName:
+                                series.conceptId?.name || null,
+                            grade: series.grade,
+                            country: series.country,
+                            countries: series.countries,
+                            subjectName:
+                                series.subjectId?.name || null,
+                            partNumber: comic.partNumber || null
+                        }
+                        : null
                 };
             })
         );
 
+        // Only send required bundle data
         const response = {
-            ...bundle.toObject(),
-            comics: comicsWithThumb
+            _id: bundle._id,
+            title: bundle.title,
+            price: bundle.price,
+            description: bundle.description,
+            createdAt: bundle.createdAt,
+
+            averageRating: bundle.averageRating || 0,
+            totalRatings: bundle.totalRatings || 0,
+
+            teacher: bundle.teacherId
+                ? {
+                    _id: bundle.teacherId._id,
+                    firstname: bundle.teacherId.firstname,
+                    lastname: bundle.teacherId.lastname,
+                    email: bundle.teacherId.email
+                }
+                : null,
+
+            comics
         };
 
         return res.json({
@@ -234,7 +346,8 @@ const getBundleDetails = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
+        console.error("getBundleDetails error:", error);
+
         return res.status(500).json({
             error: true,
             message: "Server error"
