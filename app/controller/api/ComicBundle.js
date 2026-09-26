@@ -207,7 +207,7 @@ const getBundleDetails = async (req, res) => {
             )
             .populate({
                 path: "teacherId",
-                select: "_id firstname lastname email"
+                select: "_id firstname lastname email username"
             })
             .populate({
                 path: "comics",
@@ -333,7 +333,8 @@ const getBundleDetails = async (req, res) => {
                     _id: bundle.teacherId._id,
                     firstname: bundle.teacherId.firstname,
                     lastname: bundle.teacherId.lastname,
-                    email: bundle.teacherId.email
+                    email: bundle.teacherId.email,
+                    username: bundle.teacherId.username
                 }
                 : null,
 
