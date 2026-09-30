@@ -1,13 +1,13 @@
-const axios = require("axios");
 const { GoogleAuth } = require("google-auth-library");
-const path = require("path");
+const axios = require("axios");
 
-const PROJECT_ID = "gen-lang-client-0464958475";
-const LOCATION = "us-central1";
-const KEY_FILE = path.join(__dirname, "../gen-lang-client-0464958475-d0be335fab7d.json");
+const { serviceAccount } = require("../gemini_account");
+
+const PROJECT_ID = serviceAccount.project_id;
+const LOCATION = process.env.LOCATION || "us-central1";
 
 const auth = new GoogleAuth({
-  keyFile: KEY_FILE,
+  credentials: serviceAccount,
   scopes: ["https://www.googleapis.com/auth/cloud-platform"],
 });
 
