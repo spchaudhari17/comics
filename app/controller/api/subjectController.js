@@ -1322,344 +1322,68 @@ const updateSubject = async (req, res) => {
 };
 
 
-
-const getConceptsBySubject = async (req, res) => {
-  try {
-    const { subjectId } = req.params;
-    const { country, grade } = req.query; // grade added
-
-    //  1. Validate subject
-    const subject = await Subject.findById(subjectId);
-    if (!subject) {
-      return res.status(404).json({ error: "Subject not found" });
-    }
-
-    //  2. Base pipeline
-    const pipeline = [
-      {
-        $match: {
-          status: "approved",
-          subjectId: new mongoose.Types.ObjectId(subjectId),
-        },
-      },
-    ];
-
-    //  3. Country filter
-    if (country && country.trim() !== "") {
-      pipeline.push({
-        $match: {
-          $expr: {
-            $or: [
-              { $in: [country.trim().toUpperCase(), "$countries"] },
-              { $in: ["ALL", "$countries"] },
-            ],
-          },
-        },
-      });
-    }
-
-    //  4. Grade filter (NEW)
-    if (grade && grade.trim() !== "") {
-      pipeline.push({
-        $match: {
-          grade: { $regex: new RegExp(`^${grade.trim()}$`, "i") },
-        },
-      });
-    }
-
-    // 5. Group by concept & theme
-    pipeline.push({
-      $group: {
-        _id: {
-          conceptId: "$conceptId",
-          themeId: "$themeId",
-        },
-        countries: { $addToSet: "$countries" },
-        grades: { $addToSet: "$grade" }, // grade list (optional)
-        comicCount: { $sum: 1 },
-
-        // Sum of all comics' total_view
-        totalViews: { $sum: "$total_view" }
-      },
-    });
-
-    //  6. Join Concept info
-    pipeline.push(
-      {
-        $lookup: {
-          from: "concepts",
-          localField: "_id.conceptId",
-          foreignField: "_id",
-          as: "conceptData",
-        },
-      },
-      { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
-
-      // 7. Join Theme
-      {
-        $lookup: {
-          from: "themes",
-          localField: "_id.themeId",
-          foreignField: "_id",
-          as: "themeData",
-        },
-      },
-      { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-
-      // 8. Final projection
-      {
-        $project: {
-          _id: 0,
-          conceptId: "$conceptData._id",
-          conceptName: "$conceptData.name",
-          themeId: "$themeData._id",
-          themeName: "$themeData.name",
-          countries: 1,
-          grades: 1,     // helpful for FE
-          comicCount: 1,
-          totalViews: 1,
-        },
-      },
-
-      // 🧩 9. Sort neatly
-      {
-        $sort: {
-          conceptName: 1,
-          themeName: 1,
-        },
-      }
-    );
-
-    // 🧠 10. Execute
-    const result = await Comic.aggregate(pipeline);
-
-    //  Response
-    res.json({
-      subject: subject.name,
-      countryFilter: country || "ALL",
-      gradeFilter: grade || "ALL",
-      totalConcepts: result.length,
-      concepts: result,
-    });
-
-  } catch (error) {
-    console.error(" Error fetching concepts:", error);
-    res.status(500).json({ error: "Failed to fetch concepts" });
-  }
-};
-
-
+// old code
 // const getConceptsBySubject = async (req, res) => {
 //   try {
 //     const { subjectId } = req.params;
-//     const { country, grade, teacherId } = req.query;
+//     const { country, grade } = req.query; // grade added
 
-//     // =====================================================
-//     // 1. Validate Subject
-//     // =====================================================
-
+//     //  1. Validate subject
 //     const subject = await Subject.findById(subjectId);
-
 //     if (!subject) {
-//       return res.status(404).json({
-//         error: "Subject not found",
-//       });
+//       return res.status(404).json({ error: "Subject not found" });
 //     }
 
-//     // =====================================================
-//     // 2. Get Purchased Comic IDs
-//     // =====================================================
-
-//     let purchasedComicIds = [];
-
-//     if (teacherId) {
-//       const teacherObjectId =
-//         new mongoose.Types.ObjectId(teacherId);
-
-//       const purchases = await Purchase.aggregate([
-//         {
-//           $match: {
-//             userId: teacherObjectId,
-//             paymentStatus: "success",
-//           },
-//         },
-
-//         {
-//           $lookup: {
-//             from: "comicbundles",
-//             localField: "bundleId",
-//             foreignField: "_id",
-//             as: "bundle",
-//           },
-//         },
-
-//         {
-//           $unwind: "$bundle",
-//         },
-
-//         {
-//           $project: {
-//             comics: "$bundle.comics",
-//           },
-//         },
-//       ]);
-
-//       purchasedComicIds = purchases.flatMap(
-//         (purchase) => purchase.comics || []
-//       );
-
-//       console.log(
-//         "Teacher ID:",
-//         teacherId
-//       );
-
-//       console.log(
-//         "Purchased Comic IDs:",
-//         purchasedComicIds
-//       );
-//     }
-
-//     // =====================================================
-//     // 3. Base Pipeline
-//     // =====================================================
-
+//     //  2. Base pipeline
 //     const pipeline = [
 //       {
 //         $match: {
-//           subjectId: new mongoose.Types.ObjectId(
-//             subjectId
-//           ),
-
-//           // =================================================
-//           // Teacher Access
-//           // =================================================
-
-//           ...(teacherId
-//             ? {
-//               $or: [
-//                 // -----------------------------------------
-//                 // Teacher's own teacher comics
-//                 // -----------------------------------------
-
-//                 {
-//                   visibility: "teacher",
-//                   user_id:
-//                     new mongoose.Types.ObjectId(
-//                       teacherId
-//                     ),
-//                 },
-
-//                 // -----------------------------------------
-//                 // Purchased bundle comics
-//                 // -----------------------------------------
-
-//                 ...(purchasedComicIds.length > 0
-//                   ? [
-//                     {
-//                       _id: {
-//                         $in: purchasedComicIds,
-//                       },
-//                     },
-//                   ]
-//                   : []),
-//               ],
-//             }
-
-//             // =================================================
-//             // Public Access
-//             // =================================================
-
-//             : {
-//               visibility: "public",
-//               status: "approved",
-//             }),
+//           status: "approved",
+//           subjectId: new mongoose.Types.ObjectId(subjectId),
 //         },
 //       },
 //     ];
 
-//     // =====================================================
-//     // 4. Country Filter
-//     // =====================================================
-
-//     if (
-//       country &&
-//       country.trim() !== ""
-//     ) {
+//     //  3. Country filter
+//     if (country && country.trim() !== "") {
 //       pipeline.push({
 //         $match: {
 //           $expr: {
 //             $or: [
-//               {
-//                 $in: [
-//                   country.trim().toUpperCase(),
-//                   "$countries",
-//                 ],
-//               },
-//               {
-//                 $in: [
-//                   "ALL",
-//                   "$countries",
-//                 ],
-//               },
+//               { $in: [country.trim().toUpperCase(), "$countries"] },
+//               { $in: ["ALL", "$countries"] },
 //             ],
 //           },
 //         },
 //       });
 //     }
 
-//     // =====================================================
-//     // 5. Grade Filter
-//     // =====================================================
-
-//     if (
-//       grade &&
-//       grade.trim() !== ""
-//     ) {
+//     //  4. Grade filter (NEW)
+//     if (grade && grade.trim() !== "") {
 //       pipeline.push({
 //         $match: {
-//           grade: {
-//             $regex: new RegExp(
-//               `^${grade.trim()}$`,
-//               "i"
-//             ),
-//           },
+//           grade: { $regex: new RegExp(`^${grade.trim()}$`, "i") },
 //         },
 //       });
 //     }
 
-//     // =====================================================
-//     // 6. Group By Concept + Theme
-//     // =====================================================
-
+//     // 5. Group by concept & theme
 //     pipeline.push({
 //       $group: {
 //         _id: {
 //           conceptId: "$conceptId",
 //           themeId: "$themeId",
 //         },
+//         countries: { $addToSet: "$countries" },
+//         grades: { $addToSet: "$grade" }, // grade list (optional)
+//         comicCount: { $sum: 1 },
 
-//         countries: {
-//           $addToSet: "$countries",
-//         },
-
-//         grades: {
-//           $addToSet: "$grade",
-//         },
-
-//         comicCount: {
-//           $sum: 1,
-//         },
-
-//         totalViews: {
-//           $sum: "$total_view",
-//         },
+//         // Sum of all comics' total_view
+//         totalViews: { $sum: "$total_view" }
 //       },
 //     });
 
-//     // =====================================================
-//     // 7. Concept Information
-//     // =====================================================
-
+//     //  6. Join Concept info
 //     pipeline.push(
 //       {
 //         $lookup: {
@@ -1669,18 +1393,9 @@ const getConceptsBySubject = async (req, res) => {
 //           as: "conceptData",
 //         },
 //       },
+//       { $unwind: { path: "$conceptData", preserveNullAndEmptyArrays: true } },
 
-//       {
-//         $unwind: {
-//           path: "$conceptData",
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-
-//       // ===================================================
-//       // 8. Theme Information
-//       // ===================================================
-
+//       // 7. Join Theme
 //       {
 //         $lookup: {
 //           from: "themes",
@@ -1689,40 +1404,24 @@ const getConceptsBySubject = async (req, res) => {
 //           as: "themeData",
 //         },
 //       },
+//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
 
-//       {
-//         $unwind: {
-//           path: "$themeData",
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-
-//       // ===================================================
-//       // 9. Final Projection
-//       // ===================================================
-
+//       // 8. Final projection
 //       {
 //         $project: {
 //           _id: 0,
-
 //           conceptId: "$conceptData._id",
 //           conceptName: "$conceptData.name",
-
 //           themeId: "$themeData._id",
 //           themeName: "$themeData.name",
-
 //           countries: 1,
-//           grades: 1,
-
+//           grades: 1,     // helpful for FE
 //           comicCount: 1,
 //           totalViews: 1,
 //         },
 //       },
 
-//       // ===================================================
-//       // 10. Sort
-//       // ===================================================
-
+//       // 🧩 9. Sort neatly
 //       {
 //         $sort: {
 //           conceptName: 1,
@@ -1731,538 +1430,320 @@ const getConceptsBySubject = async (req, res) => {
 //       }
 //     );
 
-//     // =====================================================
-//     // 11. Execute
-//     // =====================================================
+//     // 🧠 10. Execute
+//     const result = await Comic.aggregate(pipeline);
 
-//     const result =
-//       await Comic.aggregate(pipeline);
-
-//     // =====================================================
-//     // 12. Response
-//     // =====================================================
-
-//     return res.json({
+//     //  Response
+//     res.json({
 //       subject: subject.name,
 //       countryFilter: country || "ALL",
 //       gradeFilter: grade || "ALL",
-//       teacherId: teacherId || null,
 //       totalConcepts: result.length,
 //       concepts: result,
 //     });
 
 //   } catch (error) {
-//     console.error(
-//       "Error fetching concepts:",
-//       error
-//     );
-
-//     return res.status(500).json({
-//       error: "Failed to fetch concepts",
-//     });
+//     console.error(" Error fetching concepts:", error);
+//     res.status(500).json({ error: "Failed to fetch concepts" });
 //   }
 // };
 
 
-// old shai hai without caption
-// const getComicsByConcept = async (req, res) => {
-//   try {
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-//     const userId = req.query.userId;
-//     const country = req.query.country;
-//     const grade = req.query.grade;
-
-//     // Base match query
-//     const matchQuery = {
-//       status: "approved",
-//       comicStatus: "published",
-//       pdfUrl: { $exists: true, $ne: "" },
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     };
-
-//     if (country && country.trim() !== "") {
-//       matchQuery.$expr = {
-//         $or: [
-//           { $in: [country.trim().toUpperCase(), "$countries"] },
-//           { $in: ["ALL", "$countries"] },
-//         ],
-//       };
-//     }
-
-//     if (grade && grade.trim() !== "") {
-//       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 1: Fetch comics + important lookups
-//     // -------------------------------------------------------------
-//     let comics = await Comic.aggregate([
-//       { $match: matchQuery },
-//       { $sort: { partNumber: 1 } },
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
-//       { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
-//       { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
-//       { $lookup: { from: "subjects", localField: "subjectId", foreignField: "_id", as: "subjectData" } },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-//       { $lookup: { from: "themes", localField: "themeId", foreignField: "_id", as: "themeData" } },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-//       { $lookup: { from: "comicpages", localField: "_id", foreignField: "comicId", as: "pages" } },
-
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subject: "$subjectData.name",
-//           theme: "$themeData.name",
-//         },
-//       },
-
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           hardcoreQuizData: 0,
-//           pages: 0,
-//           subjectData: 0,
-//           themeData: 0,
-//           prompt: 0,
-//         },
-//       },
-//     ]);
-
-//     // -------------------------------------------------------------
-//     // STEP 2: User attempt-based tracking
-//     // -------------------------------------------------------------
-//     if (userId) {
-//       const userObjectId = new mongoose.Types.ObjectId(userId);
-//       const comicIds = comics.map((c) => c._id);
-
-//       const normalQuizzes = await Quiz.find({ comicId: { $in: comicIds } }, "_id comicId");
-//       const hardcoreQuizzes = await HardcoreQuiz.find({ comicId: { $in: comicIds } }, "_id comicId questions");
-
-//       const normalSubmissions = await QuizSubmission.find(
-//         { quizId: { $in: normalQuizzes.map((q) => q._id) }, userId: userObjectId },
-//         "quizId"
-//       );
-
-//       const attemptedQuizIds = new Set(normalSubmissions.map((s) => s.quizId.toString()));
-
-//       // HARDCORE SUBMISSIONS grouped
-//       const hardcoreSubmissions = await HardcoreQuizSubmission.find({
-//         quizId: { $in: hardcoreQuizzes.map((hq) => hq._id) },
-//         userId: userObjectId
-//       }).lean();
-
-//       const submissionsByQuiz = {};
-//       hardcoreSubmissions.forEach((s) => {
-//         const id = s.quizId.toString();
-//         if (!submissionsByQuiz[id]) submissionsByQuiz[id] = [];
-//         submissionsByQuiz[id].push(s);
-//       });
-
-//       // -------------------------------------------------------------
-//       // STEP 3: Attach per-comic hardcore state
-//       // -------------------------------------------------------------
-//       for (const comic of comics) {
-//         const hardcoreQuiz = hardcoreQuizzes.find((hq) => hq.comicId.toString() === comic._id.toString());
-//         const normalQuiz = normalQuizzes.find((nq) => nq.comicId.toString() === comic._id.toString());
-
-//         comic.hasAttempted =
-//           normalQuiz ? attemptedQuizIds.has(normalQuiz._id.toString()) : false;
-
-//         if (!hardcoreQuiz) {
-//           comic.hasAttemptedHardcore = false;
-//           comic.hasAttemptedAllQuestion = false;
-//           comic.hasHardCoreChanceLeft = 2;
-//           comic.attemptNumber = 1;
-//           comic.activeSubmission = null;
-//           continue;
-//         }
-
-//         const quizId = hardcoreQuiz._id.toString();
-
-//         // FETCH LATEST SUBMISSIONS AGAIN (fix: avoid stale data)
-//         const freshSubs = await HardcoreQuizSubmission.find({
-//           quizId,
-//           userId: userObjectId,
-//         }).lean();
-
-//         // ✓ Detect active submission
-//         const activeSubmission = freshSubs.find((s) => s.isActive) || null;
-
-//         // ✓ Detect finished attempts
-//         const finishedAttempts = freshSubs.filter((s) => s.isFinished).length;
-
-//         // ✓ Per-user allowed attempts
-//         const userAttempt = await HardcoreQuizUserAttempt.findOne({
-//           userId: userObjectId,
-//           quizId
-//         });
-
-//         const allowedAttempts = userAttempt ? userAttempt.allowedAttempts : 2;
-
-//         // ✓ unique questions attempted
-//         let uniqueAttempted = new Set();
-//         freshSubs.forEach((s) => {
-//           (s.answers || []).forEach((ans) => {
-//             uniqueAttempted.add(ans.questionId.toString());
-//           });
-//         });
-
-//         const hasAttemptedAllQuestion =
-//           uniqueAttempted.size === hardcoreQuiz.questions.length;
-
-//         const hasHardCoreChanceLeft = Math.max(0, allowedAttempts - finishedAttempts);
-
-//         const attemptNumber = activeSubmission
-//           ? activeSubmission.attemptNumber
-//           : finishedAttempts + 1;
-
-//         comic.hasAttemptedHardcore = freshSubs.length > 0;
-//         comic.hasAttemptedAllQuestion = hasAttemptedAllQuestion;
-//         comic.hasHardCoreChanceLeft = hasHardCoreChanceLeft;
-//         comic.attemptNumber = attemptNumber;
-
-//         comic.activeSubmission = activeSubmission
-//           ? {
-//             _id: activeSubmission._id,
-//             attemptNumber: activeSubmission.attemptNumber,
-//             score: activeSubmission.score,
-//             coinsEarned: activeSubmission.coinsEarned,
-//             expEarned: activeSubmission.expEarned,
-//             isActive: activeSubmission.isActive,
-//           }
-//           : null;
-//       }
-
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 4: Series Open Logic
-//     // -------------------------------------------------------------
-//     comics = comics.sort((a, b) => {
-//       const aKey = a.seriesId ? a.seriesId.toString() : "";
-//       const bKey = b.seriesId ? b.seriesId.toString() : "";
-//       if (aKey === bKey) return a.partNumber - b.partNumber;
-//       return aKey.localeCompare(bKey);
-//     });
-
-//     const grouped = {};
-//     comics.forEach((c) => {
-//       const key = c.seriesId ? c.seriesId.toString() : "noSeries";
-//       if (!grouped[key]) grouped[key] = [];
-//       grouped[key].push(c);
-//     });
-
-//     Object.values(grouped).forEach((group) => {
-//       group.sort((a, b) => a.partNumber - b.partNumber);
-//       group.forEach((comic, idx) => {
-//         comic.isOpen = idx === 0 ? true : group[idx - 1].hasAttempted;
-//       });
-//     });
-
-//     // -------------------------------------------------------------
-//     // COUNT TOTAL
-//     // -------------------------------------------------------------
-//     const totalComics = await Comic.countDocuments(matchQuery);
-
-//     // FINAL RESPONSE
-//     res.json({
-//       conceptId,
-//       country: country || "ALL",
-//       grade: grade || "ALL",
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics,
-//     });
-
-//   } catch (error) {
-//     console.error("❌ getComicsByConcept Error:", error);
-//     res.status(500).json({ error: "Failed to fetch comics" });
-//   }
-// };
-
-// jo code abi server par hai magar hardcorequiz work nhi kar raha hai 
-// const getComicsByConcept = async (req, res) => {
-//   try {
-
-//     const conceptId = req.params.conceptId;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const skip = (page - 1) * limit;
-//     const userId = req.query.userId;
-//     const country = req.query.country;
-//     const grade = req.query.grade;
-
-//     const matchQuery = {
-//       status: "approved",
-//       comicStatus: "published",
-//       pdfUrl: { $exists: true, $ne: "" },
-//       conceptId: new mongoose.Types.ObjectId(conceptId),
-//     };
-
-//     if (country && country.trim() !== "") {
-//       matchQuery.$expr = {
-//         $or: [
-//           { $in: [country.trim().toUpperCase(), "$countries"] },
-//           { $in: ["ALL", "$countries"] },
-//         ],
-//       };
-//     }
-
-//     if (grade && grade.trim() !== "") {
-//       matchQuery.grade = { $regex: new RegExp(`^${grade.trim()}$`, "i") };
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 1: Fetch Comics
-//     // -------------------------------------------------------------
-
-//     let comics = await Comic.aggregate([
-
-//       { $match: matchQuery },
-//       { $sort: { partNumber: 1 } },
-//       { $skip: skip },
-//       { $limit: limit },
-
-//       { $lookup: { from: "faqs", localField: "_id", foreignField: "comicId", as: "faqs" } },
-//       { $lookup: { from: "didyouknows", localField: "_id", foreignField: "comicId", as: "facts" } },
-//       { $lookup: { from: "hardcorequizzes", localField: "_id", foreignField: "comicId", as: "hardcoreQuizData" } },
-
-//       { $lookup: { from: "subjects", localField: "subjectId", foreignField: "_id", as: "subjectData" } },
-//       { $unwind: { path: "$subjectData", preserveNullAndEmptyArrays: true } },
-
-//       { $lookup: { from: "themes", localField: "themeId", foreignField: "_id", as: "themeData" } },
-//       { $unwind: { path: "$themeData", preserveNullAndEmptyArrays: true } },
-
-//       // Pages Lookup
-//       {
-//         $lookup: {
-//           from: "comicpages",
-//           let: { comicId: "$_id" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: { $eq: ["$comicId", "$$comicId"] }
-//               }
-//             },
-//             {
-//               $project: {
-//                 _id: 0,
-//                 imageUrl: 1
-//               }
-//             },
-//             { $sort: { pageNumber: 1 } }
-//           ],
-//           as: "pages"
-//         }
-//       },
-
-//       {
-//         $addFields: {
-//           hasFAQ: { $gt: [{ $size: "$faqs" }, 0] },
-//           hasDidYouKnow: { $gt: [{ $size: "$facts" }, 0] },
-//           hasHardcoreQuiz: { $gt: [{ $size: "$hardcoreQuizData" }, 0] },
-//           thumbnail: { $arrayElemAt: ["$pages.imageUrl", 0] },
-//           subject: "$subjectData.name",
-//           theme: "$themeData.name"
-//         }
-//       },
-
-//       {
-//         $project: {
-//           faqs: 0,
-//           facts: 0,
-//           hardcoreQuizData: 0,
-//           subjectData: 0,
-//           themeData: 0
-//         }
-//       }
-
-//     ]);
-
-//     // -------------------------------------------------------------
-//     // STEP 2: Attach captions from prompt
-//     // -------------------------------------------------------------
-
-//     for (const comic of comics) {
-
-//       if (!comic.prompt) continue;
-
-//       try {
-
-//         const parsedPrompt = JSON.parse(comic.prompt);
-
-//         comic.pages = comic.pages.map((page, index) => {
-
-//           let caption = "";
-
-//           const pageData = parsedPrompt.find(p => p.page === index + 1);
-
-//           if (pageData && Array.isArray(pageData.panels)) {
-
-//             caption = pageData.panels.map(panel => {
-
-//               let text = panel.caption || "";
-
-//               if (Array.isArray(panel.dialogue)) {
-//                 const dialogues = panel.dialogue
-//                   .map(d => `${d.character}: ${d.text}`)
-//                   .join(" ");
-
-//                 text = `${text} ${dialogues}`;
-//               }
-
-//               return text.trim();
-
-//             }).join(" ");
-
-
-//           }
-
-//           const panels = [];
-
-//           if (pageData && Array.isArray(pageData.panels)) {
-
-//             pageData.panels.forEach((panel, idx) => {
-
-//               panels.push({
-//                 panelNumber: idx + 1,
-//                 caption: panel.caption || "",
-//                 dialogues: Array.isArray(panel.dialogue)
-//                   ? panel.dialogue.map(d => ({
-//                     character: d.character,
-//                     text: d.text
-//                   }))
-//                   : []
-//               });
-
-//             });
-
-//           }
-
-//           return {
-//             imageUrl: page.imageUrl,
-//             caption,
-//             panels
-//           };
-
-//         });
-
-//         delete comic.prompt;
-
-//       } catch (err) {
-//         console.log("Prompt parse error:", err.message);
-//       }
-
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 3: Quiz Attempt Logic
-//     // -------------------------------------------------------------
-
-//     if (userId) {
-
-//       const userObjectId = new mongoose.Types.ObjectId(userId);
-//       const comicIds = comics.map(c => c._id);
-
-//       const normalQuizzes = await Quiz.find(
-//         { comicId: { $in: comicIds } },
-//         "_id comicId"
-//       );
-
-//       const normalSubmissions = await QuizSubmission.find(
-//         {
-//           quizId: { $in: normalQuizzes.map(q => q._id) },
-//           userId: userObjectId
-//         },
-//         "quizId"
-//       );
-
-//       const attemptedQuizIds = new Set(
-//         normalSubmissions.map(s => s.quizId.toString())
-//       );
-
-//       for (const comic of comics) {
-
-//         const normalQuiz = normalQuizzes.find(
-//           nq => nq.comicId.toString() === comic._id.toString()
-//         );
-
-//         comic.hasAttempted = normalQuiz
-//           ? attemptedQuizIds.has(normalQuiz._id.toString())
-//           : false;
-
-//       }
-
-//     }
-
-//     // -------------------------------------------------------------
-//     // STEP 4: Series Unlock Logic
-//     // -------------------------------------------------------------
-
-//     comics = comics.sort((a, b) => {
-//       const aKey = a.seriesId ? a.seriesId.toString() : "";
-//       const bKey = b.seriesId ? b.seriesId.toString() : "";
-//       if (aKey === bKey) return a.partNumber - b.partNumber;
-//       return aKey.localeCompare(bKey);
-//     });
-
-//     const grouped = {};
-
-//     comics.forEach(c => {
-//       const key = c.seriesId ? c.seriesId.toString() : "noSeries";
-//       if (!grouped[key]) grouped[key] = [];
-//       grouped[key].push(c);
-//     });
-
-//     Object.values(grouped).forEach(group => {
-
-//       group.sort((a, b) => a.partNumber - b.partNumber);
-
-//       group.forEach((comic, idx) => {
-//         comic.isOpen = idx === 0 ? true : group[idx - 1].hasAttempted;
-//       });
-
-//     });
-
-//     // -------------------------------------------------------------
-//     // COUNT
-//     // -------------------------------------------------------------
-
-//     const totalComics = await Comic.countDocuments(matchQuery);
-
-//     res.json({
-//       conceptId,
-//       country: country || "ALL",
-//       grade: grade || "ALL",
-//       page,
-//       limit,
-//       totalPages: Math.ceil(totalComics / limit),
-//       totalComics,
-//       comics
-//     });
-
-//   } catch (error) {
-
-//     console.error("❌ getComicsByConcept Error:", error);
-
-//     res.status(500).json({
-//       error: "Failed to fetch comics"
-//     });
-
-//   }
-// };
+const getConceptsBySubject = async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+    const { country, grade, teacherId } = req.query;
+
+    // =====================================================
+    // 1. Validate Subject
+    // =====================================================
+
+    const subject = await Subject.findById(subjectId);
+
+    if (!subject) {
+      return res.status(404).json({
+        error: "Subject not found",
+      });
+    }
+
+    // =====================================================
+    // 2. Get Purchased Comic IDs
+    // =====================================================
+
+    let purchasedComicIds = [];
+
+    if (teacherId) {
+      const teacherObjectId =
+        new mongoose.Types.ObjectId(teacherId);
+
+      const purchases = await Purchase.aggregate([
+        {
+          $match: {
+            userId: teacherObjectId,
+            paymentStatus: "success",
+          },
+        },
+
+        {
+          $lookup: {
+            from: "comicbundles",
+            localField: "bundleId",
+            foreignField: "_id",
+            as: "bundle",
+          },
+        },
+
+        {
+          $unwind: "$bundle",
+        },
+
+        {
+          $project: {
+            comics: "$bundle.comics",
+          },
+        },
+      ]);
+
+      purchasedComicIds = purchases.flatMap(
+        (purchase) => purchase.comics || []
+      );
+
+      console.log(
+        "Teacher ID:",
+        teacherId
+      );
+
+      console.log(
+        "Purchased Comic IDs:",
+        purchasedComicIds
+      );
+    }
+
+    // =====================================================
+    // 3. Base Comic Filter
+    // =====================================================
+
+    const comicMatch = {
+      subjectId: new mongoose.Types.ObjectId(
+        subjectId
+      ),
+    };
+
+    // =====================================================
+    // 4. Teacher Access
+    // =====================================================
+
+    if (teacherId) {
+      const teacherObjectId =
+        new mongoose.Types.ObjectId(teacherId);
+
+      comicMatch.$or = [
+        // Teacher ki apni comics
+        {
+          visibility: "teacher",
+          user_id: teacherObjectId,
+        },
+
+        // Purchased bundle comics
+        ...(purchasedComicIds.length > 0
+          ? [
+            {
+              _id: {
+                $in: purchasedComicIds,
+              },
+            },
+          ]
+          : []),
+      ];
+    } else {
+      // ===================================================
+      // 5. Public Access
+      // ===================================================
+
+      comicMatch.visibility = "public";
+      comicMatch.status = "approved";
+    }
+
+    // =====================================================
+    // 6. Country Filter
+    // =====================================================
+
+    if (
+      country &&
+      country.trim() !== ""
+    ) {
+      comicMatch.$expr = {
+        $or: [
+          {
+            $in: [
+              country.trim().toUpperCase(),
+              "$countries",
+            ],
+          },
+          {
+            $in: [
+              "ALL",
+              "$countries",
+            ],
+          },
+        ],
+      };
+    }
+
+    // =====================================================
+    // 7. Grade Filter
+    // =====================================================
+
+    if (
+      grade &&
+      grade.trim() !== ""
+    ) {
+      comicMatch.grade = {
+        $regex: new RegExp(
+          `^${grade.trim()}$`,
+          "i"
+        ),
+      };
+    }
+
+    // =====================================================
+    // 8. Aggregation
+    // =====================================================
+
+    const result = await Comic.aggregate([
+      {
+        $match: comicMatch,
+      },
+
+      // ===============================================
+      // Group Concept + Theme
+      // ===============================================
+
+      {
+        $group: {
+          _id: {
+            conceptId: "$conceptId",
+            themeId: "$themeId",
+          },
+
+          countries: {
+            $addToSet: "$countries",
+          },
+
+          grades: {
+            $addToSet: "$grade",
+          },
+
+          comicCount: {
+            $sum: 1,
+          },
+
+          totalViews: {
+            $sum: "$total_view",
+          },
+        },
+      },
+
+      // ===============================================
+      // Concept Details
+      // ===============================================
+
+      {
+        $lookup: {
+          from: "concepts",
+          localField: "_id.conceptId",
+          foreignField: "_id",
+          as: "conceptData",
+        },
+      },
+
+      {
+        $unwind: {
+          path: "$conceptData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // ===============================================
+      // Theme Details
+      // ===============================================
+
+      {
+        $lookup: {
+          from: "themes",
+          localField: "_id.themeId",
+          foreignField: "_id",
+          as: "themeData",
+        },
+      },
+
+      {
+        $unwind: {
+          path: "$themeData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // ===============================================
+      // Final Response
+      // ===============================================
+
+      {
+        $project: {
+          _id: 0,
+
+          conceptId: "$conceptData._id",
+          conceptName: "$conceptData.name",
+
+          themeId: "$themeData._id",
+          themeName: "$themeData.name",
+
+          countries: 1,
+          grades: 1,
+
+          comicCount: 1,
+          totalViews: 1,
+        },
+      },
+
+      // ===============================================
+      // Sort
+      // ===============================================
+
+      {
+        $sort: {
+          conceptName: 1,
+          themeName: 1,
+        },
+      },
+    ]);
+
+    // =====================================================
+    // 9. Response
+    // =====================================================
+
+    return res.json({
+      subject: subject.name,
+      teacherId: teacherId || null,
+      countryFilter: country || "ALL",
+      gradeFilter: grade || "ALL",
+      totalConcepts: result.length,
+      concepts: result,
+    });
+
+  } catch (error) {
+    console.error(
+      "Error fetching concepts:",
+      error
+    );
+
+    return res.status(500).json({
+      error: "Failed to fetch concepts",
+    });
+  }
+};
+
+
 
 
 const getComicsByConcept = async (req, res) => {
