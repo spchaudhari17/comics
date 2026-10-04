@@ -52,6 +52,6 @@ const comicSchema = new mongoose.Schema({
 
 
   createdAt: { type: Date, default: Date.now }
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model("Comic", comicSchema);
