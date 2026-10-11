@@ -1204,8 +1204,189 @@ const getTeacherSalesDashboard = async (req, res) => {
     }
 };
 
+
+const getMyComicsForBundle = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        const comics = await Comic.find({ user_id: userId })
+            .select("_id title subject concept subjectId conceptId status createdAt")
+            .populate("subjectId", "name")
+            .populate("conceptId", "name")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const comicIds = comics.map((c) => c._id);
+
+        // Har comic ka pehla page = thumbnail (ek hi query me, N+1 nahi)
+        const thumbs = await ComicPage.aggregate([
+            { $match: { comicId: { $in: comicIds } } },
+            { $sort: { createdAt: 1 } },
+            { $group: { _id: "$comicId", imageUrl: { $first: "$imageUrl" } } }
+        ]);
+        const thumbMap = new Map(thumbs.map((t) => [String(t._id), t.imageUrl]));
+
+        const data = comics.map((c) => ({
+            _id: c._id,
+            title: c.title,
+            subjectName: c.subjectId?.name || c.subject || "N/A",
+            conceptName: c.conceptId?.name || c.concept || "N/A",
+            thumbnail: thumbMap.get(String(c._id)) || null,
+            status: c.status, // frontend sirf "approved" dikhayega (createBundle jaisa)
+            createdAt: c.createdAt
+        }));
+
+        return res.json({ error: false, data });
+    } catch (error) {
+        console.log("getMyComicsForBundle error:", error);
+        return res.status(500).json({ error: true, message: "Server error" });
+    }
+};
+
+// ---------------------------------------------------------------------
+// Bundle edit: title / description / price / comics (add + remove)
+// Rule: published bundle me comics ADD ho sakti hain, REMOVE nahi
+//       (warna jinhone kharida hai unka access chala jayega)
+// ---------------------------------------------------------------------
+const updateBundle = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+        const { bundleId } = req.params;
+        const { title, description, comics, price } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(bundleId)) {
+            return res.status(400).json({ error: true, message: "Invalid bundle id" });
+        }
+
+        const bundle = await ComicBundle.findOne({ _id: bundleId, teacherId: userId });
+
+        if (!bundle) {
+            return res.status(404).json({ error: true, message: "Bundle not found" });
+        }
+
+        // ---- Title ----
+        if (title !== undefined) {
+            if (!String(title).trim()) {
+                return res.status(400).json({ error: true, message: "Title is required" });
+            }
+            bundle.title = String(title).trim();
+        }
+
+        // ---- Description ----
+        if (description !== undefined) {
+            bundle.description = description;
+        }
+
+        // ---- Price ----
+        if (price !== undefined) {
+            const priceNumber = Number(price);
+            if (!Number.isFinite(priceNumber) || priceNumber <= 0) {
+                return res.status(400).json({ error: true, message: "Price must be greater than 0" });
+            }
+            bundle.price = priceNumber;
+        }
+
+        // ---- Comics ----
+        if (comics !== undefined) {
+            if (!Array.isArray(comics) || comics.length === 0) {
+                return res.status(400).json({ error: true, message: "Select at least one comic" });
+            }
+
+            const newIds = [...new Set(comics.map(String))];
+
+            if (newIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+                return res.status(400).json({ error: true, message: "Invalid comic id" });
+            }
+
+            // Saari comics is teacher ki honi chahiye
+            const ownedComics = await Comic.find({
+                _id: { $in: newIds },
+                user_id: userId
+            })
+                .select("_id status concept conceptId")
+                .populate("conceptId", "name")
+                .lean();
+
+            if (ownedComics.length !== newIds.length) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Invalid comics or not owned by teacher"
+                });
+            }
+
+            const oldIds = bundle.comics.map(String);
+
+            // Naya add hone wala comic "approved" hona chahiye (createBundle wala rule)
+            // Purani comics ko dobara check nahi kar rahe, taaki purane bundles break na ho
+            const notApproved = ownedComics.filter(
+                (c) => !oldIds.includes(String(c._id)) && c.status !== "approved"
+            );
+
+            if (notApproved.length > 0) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Only approved comics can be added to a bundle"
+                });
+            }
+
+            // Bundle ka concept FIXED hai: jo comics pehle se bundle me hain unka concept.
+            // Nayi comics sirf usi concept ki add ho sakti hain.
+            const getConceptName = (c) => c.conceptId?.name || c.concept || "N/A";
+
+            const oldComic = await Comic.findOne({ _id: { $in: bundle.comics } })
+                .select("concept conceptId")
+                .populate("conceptId", "name")
+                .lean();
+
+            const bundleConcept = oldComic ? getConceptName(oldComic) : null;
+
+            const wrongConcept = bundleConcept
+                ? ownedComics.some((c) => getConceptName(c) !== bundleConcept)
+                : new Set(ownedComics.map(getConceptName)).size > 1;
+
+            if (wrongConcept) {
+                return res.status(400).json({
+                    error: true,
+                    message: bundleConcept
+                        ? `Only "${bundleConcept}" comics can be added to this bundle`
+                        : "All comics in a bundle must belong to the same concept"
+                });
+            }
+
+            // Published bundle se comic remove karna allowed nahi
+            const removedIds = oldIds.filter((id) => !newIds.includes(id));
+
+            if (bundle.status === "published" && removedIds.length > 0) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Comics can't be removed from a published bundle. You can only add new comics."
+                });
+            }
+
+            bundle.comics = newIds;
+            bundle.isBundle = newIds.length > 1;
+        }
+
+        await bundle.save();
+
+        // Same shape jo getTeacherBundles deta hai (populated comics)
+        const updated = await ComicBundle.findById(bundle._id).populate("comics");
+
+        return res.json({
+            error: false,
+            message: "Bundle updated successfully",
+            data: updated
+        });
+    } catch (error) {
+        console.log("updateBundle error:", error);
+        return res.status(500).json({ error: true, message: "Server error" });
+    }
+};
+
+
+
 module.exports = {
     createBundle, getBundleDetails, publishBundle, getMarketplace, getTeacherBundles, getTransactions, getMySales,
     getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard,
-    getMarketplaceStatus, deleteBundle
+    getMarketplaceStatus, deleteBundle, getMyComicsForBundle, updateBundle
 }

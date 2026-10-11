@@ -1850,6 +1850,171 @@ const updateComicStatus = async (req, res) => {
     }
 };
 
+
+
+
+// =====================================================================
+// 1) BACKEND: purane updateComicStatus ko isse REPLACE karo
+//    Naya naam: autoApproveComicAndCountry
+//
+//    Routes file me:
+//      router.post("/user/comics/auto-approve-country", authentication, autoApproveComicAndCountry);
+//
+//    module.exports me bhi `updateComicStatus` ki jagah `autoApproveComicAndCountry` likho
+//    File ke top pe chahiye: mongoose, Comic, ComicSeries, transporter
+// =====================================================================
+
+const ALL_COUNTRIES = "ALL";
+
+// Admin panel kaun-kaun se roles use karte hain (zarurat ho to aur roles jodo)
+const ADMIN_ROLES = ["admin"];
+const isAdminUser = (req) => ADMIN_ROLES.includes(req.user?.login_data?.userType);
+
+const autoApproveComicAndCountry = async (req, res) => {
+    try {
+        const { comicId, comicStatus } = req.body;
+
+        if (!["draft", "published"].includes(comicStatus)) {
+            return res.status(400).json({ error: "Invalid comic status" });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(comicId)) {
+            return res.status(400).json({ error: "Invalid comic id" });
+        }
+
+        // ⭐ Fetch comic + user info
+        const comic = await Comic.findById(comicId).populate("user_id");
+        if (!comic) {
+            return res.status(404).json({ error: "Comic not found" });
+        }
+
+        // 🔒 Sirf comic ka owner (ya admin) hi status badal sakta hai
+        // (abhi koi bhi logged-in user kisi ki bhi comic publish kar sakta tha,
+        //  aur ab publish = auto approve, isliye ye check zaroori hai)
+        const loggedInUser = req.user?.login_data;
+        const isOwner = String(comic.user_id?._id) === String(loggedInUser?._id);
+        const isAdmin = isAdminUser(req);
+
+        if (!isOwner && !isAdmin) {
+            return res.status(403).json({ error: "You are not allowed to update this comic" });
+        }
+
+        const previousStatus = comic.comicStatus;
+        const isFirstPublish = previousStatus === "draft" && comicStatus === "published";
+
+        // ⭐ Update status
+        comic.comicStatus = comicStatus;
+
+        // ⭐ When teacher publishes comic → set visibility to teacher
+        if (comicStatus === "published") {
+            comic.visibility = "teacher";
+        }
+
+        // ✅ AUTO APPROVAL + COUNTRY ALL (pehle admin manually karta tha)
+        // Sirf pehli baar publish hone pe, taaki admin ka baad me kiya
+        // reject / country change overwrite na ho
+        if (isFirstPublish) {
+            comic.status = "approved";
+            comic.country = ALL_COUNTRIES;
+            comic.countries = [ALL_COUNTRIES];
+        }
+
+        await comic.save();
+
+        // ✅ Series + uski saari comics ko bhi ALL (admin ke update-country jaisa)
+        if (isFirstPublish && comic.seriesId) {
+            await ComicSeries.updateOne(
+                { _id: comic.seriesId },
+                {
+                    $set: {
+                        country: ALL_COUNTRIES,
+                        countries: [ALL_COUNTRIES]
+                    }
+                }
+            );
+
+            await Comic.updateMany(
+                { seriesId: comic.seriesId },
+                {
+                    $set: {
+                        country: ALL_COUNTRIES,
+                        countries: [ALL_COUNTRIES]
+                    }
+                }
+            );
+        }
+
+        // ⭐ User ko approval mail (pehle admin approve karta tab jaata tha)
+        if (isFirstPublish && comic.user_id?.email) {
+            transporter.sendMail(
+                {
+                    from: "ajinkya.kridemy@gmail.com",
+                    to: comic.user_id.email,
+                    subject: "Your Comic Has Been Approved! 🎉",
+                    html: `
+                        <h2>Congratulations!</h2>
+                        <p>Your comic <strong>"${comic.title}"</strong> has been published and approved.</p>
+
+                        <p>You can now see it live in the public comics section and add it to your bundles.</p>
+
+                        <br/>
+                        <p>Keep creating great educational comics! 🚀</p>
+                    `
+                },
+                (err, info) => {
+                    if (err) {
+                        console.error("❌ Failed to send approval email:", err.message);
+                    } else {
+                        console.log("📨 Approval email sent to user:", info.response);
+                    }
+                }
+            );
+        }
+
+        // ⭐ Admin ko sirf info mail (ab approval ki zarurat nahi)
+        if (isFirstPublish) {
+            const adminEmail = "ajinkya.kridemy@gmail.com"; // admin email
+
+            const mailOptions = {
+                from: "ajinkya.kridemy@gmail.com",
+                to: adminEmail,
+                subject: "New Comic Published - Auto Approved",
+                html: `
+                    <h2>New Comic Published by User</h2>
+
+                    <p><strong>User Name:</strong> ${comic.user_id.firstname || ""} ${comic.user_id.lastname || ""}</p>
+                    <p><strong>User Email:</strong> ${comic.user_id.email || "Not Provided"}</p>
+
+                    <p><strong>Comic Title:</strong> ${comic.title}</p>
+                    <p><strong>Comic ID:</strong> ${comic._id}</p>
+
+                    <br/>
+                    <p>This comic was approved automatically and is available in all countries.
+                    You can reject it or change its countries from the admin dashboard if needed.</p>
+                `
+            };
+
+            transporter.sendMail(mailOptions, (err, info) => {
+                if (err) {
+                    console.error("Email sending failed:", err);
+                } else {
+                    console.log("Admin notified via email:", info.response);
+                }
+            });
+        }
+
+        res.json({ message: "Comic status updated", comic });
+
+    } catch (error) {
+        console.error("autoApproveComicAndCountry error:", error);
+        res.status(500).json({ error: "Failed to update comic status" });
+    }
+};
+
+
+
+
+
 const deleteComic = async (req, res) => {
     try {
         const { id } = req.body;
@@ -2117,5 +2282,6 @@ const addComicView = async (req, res) => {
 
 module.exports = {
     refinePrompt, generateComicImage, generateComicPDF, listComics, addComicView,
-    getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic
+    getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic,
+    autoApproveComicAndCountry
 };

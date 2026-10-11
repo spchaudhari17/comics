@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, autoApproveComicAndCountry, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser, toggleUnlimited } = require('../app/controller/api/admin/adminComicController');
@@ -22,7 +22,7 @@ const { addChild, getMyChildren, removeChild } = require('../app/controller/api/
 const { createImpression, upsertEcpm, listEcpm, comicRevenueReport } = require('../app/controller/api/impressionController');
 const { createCheckoutSession, createSubscription, getActiveSubscription, getInvoices, cancelSubscription, createBillingPortal, getSubscriptionHistory, getMySubscription, upgradeSubscriptionImmediate, upgradeSubscriptionScheduled, downgradeSubscription, getScheduleStatus, getSavedPaymentMethod, createUpdateCardSession } = require('../app/controller/api/subscriptionController');
 const { stripeWebhook } = require('../app/controller/api/stripeWebhookController');
-const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard, getMarketplaceStatus, deleteBundle } = require('../app/controller/api/ComicBundle');
+const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurchases, getTeacherBundles, getBundleDetails, getTransactions, getMySales, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard, getMarketplaceStatus, deleteBundle, updateBundle, getMyComicsForBundle } = require('../app/controller/api/ComicBundle');
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice, getStripeDashboardLink } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 const { createFoundingTeacherCheckout, getFoundingTeacher, getFoundingTeacherPayment } = require('../app/controller/api/foundingTeacherController');
@@ -89,6 +89,7 @@ router.post("/user/refine-prompt", authentication, refinePrompt)
 router.post("/user/generate-comic", authentication, generateComicImage)
 router.post("/user/generateComicPDF", generateComicPDF)
 router.post("/user/comics/set-status", authentication, updateComicStatus);
+router.post("/user/comics/auto-approve-country", authentication, autoApproveComicAndCountry);
 router.get("/user/my-comics", authentication, listUserComics);
 
 router.post("/user/generate-faqs", generateFAQs);
@@ -199,6 +200,9 @@ router.post("/subscription/update-card", authentication, createUpdateCardSession
 router.post("/user/createBundle", authentication, createBundle);
 router.delete("/user/deleteBundle/:bundleId", authentication, deleteBundle);
 // router.post("/user/completePurchase", authentication, completePurchase);
+router.get("/user/getMyComicsForBundle", authentication, getMyComicsForBundle);
+router.put("/user/updateBundle/:bundleId", authentication, updateBundle);
+
 router.get("/user/bundleDetails/:bundleId", getBundleDetails);
 router.post("/user/publishBundle", authentication, publishBundle);
 router.get("/user/getTeacherBundles", authentication, getTeacherBundles);

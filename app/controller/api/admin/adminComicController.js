@@ -23,32 +23,130 @@ const openai = new OpenAI({
 
 
 
+
+const ADMIN_STATUSES = ["pending", "approved", "rejected"];
+
+// User ka search text regex me safe banane ke liye
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const listAllComicsAdmin = async (req, res) => {
   try {
-    const { country } = req.query; // 👈 optional country filter
-    const filter = { comicStatus: "published" };
+    // 🔒 Admin check (pichhle message wala isAdminUser / ADMIN_ROLES)
+    // Pehle confirm karo ki admin panel kaun-kaun se userType use karte hain,
+    // phir ise enable karo, warna admin panel khud lock ho jayega
+    // if (!isAdminUser(req)) {
+    //     return res.status(403).json({ success: false, message: "Admin access required" });
+    // }
 
-    // ✅ If country query is present, add to filter
+    const { country, search, status } = req.query;
+    const usePagination = req.query.page !== undefined;
+
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
+
+    const andConditions = [];
+
+    // 🌍 Country: us country ki comics + jo "ALL" countries ke liye hain
+    // (auto-approve ke baad zyada tar comics "ALL" hongi, purana
+    //  `country: "IN"` filter unhe dikhata hi nahi tha)
     if (country && country.trim() !== "") {
-      filter.country = country.toUpperCase(); // e.g. "IN", "US"
+      const code = country.trim().toUpperCase();
+      andConditions.push({
+        $or: [
+          { country: code },
+          { countries: code },
+          { country: "ALL" },
+          { countries: "ALL" }
+        ]
+      });
     }
 
-    const comics = await Comic.find(filter, "-prompt")
-      .populate("user_id", "name email userType firstname")
-      .sort({ createdAt: -1 });
+    // 🔍 Search: title / subject / concept + creator ka naam / email / userType
+    if (search && search.trim() !== "") {
+      const rx = new RegExp(escapeRegex(search.trim()), "i");
 
-    res.json({
+      const matchedUsers = await User.find({
+        $or: [{ firstname: rx }, { lastname: rx }, { email: rx }, { userType: rx }]
+      })
+        .select("_id")
+        .lean();
+
+      andConditions.push({
+        $or: [
+          { title: rx },
+          { subject: rx },
+          { concept: rx },
+          { user_id: { $in: matchedUsers.map((u) => u._id) } }
+        ]
+      });
+    }
+
+    // Stats cards ke liye filter (status ke bina)
+    const baseFilter = { comicStatus: "published" };
+    if (andConditions.length) baseFilter.$and = andConditions;
+
+    // Table ke liye filter (status ke saath)
+    const listFilter = { ...baseFilter };
+    if (status && ADMIN_STATUSES.includes(status)) {
+      listFilter.status = status;
+    }
+
+    // ⬇️ Latest pehle (same time ho to _id se tie-break)
+    const sortOption = { createdAt: -1, _id: -1 };
+
+    // ---------------- Purana response (bina pagination) ----------------
+    if (!usePagination) {
+      const comics = await Comic.find(listFilter, "-prompt")
+        .populate("user_id", "name email userType firstname")
+        .sort(sortOption);
+
+      return res.json({
+        success: true,
+        total: comics.length,
+        country: country || "ALL",
+        comics
+      });
+    }
+
+    // ---------------- Paginated response ----------------
+    const [comics, total, statusCounts] = await Promise.all([
+      Comic.find(listFilter, "-prompt -story -userStory")
+        .populate("user_id", "name email userType firstname lastname")
+        .sort(sortOption)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+
+      Comic.countDocuments(listFilter),
+
+      Comic.aggregate([
+        { $match: baseFilter },
+        { $group: { _id: "$status", count: { $sum: 1 } } }
+      ])
+    ]);
+
+    const stats = { pending: 0, approved: 0, rejected: 0, total: 0 };
+    statusCounts.forEach(({ _id, count }) => {
+      if (_id in stats) stats[_id] = count;
+      stats.total += count;
+    });
+
+    return res.json({
       success: true,
-      total: comics.length,
-      country: country || "ALL",
       comics,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      stats,
+      country: country || "ALL"
     });
   } catch (error) {
     console.error("❌ Admin list comics error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch comics",
-      error: error.message,
+      error: error.message
     });
   }
 };
@@ -254,6 +352,8 @@ const approveComicStatusAdmin = async (req, res) => {
     res.status(500).json({ error: "Failed to update comic status" });
   }
 };
+
+
 
 
 
