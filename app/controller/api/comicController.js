@@ -2065,28 +2065,130 @@ const deleteComic = async (req, res) => {
 
 
 
+
+const ADMIN_STATUSES = ["pending", "approved", "rejected"];
+const SORT_FIELDS = ["title", "subject", "concept", "partNumber", "status", "comicStatus", "country", "createdAt"];
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Har comic ka pehla page (pageNumber se) = thumbnail, ek hi query me
+const attachThumbnails = async (comics) => {
+    if (!comics.length) return comics;
+
+    const thumbs = await ComicPage.aggregate([
+        { $match: { comicId: { $in: comics.map((c) => c._id) } } },
+        { $sort: { pageNumber: 1 } },
+        { $group: { _id: "$comicId", imageUrl: { $first: "$imageUrl" } } }
+    ]);
+    const thumbMap = new Map(thumbs.map((t) => [String(t._id), t.imageUrl]));
+
+    return comics.map((c) => ({ ...c, thumbnail: thumbMap.get(String(c._id)) || null }));
+};
+
 const listUserComics = async (req, res) => {
     try {
-        const userId = req.user.login_data._id;
+        // Aggregate me string id cast nahi hota, isliye ObjectId banao
+        const userId = new mongoose.Types.ObjectId(String(req.user.login_data._id));
+        const userFilter = { user_id: userId };
 
-        const comics = await Comic.find({ user_id: userId }, "-prompt")
-            .sort({ createdAt: -1 })
-            .select("");
+        // ---------------- Purana response (bina pagination) ----------------
+        if (req.query.page === undefined) {
+            const comics = await Comic.find(userFilter, "-prompt")
+                .sort({ createdAt: -1 })
+                .lean();
 
-        const comicsWithThumbnail = await Promise.all(
-            comics.map(async (comic) => {
-                const firstPage = await ComicPage.findOne({ comicId: comic._id })
-                    .sort({ pageNumber: 1 })
-                    .select("imageUrl");
+            return res.json({ comics: await attachThumbnails(comics) });
+        }
 
-                return {
-                    ...comic.toObject(),
-                    thumbnail: firstPage ? firstPage.imageUrl : null,
-                };
-            })
-        );
+        const { search, concept, status } = req.query;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
 
-        res.json({ comics: comicsWithThumbnail });
+        // ---------------- Concept filter (stats bhi isi ke hisaab se) ----------------
+        const statsFilter = { ...userFilter };
+        if (typeof concept === "string" && concept.trim() !== "") {
+            statsFilter.concept = concept.trim();
+        }
+
+        // ---------------- Search ----------------
+        const listFilter = { ...statsFilter };
+        if (search && search.trim() !== "") {
+            const text = search.trim();
+            const partMatch = text.match(/^part\s*(\d+)$/i);
+
+            if (partMatch) {
+                // "part 2" -> series ka part 2
+                listFilter.partNumber = Number(partMatch[1]);
+                listFilter.seriesId = { $exists: true, $ne: null };
+            } else {
+                listFilter.$and = text.split(/\s+/).slice(0, 5).map((word) => {
+                    const rx = new RegExp(escapeRegex(word), "i");
+                    return {
+                        $or: [
+                            { title: rx },
+                            { subject: rx },
+                            { concept: rx },
+                            { status: rx },
+                            { comicStatus: rx }
+                        ]
+                    };
+                });
+            }
+        }
+
+        // ---------------- Status filter ----------------
+        if (status && ADMIN_STATUSES.includes(status)) {
+            listFilter.status = status;
+        }
+
+        // ---------------- Sorting ----------------
+        const sortBy = SORT_FIELDS.includes(req.query.sortBy) ? req.query.sortBy : "createdAt";
+        const direction = req.query.order === "asc" ? 1 : -1;
+        const sortOption = { [sortBy]: direction, _id: direction };
+
+        const [comics, total, statusCounts, conceptGroups, totalComics] = await Promise.all([
+            Comic.find(listFilter, "-prompt -story -userStory")
+                .collation({ locale: "en", strength: 2 }) // A-Z sort case-insensitive
+                .sort(sortOption)
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+
+            Comic.countDocuments(listFilter),
+
+            // Stats cards (concept filter ke hisaab se, search ke bina - pehle jaisa)
+            Comic.aggregate([
+                { $match: statsFilter },
+                { $group: { _id: "$status", count: { $sum: 1 } } }
+            ]),
+
+            // Concept chips: sirf approved comics ke concepts
+            Comic.aggregate([
+                { $match: { ...userFilter, status: "approved", concept: { $nin: [null, ""] } } },
+                { $group: { _id: "$concept", count: { $sum: 1 } } },
+                { $sort: { _id: 1 } }
+            ]),
+
+            // User ki total comics (free plan ki limit check ke liye)
+            Comic.countDocuments(userFilter)
+        ]);
+
+        const stats = { pending: 0, approved: 0, rejected: 0, total: 0 };
+        statusCounts.forEach(({ _id, count }) => {
+            if (_id in stats) stats[_id] = count;
+            stats.total += count;
+        });
+
+        res.json({
+            comics: await attachThumbnails(comics),
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            stats,
+            concepts: conceptGroups.map((c) => ({ name: c._id, count: c.count })),
+            totalComics
+        });
     } catch (error) {
         console.error("Error listing user comics:", error);
         res.status(500).json({ error: "Failed to list user's comics" });
