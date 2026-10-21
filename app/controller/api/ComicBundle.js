@@ -1,3 +1,8 @@
+const fs = require("fs");
+const path = require("path");
+const mongoose = require("mongoose");
+const PDFDocument = require("pdfkit"); // npm i pdfkit
+
 const ComicBundle = require("../../models/ComicBundle");
 const Comic = require("../../models/Comic");
 const Purchase = require("../../models/Purchase");
@@ -8,7 +13,60 @@ const Quiz = require("../../models/Quiz");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const BundleRating = require("../../models/BundleRating");
 const User = require("../../models/User");
-const ComicSeries = require("../../models/ComicSeries");
+
+// =====================================================================
+// Shared helpers
+// =====================================================================
+
+// Admin panel ke roles (owner na ho tab bhi comic dekh sakte hain)
+const ADMIN_ROLES = ["admin", "moderator"];
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
+const getConceptName = (c) => c?.conceptId?.name || c?.concept || "N/A";
+
+// Har comic ka pehla page (thumbnail) + page count, ek hi query me
+const getPageStats = async (comicIds) => {
+    if (!comicIds.length) return new Map();
+
+    const stats = await ComicPage.aggregate([
+        { $match: { comicId: { $in: comicIds } } },
+        { $sort: { pageNumber: 1, createdAt: 1 } },
+        {
+            $group: {
+                _id: "$comicId",
+                pageCount: { $sum: 1 },
+                thumbnail: { $first: "$imageUrl" }
+            }
+        }
+    ]);
+
+    return new Map(stats.map((s) => [String(s._id), s]));
+};
+
+// Comic ka access: owner teacher, admin/moderator, ya kisi bundle ka buyer
+const hasComicAccess = async (user, comic) => {
+    if (!user?._id) return false;
+    if (String(comic.user_id) === String(user._id)) return true;
+    if (ADMIN_ROLES.includes(user.userType)) return true;
+
+    // Ek comic multiple bundles me ho sakti hai
+    const bundleIds = await ComicBundle.find({ comics: comic._id }).distinct("_id");
+    if (!bundleIds.length) return false;
+
+    const purchase = await Purchase.exists({
+        userId: user._id,
+        bundleId: { $in: bundleIds },
+        paymentStatus: "success"
+    });
+
+    return !!purchase;
+};
+
+
+// =====================================================================
+// Bundles (teacher)
+// =====================================================================
 
 const createBundle = async (req, res) => {
     try {
@@ -16,34 +74,63 @@ const createBundle = async (req, res) => {
         const { title, description, comics, price } = req.body;
 
         // ✅ validations
-        if (!title || !comics || comics.length === 0 || !price) {
+        if (!title || !Array.isArray(comics) || comics.length === 0 || !price) {
             return res.status(400).json({
                 error: true,
                 message: "Title, comics and price are required"
             });
         }
 
-        // ✅ check comics exist
-        const foundComics = await Comic.find({
-            _id: { $in: comics },
-            user_id: userId
-        });
+        const priceNumber = Number(price);
+        if (!Number.isFinite(priceNumber) || priceNumber <= 0) {
+            return res.status(400).json({ error: true, message: "Price must be greater than 0" });
+        }
 
-        if (foundComics.length !== comics.length) {
+        const uniqueIds = [...new Set(comics.map(String))];
+        if (uniqueIds.some((id) => !isValidId(id))) {
+            return res.status(400).json({ error: true, message: "Invalid comic id" });
+        }
+
+        // ✅ comics is teacher ki honi chahiye
+        const foundComics = await Comic.find({
+            _id: { $in: uniqueIds },
+            user_id: userId
+        })
+            .select("_id status concept conceptId")
+            .populate("conceptId", "name")
+            .lean();
+
+        if (foundComics.length !== uniqueIds.length) {
             return res.status(400).json({
                 error: true,
                 message: "Invalid comics or not owned by teacher"
             });
         }
 
+        // ✅ Sirf approved comics (pehle sirf frontend pe check tha)
+        if (foundComics.some((c) => c.status !== "approved")) {
+            return res.status(400).json({
+                error: true,
+                message: "Only approved comics can be added to a bundle"
+            });
+        }
+
+        // ✅ Saari comics ek hi concept ki
+        if (new Set(foundComics.map(getConceptName)).size > 1) {
+            return res.status(400).json({
+                error: true,
+                message: "All comics in a bundle must belong to the same concept"
+            });
+        }
+
         // ✅ create bundle
         const bundle = await ComicBundle.create({
-            title,
+            title: String(title).trim(),
             description,
             teacherId: userId,
-            comics,
-            price,
-            isBundle: comics.length > 1
+            comics: uniqueIds,
+            price: priceNumber,
+            isBundle: uniqueIds.length > 1
         });
 
         return res.status(200).json({
@@ -53,7 +140,7 @@ const createBundle = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
+        console.log("createBundle error:", error);
         return res.status(500).json({
             error: true,
             message: "Something went wrong"
@@ -67,7 +154,10 @@ const deleteBundle = async (req, res) => {
         const userId = req.user.login_data._id;
         const { bundleId } = req.params;
 
-        // Find bundle
+        if (!isValidId(bundleId)) {
+            return res.status(400).json({ error: true, message: "Invalid bundle id" });
+        }
+
         const bundle = await ComicBundle.findById(bundleId);
 
         if (!bundle) {
@@ -85,7 +175,15 @@ const deleteBundle = async (req, res) => {
             });
         }
 
-        // Delete bundle
+        // Published bundle delete nahi hoga (frontend bhi yahi kehta hai,
+        // warna buyers ka access chala jayega)
+        if (bundle.status === "published") {
+            return res.status(400).json({
+                error: true,
+                message: "Published bundles can't be deleted"
+            });
+        }
+
         await ComicBundle.findByIdAndDelete(bundleId);
 
         return res.status(200).json({
@@ -94,8 +192,7 @@ const deleteBundle = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
-
+        console.log("deleteBundle error:", error);
         return res.status(500).json({
             error: true,
             message: "Something went wrong"
@@ -103,161 +200,40 @@ const deleteBundle = async (req, res) => {
     }
 };
 
-// const getBundleDetails = async (req, res) => {
-//     try {
-//         const { bundleId } = req.params;
-
-//         const bundle = await ComicBundle.findById(bundleId)
-//             .populate({
-//                 path: "teacherId",
-//                 select: "firstname lastname email"
-//             })
-//             .populate({
-//                 path: "comics",
-//                 populate: [
-//                     {
-//                         path: "subjectId",
-//                         select: "name"
-//                     },
-//                     {
-//                         path: "conceptId",
-//                         select: "name"
-//                     },
-//                     {
-//                         path: "seriesId",
-//                         select: "title concept grade country subjectId conceptId"
-//                     },
-//                     {
-//                         path: "themeId",
-//                         select: "name"
-//                     },
-//                     {
-//                         path: "styleId",
-//                         select: "name"
-//                     }
-//                 ]
-//             });
-
-//         if (!bundle) {
-//             return res.status(404).json({
-//                 error: true,
-//                 message: "Bundle not found"
-//             });
-//         }
-
-//         // 🔥 attach thumbnail
-//         const comicsWithThumb = await Promise.all(
-//             bundle.comics.map(async (comic) => {
-//                 const page = await ComicPage.findOne({ comicId: comic._id });
-
-//                 let seriesDetails = null;
-//                 if (comic.seriesId) {
-//                     const series = await ComicSeries.findById(comic.seriesId)
-//                         .populate("subjectId", "name")
-//                         .populate("conceptId", "name");
-//                     seriesDetails = series;
-//                 }
-
-//                 return {
-//                     ...comic.toObject(),
-//                     thumbnail: page?.imageUrl || null,
-//                     series: seriesDetails ? {
-//                         _id: seriesDetails._id,
-//                         title: seriesDetails.title,
-//                         concept: seriesDetails.concept,
-//                         conceptName: seriesDetails.conceptId?.name || null,
-//                         grade: seriesDetails.grade,
-//                         country: seriesDetails.country,
-//                         countries: seriesDetails.countries,
-//                         subjectName: seriesDetails.subjectId?.name || null,
-//                         partNumber: comic.partNumber
-//                     } : null,
-//                     subjectName: comic.subjectId?.name || comic.subject || "N/A",
-//                     conceptName: comic.conceptId?.name || comic.concept || "N/A"
-//                 };
-//             })
-//         );
-
-//         const response = {
-//             ...bundle.toObject(),
-//             comics: comicsWithThumb
-//         };
-
-//         return res.json({
-//             error: false,
-//             data: response
-//         });
-
-//     } catch (error) {
-//         console.log(error);
-//         return res.status(500).json({
-//             error: true,
-//             message: "Server error"
-//         });
-//     }
-// };
 
 const getBundleDetails = async (req, res) => {
     try {
         const { bundleId } = req.params;
 
+        if (!isValidId(bundleId)) {
+            return res.status(400).json({ error: true, message: "Invalid bundle id" });
+        }
+
         const bundle = await ComicBundle.findById(bundleId)
-            .select(
-                "_id title price description teacherId comics createdAt averageRating totalRatings"
-            )
+            .select("_id title price description teacherId comics createdAt averageRating totalRatings")
             .populate({
                 path: "teacherId",
                 select: "_id firstname lastname email username"
             })
             .populate({
                 path: "comics",
-                select: `
-                    _id
-                    title
-                    subject
-                    concept
-                    subjectId
-                    conceptId
-                    seriesId
-                    themeId
-                    styleId
-                    hasQuiz
-                    createdAt
-                    partNumber
-                `,
+                select: "_id title subject concept subjectId conceptId seriesId themeId styleId hasQuiz createdAt partNumber",
                 populate: [
-                    {
-                        path: "subjectId",
-                        select: "name"
-                    },
-                    {
-                        path: "conceptId",
-                        select: "name"
-                    },
+                    { path: "subjectId", select: "name" },
+                    { path: "conceptId", select: "name" },
                     {
                         path: "seriesId",
                         select: "title concept grade country countries subjectId conceptId",
                         populate: [
-                            {
-                                path: "subjectId",
-                                select: "name"
-                            },
-                            {
-                                path: "conceptId",
-                                select: "name"
-                            }
+                            { path: "subjectId", select: "name" },
+                            { path: "conceptId", select: "name" }
                         ]
                     },
-                    {
-                        path: "themeId",
-                        select: "name"
-                    },
-                    {
-                        path: "styleId",
-                        select: "name"
-                    }
+                    { path: "themeId", select: "name" },
+                    { path: "styleId", select: "name" }
                 ]
-            });
+            })
+            .lean();
 
         if (!bundle) {
             return res.status(404).json({
@@ -266,89 +242,63 @@ const getBundleDetails = async (req, res) => {
             });
         }
 
-        // Attach thumbnail + required comic details
-        const comics = await Promise.all(
-            bundle.comics.map(async (comic) => {
-                const page = await ComicPage.findOne(
-                    { comicId: comic._id },
-                    { imageUrl: 1 }
-                ).lean();
+        // Thumbnails ek hi query me (pehle har comic ke liye alag query thi)
+        const pageMap = await getPageStats((bundle.comics || []).map((c) => c._id));
 
-                const series = comic.seriesId;
+        const comics = (bundle.comics || []).map((comic) => {
+            const series = comic.seriesId;
 
-                return {
-                    _id: comic._id,
-                    title: comic.title,
-
-                    thumbnail: page?.imageUrl || null,
-
-                    subjectName:
-                        comic.subjectId?.name ||
-                        comic.subject ||
-                        "N/A",
-
-                    conceptName:
-                        comic.conceptId?.name ||
-                        comic.concept ||
-                        "N/A",
-
-                    theme: comic.themeId?.name || "N/A",
-                    style: comic.styleId?.name || "N/A",
-
-                    hasQuiz: comic.hasQuiz || false,
-                    createdAt: comic.createdAt,
-
-                    series: series
-                        ? {
-                            _id: series._id,
-                            title: series.title,
-                            concept: series.concept,
-                            conceptName:
-                                series.conceptId?.name || null,
-                            grade: series.grade,
-                            country: series.country,
-                            countries: series.countries,
-                            subjectName:
-                                series.subjectId?.name || null,
-                            partNumber: comic.partNumber || null
-                        }
-                        : null
-                };
-            })
-        );
-
-        // Only send required bundle data
-        const response = {
-            _id: bundle._id,
-            title: bundle.title,
-            price: bundle.price,
-            description: bundle.description,
-            createdAt: bundle.createdAt,
-
-            averageRating: bundle.averageRating || 0,
-            totalRatings: bundle.totalRatings || 0,
-
-            teacher: bundle.teacherId
-                ? {
-                    _id: bundle.teacherId._id,
-                    firstname: bundle.teacherId.firstname,
-                    lastname: bundle.teacherId.lastname,
-                    email: bundle.teacherId.email,
-                    username: bundle.teacherId.username
-                }
-                : null,
-
-            comics
-        };
+            return {
+                _id: comic._id,
+                title: comic.title,
+                thumbnail: pageMap.get(String(comic._id))?.thumbnail || null,
+                subjectName: comic.subjectId?.name || comic.subject || "N/A",
+                conceptName: getConceptName(comic),
+                theme: comic.themeId?.name || "N/A",
+                style: comic.styleId?.name || "N/A",
+                hasQuiz: comic.hasQuiz || false,
+                createdAt: comic.createdAt,
+                series: series
+                    ? {
+                        _id: series._id,
+                        title: series.title,
+                        concept: series.concept,
+                        conceptName: series.conceptId?.name || null,
+                        grade: series.grade,
+                        country: series.country,
+                        countries: series.countries,
+                        subjectName: series.subjectId?.name || null,
+                        partNumber: comic.partNumber || null
+                    }
+                    : null
+            };
+        });
 
         return res.json({
             error: false,
-            data: response
+            data: {
+                _id: bundle._id,
+                title: bundle.title,
+                price: bundle.price,
+                description: bundle.description,
+                createdAt: bundle.createdAt,
+                averageRating: bundle.averageRating || 0,
+                totalRatings: bundle.totalRatings || 0,
+                teacher: bundle.teacherId
+                    ? {
+                        _id: bundle.teacherId._id,
+                        firstname: bundle.teacherId.firstname,
+                        lastname: bundle.teacherId.lastname,
+                        email: bundle.teacherId.email,
+                        username: bundle.teacherId.username
+                    }
+                    : null,
+                comics
+            }
         });
 
     } catch (error) {
         console.error("getBundleDetails error:", error);
-
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -356,10 +306,15 @@ const getBundleDetails = async (req, res) => {
     }
 };
 
+
 const publishBundle = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
         const { bundleId } = req.body;
+
+        if (!isValidId(bundleId)) {
+            return res.status(400).json({ error: true, message: "Invalid bundle id" });
+        }
 
         const bundle = await ComicBundle.findOne({
             _id: bundleId,
@@ -382,136 +337,7 @@ const publishBundle = async (req, res) => {
         });
 
     } catch (error) {
-        return res.status(500).json({
-            error: true,
-            message: "Server error"
-        });
-    }
-};
-
-
-
-
-const PURCHASE_SORTS = {
-    latest: { createdAt: -1, _id: -1 },
-    oldest: { createdAt: 1, _id: 1 },
-    price_high: { paidAmount: -1, createdAt: -1 },
-    price_low: { paidAmount: 1, createdAt: -1 },
-    title: { "bundle.title": 1, createdAt: -1 }
-};
-
-
-const getMyPurchases = async (req, res) => {
-    try {
-        // Aggregate me string id cast nahi hota
-        const userId = new mongoose.Types.ObjectId(String(req.user.login_data._id));
-
-        const page = Math.max(parseInt(req.query.page) || 1, 1);
-        const limit = Math.min(Math.max(parseInt(req.query.limit) || (req.query.page ? 9 : 50), 1), 100);
-        const sortOption = PURCHASE_SORTS[req.query.sort] || PURCHASE_SORTS.latest;
-        const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
-
-        // ---------------- Search ke liye teacher + comic ids ----------------
-        let searchMatch = null;
-        if (search) {
-            const rx = new RegExp(escapeRegex(search), "i");
-            const [teacherIds, comicIds] = await Promise.all([
-                User.find({ $or: [{ firstname: rx }, { lastname: rx }, { username: rx }] }).distinct("_id"),
-                Comic.find({ title: rx }).distinct("_id")
-            ]);
-
-            searchMatch = {
-                $or: [
-                    { "bundle.title": rx },
-                    { "bundle.teacherId": { $in: teacherIds } },
-                    { "bundle.comics": { $in: comicIds } }
-                ]
-            };
-        }
-
-        // ---------------- Purchases + bundle (ek query) ----------------
-        const pipeline = [
-            // Sirf successful payments (purchasedBundleDetails bhi yahi check karta hai,
-            // warna "Open" pe 403 aata)
-            { $match: { userId, paymentStatus: "success" } },
-            {
-                $lookup: {
-                    from: ComicBundle.collection.name,
-                    localField: "bundleId",
-                    foreignField: "_id",
-                    as: "bundle"
-                }
-            },
-            // Delete ho chuke bundles ko hata do (pehle inse frontend crash hota tha)
-            { $unwind: "$bundle" },
-            { $addFields: { paidAmount: { $ifNull: ["$amount", "$bundle.price"] } } }
-        ];
-
-        if (searchMatch) pipeline.push({ $match: searchMatch });
-
-        pipeline.push(
-            { $sort: sortOption },
-            {
-                $facet: {
-                    items: [{ $skip: (page - 1) * limit }, { $limit: limit }],
-                    total: [{ $count: "count" }]
-                }
-            }
-        );
-
-        const [result] = await Purchase.aggregate(pipeline)
-            .collation({ locale: "en", strength: 2 }); // title A-Z case-insensitive
-
-        const items = result?.items || [];
-        const totalItems = result?.total?.[0]?.count || 0;
-        const totalPages = Math.ceil(totalItems / limit);
-
-        // ---------------- Teacher + comics (sirf zaroori fields) ----------------
-        const bundles = items.map((p) => p.bundle);
-        await ComicBundle.populate(bundles, [
-            { path: "teacherId", select: "firstname lastname" },
-            { path: "comics", select: "title subject concept grade seriesId partNumber" }
-        ]);
-
-        // ---------------- Thumbnails: ek hi query ----------------
-        const allComicIds = bundles.flatMap((b) => (b.comics || []).map((c) => c._id));
-        const thumbs = allComicIds.length
-            ? await ComicPage.aggregate([
-                { $match: { comicId: { $in: allComicIds } } },
-                { $sort: { pageNumber: 1, createdAt: 1 } },
-                { $group: { _id: "$comicId", imageUrl: { $first: "$imageUrl" } } }
-            ])
-            : [];
-        const thumbMap = new Map(thumbs.map((t) => [String(t._id), t.imageUrl]));
-
-        // Response ka shape pehle jaisa: purchase + bundleId (populated)
-        const data = items.map(({ bundle, paidAmount, ...purchase }) => ({
-            ...purchase,
-            amount: paidAmount,
-            bundleId: {
-                ...bundle,
-                comics: (bundle.comics || []).map((comic) => ({
-                    ...(comic.toObject ? comic.toObject() : comic),
-                    thumbnail: thumbMap.get(String(comic._id)) || null
-                }))
-            }
-        }));
-
-        return res.json({
-            error: false,
-            data,
-            pagination: {
-                currentPage: page,
-                limit,
-                totalItems,
-                totalPages,
-                hasNextPage: page < totalPages,
-                hasPrevPage: page > 1
-            }
-        });
-
-    } catch (error) {
-        console.log("getMyPurchases error:", error);
+        console.log("publishBundle error:", error);
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -524,8 +350,9 @@ const getTeacherBundles = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
 
+        // Sirf zaroori comic fields (pehle prompt/story jaise bade fields bhi aate the)
         const bundles = await ComicBundle.find({ teacherId: userId })
-            .populate("comics")
+            .populate("comics", "_id title concept conceptId status")
             .sort({ createdAt: -1 });
 
         return res.json({
@@ -534,7 +361,7 @@ const getTeacherBundles = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
+        console.log("getTeacherBundles error:", error);
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -543,198 +370,176 @@ const getTeacherBundles = async (req, res) => {
 };
 
 
-const mongoose = require("mongoose");
+const getMyComicsForBundle = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
 
-// const getMarketplace = async (req, res) => {
-//     try {
-//         const {
-//             page = 1,
-//             limit = 10,
-//             search,
-//             subjectId,
-//             conceptId,
-//             grade,
-//             country,
-//             teacherId,
-//             sort = "latest"
-//         } = req.query;
+        const comics = await Comic.find({ user_id: userId })
+            .select("_id title subject concept subjectId conceptId status createdAt")
+            .populate("subjectId", "name")
+            .populate("conceptId", "name")
+            .sort({ createdAt: -1 })
+            .lean();
 
-//         const pageNumber = Math.max(parseInt(page) || 1, 1);
-//         const limitNumber = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
-//         const skip = (pageNumber - 1) * limitNumber;
+        const pageMap = await getPageStats(comics.map((c) => c._id));
 
-//         // --------------------------------
-//         // 1. Build Comic Filter
-//         // --------------------------------
-//         const comicFilter = {};
-//         const andConditions = [];
+        const data = comics.map((c) => ({
+            _id: c._id,
+            title: c.title,
+            subjectName: c.subjectId?.name || c.subject || "N/A",
+            conceptName: getConceptName(c),
+            thumbnail: pageMap.get(String(c._id))?.thumbnail || null,
+            status: c.status, // frontend sirf "approved" dikhayega (createBundle jaisa)
+            createdAt: c.createdAt
+        }));
 
-//         // Helper: valid ObjectId?
-//         const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
+        return res.json({ error: false, data });
+    } catch (error) {
+        console.log("getMyComicsForBundle error:", error);
+        return res.status(500).json({ error: true, message: "Server error" });
+    }
+};
 
-//         // ---- Subject ----
-//         if (subjectId) {
-//             if (isValidId(subjectId)) {
-//                 andConditions.push({ subjectId });
-//             } else {
-//                 // match by name on populated ref OR plain 'subject' field
-//                 andConditions.push({
-//                     $or: [
-//                         { subject: subjectId },
-//                         // we can't query populated name directly; but if Comic
-//                         // also stores subject as a string, this works.
-//                     ]
-//                 });
-//             }
-//         }
 
-//         // ---- Concept ----
-//         if (conceptId) {
-//             if (isValidId(conceptId)) {
-//                 andConditions.push({ conceptId });
-//             } else {
-//                 andConditions.push({
-//                     $or: [
-//                         { concept: conceptId }
-//                     ]
-//                 });
-//             }
-//         }
+// ---------------------------------------------------------------------
+// Bundle edit: title / description / price / comics (add + remove)
+// Rule: published bundle me comics ADD ho sakti hain, REMOVE nahi
+// ---------------------------------------------------------------------
+const updateBundle = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+        const { bundleId } = req.params;
+        const { title, description, comics, price } = req.body;
 
-//         // ---- Grade ----
-//         if (grade) {
-//             andConditions.push({ grade });
-//         }
+        if (!isValidId(bundleId)) {
+            return res.status(400).json({ error: true, message: "Invalid bundle id" });
+        }
 
-//         // ---- Country ----
-//         if (country) {
-//             andConditions.push({ country });
-//         }
+        const bundle = await ComicBundle.findOne({ _id: bundleId, teacherId: userId });
 
-//         // ---- Search (comic title) ----
-//         if (search) {
-//             andConditions.push({
-//                 title: { $regex: search, $options: "i" }
-//             });
-//         }
+        if (!bundle) {
+            return res.status(404).json({ error: true, message: "Bundle not found" });
+        }
 
-//         if (andConditions.length) {
-//             comicFilter.$and = andConditions;
-//         }
+        // ---- Title ----
+        if (title !== undefined) {
+            if (!String(title).trim()) {
+                return res.status(400).json({ error: true, message: "Title is required" });
+            }
+            bundle.title = String(title).trim();
+        }
 
-//         // --------------------------------
-//         // 2. Find Comics based on filters
-//         // --------------------------------
-//         let filteredComicIds = null;
+        // ---- Description ----
+        if (description !== undefined) {
+            bundle.description = description;
+        }
 
-//         if (Object.keys(comicFilter).length > 0) {
-//             const comics = await Comic.find(comicFilter).select("_id");
-//             filteredComicIds = comics.map((c) => c._id);
+        // ---- Price ----
+        if (price !== undefined) {
+            const priceNumber = Number(price);
+            if (!Number.isFinite(priceNumber) || priceNumber <= 0) {
+                return res.status(400).json({ error: true, message: "Price must be greater than 0" });
+            }
+            bundle.price = priceNumber;
+        }
 
-//             if (filteredComicIds.length === 0) {
-//                 return res.json({
-//                     error: false,
-//                     data: [],
-//                     pagination: {
-//                         currentPage: pageNumber,
-//                         limit: limitNumber,
-//                         totalItems: 0,
-//                         totalPages: 0,
-//                         hasNextPage: false,
-//                         hasPrevPage: pageNumber > 1
-//                     }
-//                 });
-//             }
-//         }
+        // ---- Comics ----
+        if (comics !== undefined) {
+            if (!Array.isArray(comics) || comics.length === 0) {
+                return res.status(400).json({ error: true, message: "Select at least one comic" });
+            }
 
-//         // --------------------------------
-//         // 3. Build Bundle Filter
-//         // --------------------------------
-//         const bundleFilter = { status: "published" };
+            const newIds = [...new Set(comics.map(String))];
 
-//         if (teacherId) bundleFilter.teacherId = teacherId;
+            if (newIds.some((id) => !isValidId(id))) {
+                return res.status(400).json({ error: true, message: "Invalid comic id" });
+            }
 
-//         if (filteredComicIds) {
-//             bundleFilter.comics = { $in: filteredComicIds };
-//         }
+            const ownedComics = await Comic.find({
+                _id: { $in: newIds },
+                user_id: userId
+            })
+                .select("_id status concept conceptId")
+                .populate("conceptId", "name")
+                .lean();
 
-//         // Search bundle title too
-//         if (search) {
-//             bundleFilter.$or = [
-//                 { title: { $regex: search, $options: "i" } }
-//             ];
-//             // If you also want to match comics by title, the $in above already handles it.
-//         }
+            if (ownedComics.length !== newIds.length) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Invalid comics or not owned by teacher"
+                });
+            }
 
-//         // --------------------------------
-//         // 4. Total Count
-//         // --------------------------------
-//         const totalItems = await ComicBundle.countDocuments(bundleFilter);
-//         const totalPages = Math.ceil(totalItems / limitNumber);
+            const oldIds = bundle.comics.map(String);
 
-//         // --------------------------------
-//         // 5. Sorting
-//         // --------------------------------
-//         let sortOption = { createdAt: -1 };
-//         if (sort === "oldest") sortOption = { createdAt: 1 };
+            // Naya add hone wala comic "approved" hona chahiye
+            const notApproved = ownedComics.filter(
+                (c) => !oldIds.includes(String(c._id)) && c.status !== "approved"
+            );
 
-//         // --------------------------------
-//         // 6. Paginated Bundles
-//         // --------------------------------
-//         const bundles = await ComicBundle.find(bundleFilter)
-//             .populate({ path: "teacherId", select: "firstname lastname" })
-//             .populate({
-//                 path: "comics",
-//                 select: "title subject concept subjectId conceptId grade country",
-//                 populate: [
-//                     { path: "subjectId", select: "name" },
-//                     { path: "conceptId", select: "name" }
-//                 ]
-//             })
-//             .sort(sortOption)
-//             .skip(skip)
-//             .limit(limitNumber);
+            if (notApproved.length > 0) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Only approved comics can be added to a bundle"
+                });
+            }
 
-//         // --------------------------------
-//         // 7. Add Thumbnails
-//         // --------------------------------
-//         const bundlesWithThumbnails = await Promise.all(
-//             bundles.map(async (bundle) => {
-//                 const comicsWithThumb = await Promise.all(
-//                     bundle.comics.map(async (comic) => {
-//                         const pageDoc = await ComicPage.findOne({ comicId: comic._id }).select("imageUrl");
-//                         return {
-//                             ...comic.toObject(),
-//                             thumbnail: pageDoc?.imageUrl || null
-//                         };
-//                     })
-//                 );
-//                 return { ...bundle.toObject(), comics: comicsWithThumb };
-//             })
-//         );
+            // Bundle ka concept FIXED hai (pehle se jo comics hain unka)
+            const oldComic = await Comic.findOne({ _id: { $in: bundle.comics } })
+                .select("concept conceptId")
+                .populate("conceptId", "name")
+                .lean();
 
-//         // --------------------------------
-//         // 8. Response
-//         // --------------------------------
-//         return res.json({
-//             error: false,
-//             data: bundlesWithThumbnails,
-//             pagination: {
-//                 currentPage: pageNumber,
-//                 limit: limitNumber,
-//                 totalItems,
-//                 totalPages,
-//                 hasNextPage: pageNumber < totalPages,
-//                 hasPrevPage: pageNumber > 1
-//             }
-//         });
+            const bundleConcept = oldComic ? getConceptName(oldComic) : null;
 
-//     } catch (error) {
-//         console.log("getMarketplace Error:", error);
-//         return res.status(500).json({ error: true, message: "Server error" });
-//     }
-// };
+            const wrongConcept = bundleConcept
+                ? ownedComics.some((c) => getConceptName(c) !== bundleConcept)
+                : new Set(ownedComics.map(getConceptName)).size > 1;
 
+            if (wrongConcept) {
+                return res.status(400).json({
+                    error: true,
+                    message: bundleConcept
+                        ? `Only "${bundleConcept}" comics can be added to this bundle`
+                        : "All comics in a bundle must belong to the same concept"
+                });
+            }
+
+            // Published bundle se comic remove karna allowed nahi
+            const removedIds = oldIds.filter((id) => !newIds.includes(id));
+
+            if (bundle.status === "published" && removedIds.length > 0) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Comics can't be removed from a published bundle. You can only add new comics."
+                });
+            }
+
+            bundle.comics = newIds;
+            bundle.isBundle = newIds.length > 1;
+        }
+
+        await bundle.save();
+
+        // Same shape jo getTeacherBundles deta hai
+        const updated = await ComicBundle.findById(bundle._id)
+            .populate("comics", "_id title concept conceptId status");
+
+        return res.json({
+            error: false,
+            message: "Bundle updated successfully",
+            data: updated
+        });
+    } catch (error) {
+        console.log("updateBundle error:", error);
+        return res.status(500).json({ error: true, message: "Server error" });
+    }
+};
+
+
+// =====================================================================
+// Marketplace
+// =====================================================================
 
 const MARKETPLACE_SORTS = {
     latest: { createdAt: -1, _id: -1 },
@@ -744,9 +549,6 @@ const MARKETPLACE_SORTS = {
     rating: { averageRating: -1, totalRatings: -1, _id: -1 },
     title: { title: 1, _id: 1 }
 };
-
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
 
 // Ek label ke liye ek hi option rakho; id wala value naam wale se behtar hai
 const addOption = (map, label, value, hasId) => {
@@ -820,9 +622,7 @@ const getMarketplace = async (req, res) => {
         const limitNumber = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
         const skip = (pageNumber - 1) * limitNumber;
 
-        // --------------------------------
-        // 1. Comic filters (subject / concept / grade / country)
-        // --------------------------------
+        // ---- Comic filters (subject / concept / grade / country) ----
         const comicConditions = [];
 
         if (subjectId) {
@@ -850,9 +650,7 @@ const getMarketplace = async (req, res) => {
             });
         }
 
-        // --------------------------------
-        // 2. Bundle filter
-        // --------------------------------
+        // ---- Bundle filter ----
         const bundleFilter = { status: "published" };
 
         if (teacherId && isValidId(teacherId)) {
@@ -864,11 +662,7 @@ const getMarketplace = async (req, res) => {
             bundleFilter.comics = { $in: matchingComicIds };
         }
 
-        // --------------------------------
-        // 3. Search (OR): bundle title/description, comic, teacher
-        //    Pehle ye AND ban raha tha (bundle title + comic title dono match
-        //    hone chahiye the), isliye zyada tar search khali aata tha
-        // --------------------------------
+        // ---- Search (OR): bundle title/description, comic, teacher ----
         if (search && String(search).trim() !== "") {
             const rx = new RegExp(escapeRegex(String(search).trim()), "i");
 
@@ -885,14 +679,8 @@ const getMarketplace = async (req, res) => {
             ];
         }
 
-        // --------------------------------
-        // 4. Sorting
-        // --------------------------------
         const sortOption = MARKETPLACE_SORTS[sort] || MARKETPLACE_SORTS.latest;
 
-        // --------------------------------
-        // 5. Count + paginated bundles (+ facets agar maange)
-        // --------------------------------
         const [totalItems, bundles, facets] = await Promise.all([
             ComicBundle.countDocuments(bundleFilter),
 
@@ -917,32 +705,17 @@ const getMarketplace = async (req, res) => {
 
         const totalPages = Math.ceil(totalItems / limitNumber);
 
-        // --------------------------------
-        // 6. Thumbnails: saari comics ka pehla page, ek hi query me
-        // --------------------------------
-        const allComicIds = bundles.flatMap((b) => (b.comics || []).map((c) => c._id));
-
-        const thumbs = allComicIds.length
-            ? await ComicPage.aggregate([
-                { $match: { comicId: { $in: allComicIds } } },
-                { $sort: { pageNumber: 1, createdAt: 1 } },
-                { $group: { _id: "$comicId", imageUrl: { $first: "$imageUrl" } } }
-            ])
-            : [];
-
-        const thumbMap = new Map(thumbs.map((t) => [String(t._id), t.imageUrl]));
+        // Thumbnails: ek hi query
+        const pageMap = await getPageStats(bundles.flatMap((b) => (b.comics || []).map((c) => c._id)));
 
         const data = bundles.map((bundle) => ({
             ...bundle,
             comics: (bundle.comics || []).map((comic) => ({
                 ...comic,
-                thumbnail: thumbMap.get(String(comic._id)) || null
+                thumbnail: pageMap.get(String(comic._id))?.thumbnail || null
             }))
         }));
 
-        // --------------------------------
-        // 7. Response
-        // --------------------------------
         const response = {
             error: false,
             data,
@@ -965,6 +738,7 @@ const getMarketplace = async (req, res) => {
         return res.status(500).json({ error: true, message: "Server error" });
     }
 };
+
 
 const getMarketplaceStatus = async (req, res) => {
     try {
@@ -1013,65 +787,136 @@ const getMarketplaceStatus = async (req, res) => {
 };
 
 
+// =====================================================================
+// Purchases / Sales
+// =====================================================================
 
-// const purchaseBundle = async (req, res) => {
-//     try {
-//         const userId = req.user.login_data._id;
-//         const { bundleId } = req.body;
+const PURCHASE_SORTS = {
+    latest: { createdAt: -1, _id: -1 },
+    oldest: { createdAt: 1, _id: 1 },
+    price_high: { paidAmount: -1, createdAt: -1 },
+    price_low: { paidAmount: 1, createdAt: -1 },
+    title: { "bundle.title": 1, createdAt: -1 }
+};
 
-//         const bundle = await ComicBundle.findById(bundleId);
+const getMyPurchases = async (req, res) => {
+    try {
+        // Aggregate me string id cast nahi hota
+        const userId = new mongoose.Types.ObjectId(String(req.user.login_data._id));
 
-//         if (!bundle || bundle.status !== "published") {
-//             return res.status(404).json({
-//                 error: true,
-//                 message: "Bundle not available"
-//             });
-//         }
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || (req.query.page ? 9 : 50), 1), 100);
+        const sortOption = PURCHASE_SORTS[req.query.sort] || PURCHASE_SORTS.latest;
+        const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
 
-//         // check already purchased
-//         const alreadyPurchased = await Purchase.findOne({
-//             userId,
-//             bundleId
-//         });
+        // ---- Search ke liye teacher + comic ids ----
+        let searchMatch = null;
+        if (search) {
+            const rx = new RegExp(escapeRegex(search), "i");
+            const [teacherIds, comicIds] = await Promise.all([
+                User.find({ $or: [{ firstname: rx }, { lastname: rx }, { username: rx }] }).distinct("_id"),
+                Comic.find({ title: rx }).distinct("_id")
+            ]);
 
-//         if (alreadyPurchased) {
-//             return res.status(400).json({
-//                 error: true,
-//                 message: "Already purchased"
-//             });
-//         }
+            searchMatch = {
+                $or: [
+                    { "bundle.title": rx },
+                    { "bundle.teacherId": { $in: teacherIds } },
+                    { "bundle.comics": { $in: comicIds } }
+                ]
+            };
+        }
 
-//         // create purchase
-//         const purchase = await Purchase.create({
-//             userId,
-//             bundleId,
-//             amount: bundle.price,
-//             paymentStatus: "success" // for now
-//         });
+        // ---- Purchases + bundle (ek query) ----
+        const pipeline = [
+            { $match: { userId, paymentStatus: "success" } },
+            {
+                $lookup: {
+                    from: ComicBundle.collection.name,
+                    localField: "bundleId",
+                    foreignField: "_id",
+                    as: "bundle"
+                }
+            },
+            // Delete ho chuke bundles hata do
+            { $unwind: "$bundle" },
+            { $addFields: { paidAmount: { $ifNull: ["$amount", "$bundle.price"] } } }
+        ];
 
-//         return res.json({
-//             error: false,
-//             message: "Bundle purchased successfully",
-//             data: purchase
-//         });
+        if (searchMatch) pipeline.push({ $match: searchMatch });
 
-//     } catch (error) {
-//         return res.status(500).json({
-//             error: true,
-//             message: "Server error"
-//         });
-//     }
-// };
+        pipeline.push(
+            { $sort: sortOption },
+            {
+                $facet: {
+                    items: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+                    total: [{ $count: "count" }]
+                }
+            }
+        );
+
+        const [result] = await Purchase.aggregate(pipeline)
+            .collation({ locale: "en", strength: 2 });
+
+        const items = result?.items || [];
+        const totalItems = result?.total?.[0]?.count || 0;
+        const totalPages = Math.ceil(totalItems / limit);
+
+        // ---- Teacher + comics (sirf zaroori fields) ----
+        const bundles = items.map((p) => p.bundle);
+        await ComicBundle.populate(bundles, [
+            { path: "teacherId", select: "firstname lastname", options: { lean: true } },
+            { path: "comics", select: "title subject concept grade seriesId partNumber", options: { lean: true } }
+        ]);
+
+        const pageMap = await getPageStats(bundles.flatMap((b) => (b.comics || []).map((c) => c._id)));
+
+        // Response ka shape pehle jaisa: purchase + bundleId (populated)
+        const data = items.map(({ bundle, paidAmount, ...purchase }) => ({
+            ...purchase,
+            amount: paidAmount,
+            bundleId: {
+                ...bundle,
+                comics: (bundle.comics || []).map((comic) => ({
+                    ...(comic.toObject ? comic.toObject() : comic),
+                    thumbnail: pageMap.get(String(comic._id))?.thumbnail || null
+                }))
+            }
+        }));
+
+        return res.json({
+            error: false,
+            data,
+            pagination: {
+                currentPage: page,
+                limit,
+                totalItems,
+                totalPages,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1
+            }
+        });
+
+    } catch (error) {
+        console.log("getMyPurchases error:", error);
+        return res.status(500).json({
+            error: true,
+            message: "Server error"
+        });
+    }
+};
+
 
 const getMySales = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
 
-        const bundles = await ComicBundle.find({ teacherId: userId });
-        const bundleIds = bundles.map(b => b._id);
+        const bundleIds = await ComicBundle.find({ teacherId: userId }).distinct("_id");
 
+        // Sirf successful payments hi "sale" hain
         const sales = await Purchase.find({
-            bundleId: { $in: bundleIds }
+            bundleId: { $in: bundleIds },
+            paymentStatus: "success"
         })
             .populate("userId", "firstname email")
             .populate("bundleId", "title price")
@@ -1083,6 +928,7 @@ const getMySales = async (req, res) => {
         });
 
     } catch (error) {
+        console.log("getMySales error:", error);
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -1105,6 +951,7 @@ const getTransactions = async (req, res) => {
         });
 
     } catch (error) {
+        console.log("getTransactions error:", error);
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -1113,11 +960,7 @@ const getTransactions = async (req, res) => {
 };
 
 
-
-
-
-
-const COMIC_FIELDS = [
+const COMIC_DETAIL_FIELDS = [
     "_id", "title", "subject", "concept", "subjectId", "conceptId",
     "seriesId", "partNumber", "themeId", "styleId", "grade",
     "country", "countries", "hasQuiz", "pdfUrl", "createdAt"
@@ -1128,7 +971,7 @@ const getPurchasedBundleDetails = async (req, res) => {
         const userId = req.user.login_data._id;
         const { bundleId } = req.params;
 
-        if (!mongoose.Types.ObjectId.isValid(bundleId)) {
+        if (!isValidId(bundleId)) {
             return res.status(400).json({ error: true, message: "Invalid bundle id" });
         }
 
@@ -1143,12 +986,11 @@ const getPurchasedBundleDetails = async (req, res) => {
                 .populate({ path: "teacherId", select: "firstname lastname email" })
                 .populate({
                     path: "comics",
-                    select: COMIC_FIELDS,
+                    select: COMIC_DETAIL_FIELDS,
                     populate: [
                         { path: "subjectId", select: "name" },
                         { path: "conceptId", select: "name" },
                         {
-                            // Series ek hi baar, uske subject/concept ke saath
                             path: "seriesId",
                             select: "title concept grade country countries subjectId conceptId",
                             populate: [
@@ -1177,24 +1019,7 @@ const getPurchasedBundleDetails = async (req, res) => {
             });
         }
 
-        // 📄 Har comic ka page count + pehla page (thumbnail) -> ek hi query
-        const comicIds = (bundle.comics || []).map((c) => c._id);
-
-        const pageStats = comicIds.length
-            ? await ComicPage.aggregate([
-                { $match: { comicId: { $in: comicIds } } },
-                { $sort: { pageNumber: 1, createdAt: 1 } },
-                {
-                    $group: {
-                        _id: "$comicId",
-                        pageCount: { $sum: 1 },
-                        thumbnail: { $first: "$imageUrl" }
-                    }
-                }
-            ])
-            : [];
-
-        const pageMap = new Map(pageStats.map((p) => [String(p._id), p]));
+        const pageMap = await getPageStats((bundle.comics || []).map((c) => c._id));
 
         const comics = (bundle.comics || []).map((comic) => {
             const series = comic.seriesId;
@@ -1202,7 +1027,6 @@ const getPurchasedBundleDetails = async (req, res) => {
 
             return {
                 ...comic,
-                // seriesId ko pehle jaisa sirf id rakho (frontend `comic.seriesId` id maanta hai)
                 seriesId: series?._id || null,
                 pageCount: stats?.pageCount || 0,
                 thumbnail: stats?.thumbnail || null,
@@ -1220,7 +1044,7 @@ const getPurchasedBundleDetails = async (req, res) => {
                     }
                     : null,
                 subjectName: comic.subjectId?.name || comic.subject || "N/A",
-                conceptName: comic.conceptId?.name || comic.concept || "N/A"
+                conceptName: getConceptName(comic)
             };
         });
 
@@ -1229,7 +1053,6 @@ const getPurchasedBundleDetails = async (req, res) => {
             data: {
                 ...bundle,
                 comics,
-                // ✅ Purchase details
                 purchaseDate: purchase.createdAt,
                 purchaseId: purchase._id,
                 transactionId: purchase.transactionId || null,
@@ -1246,12 +1069,20 @@ const getPurchasedBundleDetails = async (req, res) => {
     }
 };
 
+
+// =====================================================================
+// Comic Reader
+// =====================================================================
+
 const getComicReader = async (req, res) => {
     try {
-        const userId = req.user.login_data._id;
         const { comicId } = req.params;
 
-        const comic = await Comic.findById(comicId);
+        if (!isValidId(comicId)) {
+            return res.status(400).json({ error: true, message: "Invalid comic id" });
+        }
+
+        const comic = await Comic.findById(comicId).select("-prompt -story -userStory").lean();
 
         if (!comic) {
             return res.status(404).json({
@@ -1260,47 +1091,33 @@ const getComicReader = async (req, res) => {
             });
         }
 
-        // 🔥 find bundle
-        const bundle = await ComicBundle.findOne({
-            comics: comicId
-        });
-
-        // 🔒 check purchase
-        const isPurchased = await Purchase.findOne({
-            userId,
-            bundleId: bundle?._id,
-            paymentStatus: "success"
-        });
-
-        // if (!isPurchased) {
-        //     return res.status(403).json({
-        //         error: true,
-        //         message: "Access denied"
-        //     });
-        // }
-
-        // 📄 pages
-        const pages = await ComicPage.find({ comicId }).sort({ createdAt: 1 });
-
-        // ❓ FAQs
-        const faqs = await FAQ.find({ comicId });
-
-        // 💡 Did You Know
-        const facts = await DidYouKnow.find({ comicId });
-
-        // 🧠 Quiz
-        const quiz = await Quiz.find({ comicId })
-            .populate({
-                path: "questions",
-                select: "question options correctAnswer explanation difficulty"
+        // 🔒 Access check (pehle comment out tha: koi bhi kisi ki bhi
+        //    comic + quiz answers dekh sakta tha)
+        if (!(await hasComicAccess(req.user.login_data, comic))) {
+            return res.status(403).json({
+                error: true,
+                message: "Access denied. Please purchase this bundle."
             });
+        }
 
-        // 🔥 Hardcore Quiz
-        const hardcoreQuiz = await HardcoreQuiz.find({ comicId })
-            .populate({
-                path: "questions",
-                select: "question options correctAnswer explanation difficulty hint"
-            });
+        // Saara content parallel me
+        const [pages, faqs, facts, quiz, hardcoreQuiz] = await Promise.all([
+            ComicPage.find({ comicId }).sort({ pageNumber: 1, createdAt: 1 }).lean(),
+            FAQ.find({ comicId }).lean(),
+            DidYouKnow.find({ comicId }).lean(),
+            Quiz.find({ comicId })
+                .populate({
+                    path: "questions",
+                    select: "question options correctAnswer explanation difficulty"
+                })
+                .lean(),
+            HardcoreQuiz.find({ comicId })
+                .populate({
+                    path: "questions",
+                    select: "question options correctAnswer explanation difficulty hint"
+                })
+                .lean()
+        ]);
 
         return res.json({
             error: false,
@@ -1315,7 +1132,7 @@ const getComicReader = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
+        console.log("getComicReader error:", error);
         return res.status(500).json({
             error: true,
             message: "Server error"
@@ -1323,42 +1140,422 @@ const getComicReader = async (req, res) => {
     }
 };
 
-const rateBundle = async (req, res) => {
 
+// =====================================================================
+// Comic PDF: comic pages + FAQ + Did You Know + Quiz + Hardcore Quiz
+// GET /user/comic-pdf/:comicId
+// =====================================================================
+
+// Hindi / dusri languages ke liye Unicode font yahan rakho (optional)
+const FONT_DIR = path.join(__dirname, "../../assets/fonts"); // apne project ke hisaab se path badlo
+const CUSTOM_FONT = {
+    regular: path.join(FONT_DIR, "NotoSans-Regular.ttf"),
+    bold: path.join(FONT_DIR, "NotoSans-Bold.ttf")
+};
+const hasCustomFont = fs.existsSync(CUSTOM_FONT.regular) && fs.existsSync(CUSTOM_FONT.bold);
+
+const FONT = {
+    regular: hasCustomFont ? "Body" : "Helvetica",
+    bold: hasCustomFont ? "BodyBold" : "Helvetica-Bold"
+};
+
+// Helvetica emoji / non-Latin nahi dikha pata, custom font na ho to hata do
+const cleanText = (value) => {
+    const text = String(value ?? "").trim();
+    if (hasCustomFont) return text;
+    return text
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2013\u2014]/g, "-")
+        .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, "")
+        .trim();
+};
+
+const SECTION_PAGE = { size: "A4", margin: 50 };
+const PDF_COLORS = {
+    heading: "#1f2937",
+    text: "#111827",
+    muted: "#6b7280",
+    line: "#e5e7eb",
+    correct: "#15803d",
+    hint: "#b45309",
+    accent: "#4f46e5"
+};
+
+// ---------------------------------------------------------------------
+// Watermark (har page pe): beech me tircha "Kridemy" + niche-right "© Kridemy"
+// ---------------------------------------------------------------------
+const WATERMARK = {
+    text: "Kridemy",
+    color: "#6b7280",
+    angle: -35,
+    textPageOpacity: 0.07,  // FAQ / quiz pages (text ke peeche)
+    imagePageOpacity: 0.16  // comic pages (image ke upar, isliye thoda gehra)
+};
+
+const drawWatermark = (doc, opacity) => {
+    const { width, height } = doc.page;
+
+    // Pehle ki state yaad rakho, warna aage ka text galat jagah / galat font me aayega
+    const prev = {
+        x: doc.x,
+        y: doc.y,
+        font: doc._font,
+        fontSize: doc._fontSize,
+        bottomMargin: doc.page.margins.bottom
+    };
+
+    // Neeche footer likhne pe pdfkit apne aap naya page na bana de
+    doc.page.margins.bottom = 0;
+
+    // Beech me bada tircha naam
+    const size = Math.min(width, height) * 0.18;
+    doc.save();
+    doc.font(FONT.bold).fontSize(size).fillColor(WATERMARK.color).fillOpacity(opacity);
+    const textWidth = doc.widthOfString(WATERMARK.text);
+    doc.rotate(WATERMARK.angle, { origin: [width / 2, height / 2] });
+    doc.text(WATERMARK.text, width / 2 - textWidth / 2, height / 2 - size / 2, { lineBreak: false });
+    doc.restore();
+
+    // Niche-right chhota label
+    const footerText = `\u00A9 ${WATERMARK.text}`;
+    const footerSize = Math.max(8, Math.min(width, height) * 0.018);
+    doc.save();
+    doc.font(FONT.bold).fontSize(footerSize).fillColor(WATERMARK.color)
+        .fillOpacity(Math.min(opacity * 4, 0.6));
+    const footerWidth = doc.widthOfString(footerText);
+    doc.text(footerText, width - footerWidth - footerSize * 1.5, height - footerSize * 2.5, { lineBreak: false });
+    doc.restore();
+
+    // State wapas
+    doc.page.margins.bottom = prev.bottomMargin;
+    doc._font = prev.font;
+    doc._fontSize = prev.fontSize;
+    doc.x = prev.x;
+    doc.y = prev.y;
+};
+
+// Image download; fail ho to null
+const fetchImage = async (url) => {
+    if (!url) return null;
     try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        return Buffer.from(await response.arrayBuffer());
+    } catch {
+        return null;
+    }
+};
 
-        const { bundleId, rating } = req.body;
-        const userId = req.user.id;
+const contentWidth = (doc) => doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+const ensureSpace = (doc, needed) => {
+    if (doc.y + needed > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage(SECTION_PAGE);
+    }
+};
+
+const addSectionPage = (doc, title, subtitle) => {
+    doc.addPage(SECTION_PAGE);
+
+    doc.font(FONT.bold).fontSize(22).fillColor(PDF_COLORS.heading).text(cleanText(title));
+    if (subtitle) {
+        doc.moveDown(0.2).font(FONT.regular).fontSize(10).fillColor(PDF_COLORS.muted).text(cleanText(subtitle));
+    }
+
+    doc.moveDown(0.6);
+    const y = doc.y;
+    doc.moveTo(doc.page.margins.left, y)
+        .lineTo(doc.page.width - doc.page.margins.right, y)
+        .lineWidth(1)
+        .strokeColor(PDF_COLORS.line)
+        .stroke();
+    doc.moveDown(1);
+};
+
+const addSubHeading = (doc, text) => {
+    ensureSpace(doc, 60);
+    doc.moveDown(0.5);
+    doc.font(FONT.bold).fontSize(15).fillColor(PDF_COLORS.accent).text(cleanText(text));
+    doc.moveDown(0.6);
+};
+
+const writeLabelled = (doc, label, value, color = PDF_COLORS.text) => {
+    const text = cleanText(value);
+    if (!text) return;
+    doc.font(FONT.bold).fontSize(11).fillColor(color).text(`${cleanText(label)} `, { continued: true });
+    doc.font(FONT.regular).fillColor(PDF_COLORS.text).text(text);
+};
+
+// Image ko max size me fit karo (JPEG/PNG ke alawa skip)
+const drawImage = (doc, buffer, maxWidth = 220, maxHeight = 160) => {
+    if (!buffer) return;
+    try {
+        const img = doc.openImage(buffer);
+        const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+        const height = img.height * scale;
+
+        ensureSpace(doc, height + 10);
+        doc.image(img, doc.page.margins.left, doc.y, { width: img.width * scale, height });
+        doc.y += height + 8;
+    } catch {
+        // unsupported image format
+    }
+};
+
+const optionLetter = (index) => String.fromCharCode(65 + index);
+
+const formatCorrectAnswer = (question) => {
+    const index = (question.options || []).findIndex((o) => o === question.correctAnswer);
+    return index >= 0
+        ? `${optionLetter(index)}. ${question.correctAnswer}`
+        : question.correctAnswer;
+};
+
+const writeFaqSection = (doc, faqs, imageMap) => {
+    addSectionPage(doc, "Frequently Asked Questions", `${faqs.length} questions`);
+
+    faqs.forEach((faq, i) => {
+        ensureSpace(doc, 70);
+        doc.font(FONT.bold).fontSize(12).fillColor(PDF_COLORS.text)
+            .text(`Q${i + 1}. ${cleanText(faq.question)}`, { width: contentWidth(doc) });
+        doc.moveDown(0.3);
+
+        drawImage(doc, imageMap.get(faq.imageUrl));
+
+        doc.font(FONT.regular).fontSize(11).fillColor(PDF_COLORS.text)
+            .text(cleanText(faq.answer), { width: contentWidth(doc) });
+        doc.moveDown(1);
+    });
+};
+
+const writeFactsSection = (doc, facts, imageMap) => {
+    addSectionPage(doc, "Did You Know?", `${facts.length} facts`);
+
+    facts.forEach((fact, i) => {
+        ensureSpace(doc, 60);
+        drawImage(doc, imageMap.get(fact.imageUrl));
+
+        doc.font(FONT.bold).fontSize(11).fillColor(PDF_COLORS.accent).text(`Fact ${i + 1}`);
+        doc.moveDown(0.2);
+        doc.font(FONT.regular).fontSize(11).fillColor(PDF_COLORS.text)
+            .text(cleanText(fact.fact), { width: contentWidth(doc) });
+        doc.moveDown(1);
+    });
+};
+
+const writeQuizSection = (doc, title, questions, { showHints = false } = {}) => {
+    addSectionPage(doc, title, `${questions.length} questions - answers are at the end of this section`);
+
+    questions.forEach((q, i) => {
+        const optionCount = q.options?.length || 0;
+        ensureSpace(doc, 50 + optionCount * 18);
+
+        doc.font(FONT.bold).fontSize(12).fillColor(PDF_COLORS.text)
+            .text(`Q${i + 1}. ${cleanText(q.question)}`, { width: contentWidth(doc) });
+
+        if (q.difficulty) {
+            doc.font(FONT.regular).fontSize(9).fillColor(PDF_COLORS.muted)
+                .text(`Difficulty: ${cleanText(q.difficulty).toUpperCase()}`);
+        }
+        doc.moveDown(0.3);
+
+        (q.options || []).forEach((option, optIndex) => {
+            doc.font(FONT.regular).fontSize(11).fillColor(PDF_COLORS.text)
+                .text(`${optionLetter(optIndex)}. ${cleanText(option)}`, {
+                    indent: 15,
+                    width: contentWidth(doc) - 15
+                });
+        });
+
+        if (showHints && q.hint) {
+            doc.moveDown(0.3);
+            writeLabelled(doc, "Hint:", q.hint, PDF_COLORS.hint);
+        }
+
+        doc.moveDown(1);
+    });
+
+    addSubHeading(doc, `${title} - Answer Key`);
+
+    questions.forEach((q, i) => {
+        ensureSpace(doc, 45);
+        doc.font(FONT.bold).fontSize(11).fillColor(PDF_COLORS.correct)
+            .text(`Q${i + 1}. ${cleanText(formatCorrectAnswer(q))}`, { width: contentWidth(doc) });
+
+        if (q.explanation) {
+            doc.font(FONT.regular).fontSize(10).fillColor(PDF_COLORS.muted)
+                .text(cleanText(q.explanation), { width: contentWidth(doc) });
+        }
+        doc.moveDown(0.7);
+    });
+};
+
+const downloadComicPdf = async (req, res) => {
+    try {
+        const { comicId } = req.params;
+
+        if (!isValidId(comicId)) {
+            return res.status(400).json({ error: true, message: "Invalid comic id" });
+        }
+
+        const comic = await Comic.findById(comicId).select("_id title user_id").lean();
+
+        if (!comic) {
+            return res.status(404).json({ error: true, message: "Comic not found" });
+        }
+
+        if (!(await hasComicAccess(req.user.login_data, comic))) {
+            return res.status(403).json({
+                error: true,
+                message: "Access denied. Please purchase this bundle."
+            });
+        }
+
+        const [pages, faqs, facts, quizzes, hardcoreQuizzes] = await Promise.all([
+            ComicPage.find({ comicId })
+                .sort({ pageNumber: 1, createdAt: 1 })
+                .select("imageUrl")
+                .lean(),
+            FAQ.find({ comicId }).lean(),
+            DidYouKnow.find({ comicId }).lean(),
+            Quiz.find({ comicId })
+                .populate({ path: "questions", select: "question options correctAnswer explanation difficulty" })
+                .lean(),
+            HardcoreQuiz.find({ comicId })
+                .populate({ path: "questions", select: "question options correctAnswer explanation difficulty hint" })
+                .lean()
+        ]);
+
+        const pageUrls = pages.map((p) => p.imageUrl).filter(Boolean);
+
+        if (!pageUrls.length) {
+            return res.status(404).json({ error: true, message: "This comic has no pages yet" });
+        }
+
+        const quizQuestions = quizzes.flatMap((q) => q.questions || []).filter((q) => q?.question);
+        const hardcoreQuestions = hardcoreQuizzes.flatMap((q) => q.questions || []).filter((q) => q?.question);
+        const validFaqs = faqs.filter((f) => f.question || f.answer);
+        const validFacts = facts.filter((f) => f.fact);
+
+        const extraImageUrls = [...new Set(
+            [...validFaqs, ...validFacts].map((item) => item.imageUrl).filter(Boolean)
+        )];
+
+        const [pageBuffers, extraBuffers] = await Promise.all([
+            Promise.all(pageUrls.map(async (url) => {
+                const buffer = await fetchImage(url);
+                if (!buffer) throw new Error(`Page image fetch failed: ${url}`);
+                return buffer;
+            })),
+            Promise.all(extraImageUrls.map(fetchImage))
+        ]);
+
+        const imageMap = new Map(extraImageUrls.map((url, i) => [url, extraBuffers[i]]));
+
+        const doc = new PDFDocument({
+            autoFirstPage: false,
+            size: "A4",
+            margin: 50,
+            info: { Title: cleanText(comic.title) || "Comic" }
+        });
+
+        if (hasCustomFont) {
+            doc.registerFont(FONT.regular, CUSTOM_FONT.regular);
+            doc.registerFont(FONT.bold, CUSTOM_FONT.bold);
+        }
+
+        // 💧 Har naye text page (FAQ / facts / quiz, aur text lamba hone pe
+        // apne aap bane pages) pe watermark, content ke PEECHE
+        let isComicImagePage = false;
+        doc.on("pageAdded", () => {
+            if (!isComicImagePage) drawWatermark(doc, WATERMARK.textPageOpacity);
+        });
+
+        // Pages pehle open karo: kharab image ho to stream se pehle error aaye
+        const pageImages = pageBuffers.map((buf) => doc.openImage(buf));
+
+        const safeName =
+            (comic.title || "comic")
+                .replace(/[^a-z0-9-_ ]/gi, "")
+                .trim()
+                .replace(/\s+/g, "_") || "comic";
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+
+        doc.pipe(res);
+
+        // 1. Comic pages: watermark image ke UPAR (peeche hota to image chhupa deti)
+        pageImages.forEach((img) => {
+            isComicImagePage = true;
+            doc.addPage({ size: [img.width, img.height], margin: 0 });
+            doc.image(img, 0, 0, { width: img.width, height: img.height });
+            drawWatermark(doc, WATERMARK.imagePageOpacity);
+            isComicImagePage = false;
+        });
+
+        // 2-5. Learning content (khali section skip)
+        if (validFaqs.length) writeFaqSection(doc, validFaqs, imageMap);
+        if (validFacts.length) writeFactsSection(doc, validFacts, imageMap);
+        if (quizQuestions.length) writeQuizSection(doc, "Quiz", quizQuestions);
+        if (hardcoreQuestions.length) {
+            writeQuizSection(doc, "Hardcore Quiz", hardcoreQuestions, { showHints: true });
+        }
+
+        doc.end();
+    } catch (error) {
+        console.error("downloadComicPdf error:", error);
+        if (!res.headersSent) {
+            return res.status(500).json({ error: true, message: "Failed to generate PDF" });
+        }
+        res.end();
+    }
+};
+
+
+// =====================================================================
+// Ratings
+// =====================================================================
+
+const rateBundle = async (req, res) => {
+    try {
+        const { bundleId } = req.body;
+        const rating = Number(req.body.rating);
+
+        // Pehle `req.user.id` tha jo undefined aata tha (baaki sab jagah login_data._id)
+        const userId = req.user.login_data._id;
+
+        if (!isValidId(bundleId)) {
+            return res.status(400).json({ success: false, message: "Invalid bundle id" });
+        }
+
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+            return res.status(400).json({ success: false, message: "Rating must be between 1 and 5" });
+        }
+
+        // Sirf kharidne wala hi rate kar sake
+        const purchase = await Purchase.exists({ userId, bundleId, paymentStatus: "success" });
+        if (!purchase) {
+            return res.status(403).json({ success: false, message: "Only buyers can rate this bundle" });
+        }
 
         await BundleRating.findOneAndUpdate(
-            {
-                bundleId,
-                userId
-            },
-            {
-                rating
-            },
-            {
-                upsert: true,
-                new: true
-            }
+            { bundleId, userId },
+            { rating },
+            { upsert: true, new: true }
         );
 
-        const ratings = await BundleRating.find({ bundleId });
+        // Average DB me hi calculate (saari ratings memory me load nahi)
+        const [summary] = await BundleRating.aggregate([
+            { $match: { bundleId: new mongoose.Types.ObjectId(String(bundleId)) } },
+            { $group: { _id: null, average: { $avg: "$rating" }, total: { $sum: 1 } } }
+        ]);
 
-        const totalRatings = ratings.length;
-
-        const averageRating =
-            ratings.reduce((sum, item) => sum + item.rating, 0) /
-            totalRatings;
-
-        await ComicBundle.findByIdAndUpdate(
-            bundleId,
-            {
-                averageRating: Number(averageRating.toFixed(1)),
-                totalRatings
-            }
-        );
+        await ComicBundle.findByIdAndUpdate(bundleId, {
+            averageRating: Number((summary?.average || 0).toFixed(1)),
+            totalRatings: summary?.total || 0
+        });
 
         return res.json({
             success: true,
@@ -1366,19 +1563,24 @@ const rateBundle = async (req, res) => {
         });
 
     } catch (err) {
+        console.log("rateBundle error:", err);
         return res.status(500).json({
             success: false,
-            message: err.message
+            message: "Server error"
         });
     }
 };
 
+
 const getBundleRatings = async (req, res) => {
     try {
+        if (!isValidId(req.params.bundleId)) {
+            return res.status(400).json({ success: false, message: "Invalid bundle id" });
+        }
 
-        const bundle = await ComicBundle.findById(req.params.bundleId).select(
-            "averageRating totalRatings"
-        );
+        const bundle = await ComicBundle.findById(req.params.bundleId)
+            .select("averageRating totalRatings")
+            .lean();
 
         return res.json({
             success: true,
@@ -1386,24 +1588,25 @@ const getBundleRatings = async (req, res) => {
         });
 
     } catch (err) {
+        console.log("getBundleRatings error:", err);
         return res.status(500).json({
             success: false,
-            message: err.message
+            message: "Server error"
         });
     }
 };
 
 
+// =====================================================================
+// Teacher sales dashboard
+// =====================================================================
 
 const getTeacherSalesDashboard = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
 
-        // 🔥 Get all bundles of this teacher
-        const bundles = await ComicBundle.find({ teacherId: userId });
-        const bundleIds = bundles.map(b => b._id);
+        const bundleIds = await ComicBundle.find({ teacherId: userId }).distinct("_id");
 
-        // 🔥 Get all purchases for these bundles
         const purchases = await Purchase.find({
             bundleId: { $in: bundleIds },
             paymentStatus: "success"
@@ -1412,24 +1615,23 @@ const getTeacherSalesDashboard = async (req, res) => {
             .populate("bundleId", "title")
             .sort({ createdAt: -1 });
 
-        // 🔥 Calculate statistics
-        const totalSales = purchases.length;
-        const totalRevenue = purchases.reduce((sum, p) => sum + p.teacherAmount, 0);
-        const pendingPayouts = purchases.filter(p => p.teacherPayoutStatus === "pending");
-        const failedPayouts = purchases.filter(p => p.teacherPayoutStatus === "failed");
+        // teacherAmount kabhi missing ho to NaN na aaye
+        const amountOf = (p) => Number(p.teacherAmount) || 0;
 
-        // 🔥 Group by bundle
+        const totalSales = purchases.length;
+        const totalRevenue = purchases.reduce((sum, p) => sum + amountOf(p), 0);
+        const pendingPayouts = purchases.filter((p) => p.teacherPayoutStatus === "pending").length;
+        const failedPayouts = purchases.filter((p) => p.teacherPayoutStatus === "failed").length;
+
+        // Group by bundle (deleted bundle pe crash na ho)
         const bundleSales = {};
-        purchases.forEach(p => {
-            const bundleTitle = p.bundleId.title;
+        purchases.forEach((p) => {
+            const bundleTitle = p.bundleId?.title || "Deleted bundle";
             if (!bundleSales[bundleTitle]) {
-                bundleSales[bundleTitle] = {
-                    count: 0,
-                    revenue: 0
-                };
+                bundleSales[bundleTitle] = { count: 0, revenue: 0 };
             }
             bundleSales[bundleTitle].count++;
-            bundleSales[bundleTitle].revenue += p.teacherAmount;
+            bundleSales[bundleTitle].revenue += amountOf(p);
         });
 
         return res.json({
@@ -1438,8 +1640,8 @@ const getTeacherSalesDashboard = async (req, res) => {
                 summary: {
                     totalSales,
                     totalRevenue,
-                    pendingPayouts: pendingPayouts.length,
-                    failedPayouts: failedPayouts.length
+                    pendingPayouts,
+                    failedPayouts
                 },
                 bundleSales,
                 recentSales: purchases.slice(0, 20)
@@ -1447,7 +1649,7 @@ const getTeacherSalesDashboard = async (req, res) => {
         });
 
     } catch (error) {
-        console.log(error);
+        console.log("getTeacherSalesDashboard error:", error);
         return res.status(500).json({
             error: true,
             message: "Error fetching sales dashboard"
@@ -1456,188 +1658,23 @@ const getTeacherSalesDashboard = async (req, res) => {
 };
 
 
-const getMyComicsForBundle = async (req, res) => {
-    try {
-        const userId = req.user.login_data._id;
-
-        const comics = await Comic.find({ user_id: userId })
-            .select("_id title subject concept subjectId conceptId status createdAt")
-            .populate("subjectId", "name")
-            .populate("conceptId", "name")
-            .sort({ createdAt: -1 })
-            .lean();
-
-        const comicIds = comics.map((c) => c._id);
-
-        // Har comic ka pehla page = thumbnail (ek hi query me, N+1 nahi)
-        const thumbs = await ComicPage.aggregate([
-            { $match: { comicId: { $in: comicIds } } },
-            { $sort: { createdAt: 1 } },
-            { $group: { _id: "$comicId", imageUrl: { $first: "$imageUrl" } } }
-        ]);
-        const thumbMap = new Map(thumbs.map((t) => [String(t._id), t.imageUrl]));
-
-        const data = comics.map((c) => ({
-            _id: c._id,
-            title: c.title,
-            subjectName: c.subjectId?.name || c.subject || "N/A",
-            conceptName: c.conceptId?.name || c.concept || "N/A",
-            thumbnail: thumbMap.get(String(c._id)) || null,
-            status: c.status, // frontend sirf "approved" dikhayega (createBundle jaisa)
-            createdAt: c.createdAt
-        }));
-
-        return res.json({ error: false, data });
-    } catch (error) {
-        console.log("getMyComicsForBundle error:", error);
-        return res.status(500).json({ error: true, message: "Server error" });
-    }
-};
-
-// ---------------------------------------------------------------------
-// Bundle edit: title / description / price / comics (add + remove)
-// Rule: published bundle me comics ADD ho sakti hain, REMOVE nahi
-//       (warna jinhone kharida hai unka access chala jayega)
-// ---------------------------------------------------------------------
-const updateBundle = async (req, res) => {
-    try {
-        const userId = req.user.login_data._id;
-        const { bundleId } = req.params;
-        const { title, description, comics, price } = req.body;
-
-        if (!mongoose.Types.ObjectId.isValid(bundleId)) {
-            return res.status(400).json({ error: true, message: "Invalid bundle id" });
-        }
-
-        const bundle = await ComicBundle.findOne({ _id: bundleId, teacherId: userId });
-
-        if (!bundle) {
-            return res.status(404).json({ error: true, message: "Bundle not found" });
-        }
-
-        // ---- Title ----
-        if (title !== undefined) {
-            if (!String(title).trim()) {
-                return res.status(400).json({ error: true, message: "Title is required" });
-            }
-            bundle.title = String(title).trim();
-        }
-
-        // ---- Description ----
-        if (description !== undefined) {
-            bundle.description = description;
-        }
-
-        // ---- Price ----
-        if (price !== undefined) {
-            const priceNumber = Number(price);
-            if (!Number.isFinite(priceNumber) || priceNumber <= 0) {
-                return res.status(400).json({ error: true, message: "Price must be greater than 0" });
-            }
-            bundle.price = priceNumber;
-        }
-
-        // ---- Comics ----
-        if (comics !== undefined) {
-            if (!Array.isArray(comics) || comics.length === 0) {
-                return res.status(400).json({ error: true, message: "Select at least one comic" });
-            }
-
-            const newIds = [...new Set(comics.map(String))];
-
-            if (newIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
-                return res.status(400).json({ error: true, message: "Invalid comic id" });
-            }
-
-            // Saari comics is teacher ki honi chahiye
-            const ownedComics = await Comic.find({
-                _id: { $in: newIds },
-                user_id: userId
-            })
-                .select("_id status concept conceptId")
-                .populate("conceptId", "name")
-                .lean();
-
-            if (ownedComics.length !== newIds.length) {
-                return res.status(400).json({
-                    error: true,
-                    message: "Invalid comics or not owned by teacher"
-                });
-            }
-
-            const oldIds = bundle.comics.map(String);
-
-            // Naya add hone wala comic "approved" hona chahiye (createBundle wala rule)
-            // Purani comics ko dobara check nahi kar rahe, taaki purane bundles break na ho
-            const notApproved = ownedComics.filter(
-                (c) => !oldIds.includes(String(c._id)) && c.status !== "approved"
-            );
-
-            if (notApproved.length > 0) {
-                return res.status(400).json({
-                    error: true,
-                    message: "Only approved comics can be added to a bundle"
-                });
-            }
-
-            // Bundle ka concept FIXED hai: jo comics pehle se bundle me hain unka concept.
-            // Nayi comics sirf usi concept ki add ho sakti hain.
-            const getConceptName = (c) => c.conceptId?.name || c.concept || "N/A";
-
-            const oldComic = await Comic.findOne({ _id: { $in: bundle.comics } })
-                .select("concept conceptId")
-                .populate("conceptId", "name")
-                .lean();
-
-            const bundleConcept = oldComic ? getConceptName(oldComic) : null;
-
-            const wrongConcept = bundleConcept
-                ? ownedComics.some((c) => getConceptName(c) !== bundleConcept)
-                : new Set(ownedComics.map(getConceptName)).size > 1;
-
-            if (wrongConcept) {
-                return res.status(400).json({
-                    error: true,
-                    message: bundleConcept
-                        ? `Only "${bundleConcept}" comics can be added to this bundle`
-                        : "All comics in a bundle must belong to the same concept"
-                });
-            }
-
-            // Published bundle se comic remove karna allowed nahi
-            const removedIds = oldIds.filter((id) => !newIds.includes(id));
-
-            if (bundle.status === "published" && removedIds.length > 0) {
-                return res.status(400).json({
-                    error: true,
-                    message: "Comics can't be removed from a published bundle. You can only add new comics."
-                });
-            }
-
-            bundle.comics = newIds;
-            bundle.isBundle = newIds.length > 1;
-        }
-
-        await bundle.save();
-
-        // Same shape jo getTeacherBundles deta hai (populated comics)
-        const updated = await ComicBundle.findById(bundle._id).populate("comics");
-
-        return res.json({
-            error: false,
-            message: "Bundle updated successfully",
-            data: updated
-        });
-    } catch (error) {
-        console.log("updateBundle error:", error);
-        return res.status(500).json({ error: true, message: "Server error" });
-    }
-};
-
-
-
 module.exports = {
-    createBundle, getBundleDetails, publishBundle, getMarketplace, getTeacherBundles, getTransactions, getMySales,
-    getMyPurchases, getPurchasedBundleDetails, getComicReader, rateBundle, getBundleRatings, getTeacherSalesDashboard,
-    getMarketplaceStatus, deleteBundle, getMyComicsForBundle, updateBundle
-}
+    createBundle,
+    getBundleDetails,
+    publishBundle,
+    getMarketplace,
+    getTeacherBundles,
+    getTransactions,
+    getMySales,
+    getMyPurchases,
+    getPurchasedBundleDetails,
+    getComicReader,
+    downloadComicPdf,
+    rateBundle,
+    getBundleRatings,
+    getTeacherSalesDashboard,
+    getMarketplaceStatus,
+    deleteBundle,
+    getMyComicsForBundle,
+    updateBundle
+};
