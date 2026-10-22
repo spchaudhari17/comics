@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, autoApproveComicAndCountry, } = require('../app/controller/api/comicController');
+const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, autoApproveComicAndCountry, regenerateComicPage, } = require('../app/controller/api/comicController');
 const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser, toggleUnlimited } = require('../app/controller/api/admin/adminComicController');
@@ -26,6 +26,7 @@ const { createBundle, publishBundle, getMarketplace, purchaseBundle, getMyPurcha
 const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, completePurchase, createStripeAccount, createOnboardingLink, getPayoutStatus, getPaymentStatus, checkTeacherStripeStatus, getTeacherBalance, getTransferStatus, getTeacherPayouts, getTeacherInvoice, getStripeDashboardLink } = require('../app/controller/api/cart');
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 const { createFoundingTeacherCheckout, getFoundingTeacher, getFoundingTeacherPayment } = require('../app/controller/api/foundingTeacherController');
+const { getMyCredits, createCreditCheckout } = require('../app/controller/api/creditController');
 
 
 
@@ -91,6 +92,8 @@ router.post("/user/generateComicPDF", generateComicPDF)
 router.post("/user/comics/set-status", authentication, updateComicStatus);
 router.post("/user/comics/auto-approve-country", authentication, autoApproveComicAndCountry);
 router.get("/user/my-comics", authentication, listUserComics);
+router.post("/user/regenerate-comic-page", authentication, regenerateComicPage);
+
 
 router.post("/user/generate-faqs", generateFAQs);
 router.post("/user/generate-didyouknow", generateDidYouKnow);
@@ -270,6 +273,10 @@ router.put("/admin/coupon-banner/update/:bannerId", authentication, updateCoupon
 router.delete("/admin/coupon-banner/delete/:bannerId", authentication, deleteCouponBanner);
 router.get("/coupon-banner/active", getActiveCouponBanner);
 
+//******************************** subscription ends routes routes started from here ***************************** */
+
+router.get("/user/credits", authentication, getMyCredits);
+router.post("/user/credits/checkout", authentication, createCreditCheckout);
 //******************************** subscription ends routes routes started from here ***************************** */
 
 router.get("/users", async (req, res) => {

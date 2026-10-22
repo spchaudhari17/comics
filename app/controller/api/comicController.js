@@ -23,6 +23,8 @@ const Quiz = require("../../models/Quiz");
 const ComicView = require("../../models/ComicView");
 const User = require("../../models/User");
 const transporter = require("../../../config/mailer");
+const CreditTransaction = require("../../models/CreditTransaction");
+// const { CREDITS_PER_PAGE_EDIT } = require("../../../config/creditPacks");
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -32,6 +34,7 @@ const { generateGeminiComicImage } = require("../../../helper/geminiImage");
 const { checkComicPermission } = require("../../../utils/checkComicPermission");
 const { checkWeeklyComicLimit } = require("../../../utils/checkWeeklyLimit");
 const { getUserAccess } = require("../../../utils/getUserAccess");
+const { CREDITS_PER_PAGE_EDIT } = require("../../../utils/creditPacks");
 
 
 
@@ -2380,10 +2383,371 @@ const addComicView = async (req, res) => {
 // };
 
 
+// =====================================================================
+// Ek single comic page dobara banana (baaki pages waise ke waise)
+//
+// Comic controller file me (jahan generateComicImage hai) ye add karo.
+// Wahan ye sab pehle se hai: Comic, ComicPage, ComicSeries, User, sharp,
+// upload_files, deleteFiles, mongoose, getUserAccess, sanitizeText,
+// isDiagramContent, getDiagramDetailBooster, generateImageWithRetry
+//
+// Naye imports (file ke top pe):
+//   const CreditTransaction = require("../../models/CreditTransaction");
+//   const { CREDITS_PER_PAGE_EDIT } = require("../../../config/creditPacks");
+//
+// 💳 Har page edit pe 1 credit katta hai. Credit 0 -> 402 NO_CREDITS.
+//    Image banne me error aaye to credit wapas.
+//    isUnlimited users ka credit nahi katta.
+//
+// Route:
+//   router.post("/user/regenerate-comic-page", authentication, regenerateComicPage);
+//
+// module.exports me: regenerateComicPage
+// =====================================================================
 
+// Limits (bahut lamba prompt AI ko confuse karta hai aur cost badhata hai)
+const PAGE_EDIT_LIMITS = {
+    maxPanels: 4,
+    maxDialoguesPerPanel: 6,
+    sceneLength: 1000,
+    captionLength: 300,
+    dialogueLength: 300,
+    characterLength: 50
+};
+
+const cleanString = (value, max) => String(value ?? "").trim().slice(0, max);
+
+// Frontend se aaye panels ko saaf + validate karo
+const normalizePanels = (panels) => {
+    if (!Array.isArray(panels) || panels.length === 0) {
+        throw new Error("At least one panel is required");
+    }
+    if (panels.length > PAGE_EDIT_LIMITS.maxPanels) {
+        throw new Error(`A page can have at most ${PAGE_EDIT_LIMITS.maxPanels} panels`);
+    }
+
+    return panels.map((panel, index) => {
+        const scene = cleanString(panel?.scene, PAGE_EDIT_LIMITS.sceneLength);
+        if (!scene) {
+            throw new Error(`Panel ${index + 1}: scene description is required`);
+        }
+
+        const dialogue = (Array.isArray(panel?.dialogue) ? panel.dialogue : [])
+            .slice(0, PAGE_EDIT_LIMITS.maxDialoguesPerPanel)
+            .map((d) => ({
+                character: cleanString(d?.character, PAGE_EDIT_LIMITS.characterLength),
+                text: cleanString(d?.text, PAGE_EDIT_LIMITS.dialogueLength)
+            }))
+            .filter((d) => d.character && d.text);
+
+        return {
+            scene,
+            caption: cleanString(panel?.caption, PAGE_EDIT_LIMITS.captionLength),
+            dialogue
+        };
+    });
+};
+
+// generateComicImage wala hi prompt, ek page ke liye
+// (dono jagah same prompt rahe isliye alag function)
+const buildComicPagePrompt = ({ panels, stylePrompt, showTextInImage }) => {
+    const characterReferences = {};
+
+    const pagePrompt = panels
+        .map((panel, idx) => {
+            const dialogueText = (panel.dialogue || [])
+                .map((d) => {
+                    if (d?.character) characterReferences[d.character] = true;
+                    return d?.character && d?.text
+                        ? `${sanitizeText(d.character)} says: ${sanitizeText(d.text)}`
+                        : "";
+                })
+                .filter(Boolean)
+                .join(" ");
+
+            return `
+Panel ${idx + 1}
+
+Scene:
+${sanitizeText(panel.scene || "")}
+
+Caption:
+${sanitizeText(panel.caption || "")}
+
+Dialogue:
+${dialogueText}
+`;
+        })
+        .join("\n");
+
+    const referencesText = Object.keys(characterReferences)
+        .map((character) => `
+Ensure character "${sanitizeText(character)}"
+looks consistent across all panels on this page.
+Same clothing, hairstyle, colors and appearance.
+`)
+        .join("");
+
+    const diagramBooster = isDiagramContent(pagePrompt) ? getDiagramDetailBooster() : "";
+
+    const textInstruction = showTextInImage
+        ? `
+TEXT MODE ENABLED
+
+IMPORTANT:
+- Include speech bubbles
+- Include captions
+- Include labels if educationally useful
+- Use correct English spelling
+- Text must match supplied captions and dialogue
+- Text should be readable
+`
+        : `
+VISUAL ONLY MODE
+
+IMPORTANT:
+- NO TEXT
+- NO WORDS
+- NO LETTERS
+- NO NUMBERS
+- NO CAPTIONS
+- NO LABELS
+- NO SPEECH BUBBLES
+- NO WRITING ANYWHERE
+`;
+
+    return `
+Create a professional educational comic page.
+
+TARGET AGE:
+6-12 years
+
+GOAL:
+Teach educational concepts clearly.
+
+STRICT RULES:
+- Generate ONLY this page
+- Child-safe content
+- No violence
+- No scary content
+- No inappropriate material
+- Clean layout
+- High quality illustration
+
+${textInstruction}
+
+STYLE:
+${stylePrompt}
+
+${referencesText}
+
+${diagramBooster}
+
+PAGE DESCRIPTION:
+${pagePrompt}
+
+IMPORTANT:
+Friendly educational characters.
+Educational comic style.
+`;
+};
+
+// POST /user/regenerate-comic-page
+// body: { comicId, pageNumber, panels: [{ scene, caption, dialogue: [{ character, text }] }] }
+const regenerateComicPage = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+        const { comicId } = req.body;
+        const pageNumber = Number(req.body.pageNumber);
+
+        if (!mongoose.Types.ObjectId.isValid(comicId)) {
+            return res.status(400).json({ error: "Invalid comic id" });
+        }
+        if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+            return res.status(400).json({ error: "Invalid page number" });
+        }
+
+        let panels;
+        try {
+            panels = normalizePanels(req.body.panels);
+        } catch (validationError) {
+            return res.status(400).json({ error: validationError.message });
+        }
+
+        /* ---------- Access ---------- */
+        const access = await getUserAccess(userId);
+        if (!access.comicsAllowed) {
+            return res.status(403).json({
+                code: "COMICS_NOT_ALLOWED",
+                error: "Upgrade to bundle plan to edit comics"
+            });
+        }
+
+        const comic = await Comic.findById(comicId).populate("styleId");
+        if (!comic) {
+            return res.status(404).json({ error: "Comic not found" });
+        }
+
+        // 🔒 Sirf apni comic edit ho sakti hai
+        if (String(comic.user_id) !== String(userId)) {
+            return res.status(403).json({ error: "You can only edit your own comics" });
+        }
+
+        if (comic.isLocked && access.type === "FREE") {
+            return res.status(403).json({
+                code: "UPGRADE_REQUIRED",
+                error: "Upgrade subscription to unlock this part"
+            });
+        }
+
+        const existingPage = await ComicPage.findOne({ comicId, pageNumber });
+        if (!existingPage) {
+            return res.status(404).json({ error: `Page ${pageNumber} not found. Generate the comic first.` });
+        }
+
+        const series = comic.seriesId ? await ComicSeries.findById(comic.seriesId).select("showTextInImage") : null;
+        const showTextInImage = comic.showTextInImage ?? series?.showTextInImage ?? false;
+
+        /* ---------- 💳 Credit kaato (atomic: balance kam ho to kuch nahi katega) ---------- */
+        const creditUser = await User.findById(userId).select("isUnlimited editCredits").lean();
+        const chargeCredits = !creditUser?.isUnlimited;
+        let creditsLeft = null;
+
+        if (chargeCredits) {
+            const charged = await User.findOneAndUpdate(
+                { _id: userId, editCredits: { $gte: CREDITS_PER_PAGE_EDIT } },
+                { $inc: { editCredits: -CREDITS_PER_PAGE_EDIT } },
+                { new: true, projection: { editCredits: 1 } }
+            );
+
+            if (!charged) {
+                return res.status(402).json({
+                    code: "NO_CREDITS",
+                    error: "You don't have enough credits to edit this page. Please buy more credits.",
+                    credits: creditUser?.editCredits || 0
+                });
+            }
+
+            creditsLeft = charged.editCredits;
+        }
+
+        /* ---------- Sirf is page ki nayi image ---------- */
+        const fullPrompt = buildComicPagePrompt({
+            panels,
+            stylePrompt: comic.styleId?.prompt || "",
+            showTextInImage
+        });
+
+        console.log(`🎨 Regenerating page ${pageNumber} of comic ${comicId}`);
+
+        let imageUrl;
+        let fileName;
+        const oldS3Key = existingPage.s3Key;
+
+        try {
+            const rawBuffer = await generateImageWithRetry(fullPrompt);
+
+            const buffer = await sharp(rawBuffer)
+                .resize({ width: 1024 })
+                .jpeg({ quality: 75 })
+                .toBuffer();
+
+            fileName = `comic_${comicId}_page${pageNumber}_${Date.now()}.jpg`;
+
+            imageUrl = await upload_files("comics", {
+                name: fileName,
+                data: buffer,
+                mimetype: "image/jpeg"
+            });
+
+            existingPage.panels = panels;
+            existingPage.imageUrl = imageUrl;
+            existingPage.s3Key = `comics/${fileName}`;
+            await existingPage.save();
+        } catch (generationError) {
+            // ❌ Image nahi bani -> credit wapas
+            if (chargeCredits) {
+                await User.updateOne({ _id: userId }, { $inc: { editCredits: CREDITS_PER_PAGE_EDIT } });
+                CreditTransaction.create({
+                    userId,
+                    type: "refund",
+                    credits: CREDITS_PER_PAGE_EDIT,
+                    comicId,
+                    pageNumber,
+                    note: "Page regeneration failed"
+                }).catch((err) => console.warn("Refund log failed:", err.message));
+            }
+            throw generationError;
+        }
+
+        // 💳 Kharch ka hisaab (fail ho to bhi page pe asar nahi)
+        if (chargeCredits) {
+            CreditTransaction.create({
+                userId,
+                type: "spend",
+                credits: -CREDITS_PER_PAGE_EDIT,
+                comicId,
+                pageNumber,
+                note: "Page regeneration"
+            }).catch((err) => console.warn("Spend log failed:", err.message));
+        }
+
+        /* ---------- Comic script (prompt JSON) me bhi update ---------- */
+        // Taaki "Resume" ya dobara "Generate My Comic" pe edited version hi aaye
+        try {
+            const script = JSON.parse(comic.prompt || "[]");
+            if (Array.isArray(script)) {
+                let found = false;
+                const updatedScript = script.map((p) => {
+                    if (Number(p?.page) === pageNumber) {
+                        found = true;
+                        return { ...p, panels };
+                    }
+                    return p;
+                });
+                if (!found) updatedScript.push({ page: pageNumber, panels });
+                comic.prompt = JSON.stringify(updatedScript);
+            }
+        } catch {
+            // purana prompt kharab JSON ho to chhod do, page to update ho chuka
+        }
+
+        // Purani saved PDF me purani image hai -> hata do, dobara "Generate Comic PDF" karna hoga
+        comic.pdfUrl = undefined;
+        await comic.save();
+
+        // Purani image S3 se hatao (fail ho to bhi response pe asar nahi)
+        if (oldS3Key && oldS3Key !== existingPage.s3Key) {
+            Promise.resolve()
+                .then(() => deleteFiles(oldS3Key))
+                .catch((err) =>
+                    console.warn(`Old page image delete failed (${oldS3Key}):`, err.message)
+                );
+        }
+
+        return res.json({
+            success: true,
+            comicId,
+            page: pageNumber,
+            imageUrl,
+            panels,
+            caption: panels.map((p) => p.caption).filter(Boolean).join("\n"),
+            showTextInImage,
+            creditsLeft,          // null = unlimited user
+            creditsCharged: chargeCredits ? CREDITS_PER_PAGE_EDIT : 0
+        });
+
+    } catch (error) {
+        console.error("🔥 regenerateComicPage error:", error);
+        return res.status(500).json({
+            error: "Failed to regenerate page",
+            details: error.message
+        });
+    }
+};
 
 module.exports = {
     refinePrompt, generateComicImage, generateComicPDF, listComics, addComicView,
     getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic,
-    autoApproveComicAndCountry
+    autoApproveComicAndCountry, regenerateComicPage
 };

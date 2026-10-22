@@ -11,6 +11,7 @@ const connectToDatabase = require('./config/database.js');
 const app = express();
 const webhookRoutes = require("./app/controller/api/webhook.js");
 const foundingTeacherwebhookRoutes = require("./app/controller/api/foundingTeacherWebhook.js");
+const editCreditsWebhookRoutes = require("./app/controller/api/editCreditsWebhook.js");
 
 
 const allowedOrigins = ['http://localhost:3000', 'http://51.21.194.3', 'http://16.171.146.122', 'http://kridemy.com', 'https://kridemy.com', 'https://www.kridemy.com', 'https://api.kridemy.com'];
@@ -64,6 +65,7 @@ app.use(
 
 app.use("/api", webhookRoutes);
 app.use("/api", foundingTeacherwebhookRoutes);
+app.use("/api", editCreditsWebhookRoutes);
 app.use("/api", stripeWebhookRoutes);
 
 

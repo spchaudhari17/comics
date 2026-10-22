@@ -1171,7 +1171,21 @@ const cleanText = (value) => {
         .trim();
 };
 
-const SECTION_PAGE = { size: "A4", margin: 50 };
+// A4 ki chaudai (points me). Comic pages bhi isi width pe aate hain.
+const PDF_PAGE_WIDTH = 595.28;
+const SECTION_PAGE = { size: "A4", margin: 40 };
+
+// FAQ / facts / quiz pages ke font sizes (bachchon ke liye thode bade)
+const PDF_TEXT = {
+    title: 28,       // Section heading (pehle 24)
+    subtitle: 13,    // Heading ke neeche "5 questions..." (pehle 11)
+    subHeading: 20,  // "Quiz - Answer Key" (pehle 17)
+    question: 17,    // Q1. Question (pehle 14)
+    body: 15,        // Answer / fact / correct answer (pehle 13)
+    option: 15,      // A. B. C. D. options (pehle 13)
+    small: 13,       // Explanation, "Fact 1" (pehle 11)
+    tiny: 12         // Difficulty (pehle 10)
+};
 const PDF_COLORS = {
     heading: "#1f2937",
     text: "#111827",
@@ -1258,9 +1272,9 @@ const ensureSpace = (doc, needed) => {
 const addSectionPage = (doc, title, subtitle) => {
     doc.addPage(SECTION_PAGE);
 
-    doc.font(FONT.bold).fontSize(22).fillColor(PDF_COLORS.heading).text(cleanText(title));
+    doc.font(FONT.bold).fontSize(PDF_TEXT.title).fillColor(PDF_COLORS.heading).text(cleanText(title));
     if (subtitle) {
-        doc.moveDown(0.2).font(FONT.regular).fontSize(10).fillColor(PDF_COLORS.muted).text(cleanText(subtitle));
+        doc.moveDown(0.2).font(FONT.regular).fontSize(PDF_TEXT.subtitle).fillColor(PDF_COLORS.muted).text(cleanText(subtitle));
     }
 
     doc.moveDown(0.6);
@@ -1276,19 +1290,19 @@ const addSectionPage = (doc, title, subtitle) => {
 const addSubHeading = (doc, text) => {
     ensureSpace(doc, 60);
     doc.moveDown(0.5);
-    doc.font(FONT.bold).fontSize(15).fillColor(PDF_COLORS.accent).text(cleanText(text));
+    doc.font(FONT.bold).fontSize(PDF_TEXT.subHeading).fillColor(PDF_COLORS.accent).text(cleanText(text));
     doc.moveDown(0.6);
 };
 
 const writeLabelled = (doc, label, value, color = PDF_COLORS.text) => {
     const text = cleanText(value);
     if (!text) return;
-    doc.font(FONT.bold).fontSize(11).fillColor(color).text(`${cleanText(label)} `, { continued: true });
+    doc.font(FONT.bold).fontSize(PDF_TEXT.body).fillColor(color).text(`${cleanText(label)} `, { continued: true });
     doc.font(FONT.regular).fillColor(PDF_COLORS.text).text(text);
 };
 
 // Image ko max size me fit karo (JPEG/PNG ke alawa skip)
-const drawImage = (doc, buffer, maxWidth = 220, maxHeight = 160) => {
+const drawImage = (doc, buffer, maxWidth = 280, maxHeight = 200) => {
     if (!buffer) return;
     try {
         const img = doc.openImage(buffer);
@@ -1317,13 +1331,13 @@ const writeFaqSection = (doc, faqs, imageMap) => {
 
     faqs.forEach((faq, i) => {
         ensureSpace(doc, 70);
-        doc.font(FONT.bold).fontSize(12).fillColor(PDF_COLORS.text)
+        doc.font(FONT.bold).fontSize(PDF_TEXT.question).fillColor(PDF_COLORS.text)
             .text(`Q${i + 1}. ${cleanText(faq.question)}`, { width: contentWidth(doc) });
         doc.moveDown(0.3);
 
         drawImage(doc, imageMap.get(faq.imageUrl));
 
-        doc.font(FONT.regular).fontSize(11).fillColor(PDF_COLORS.text)
+        doc.font(FONT.regular).fontSize(PDF_TEXT.body).fillColor(PDF_COLORS.text)
             .text(cleanText(faq.answer), { width: contentWidth(doc) });
         doc.moveDown(1);
     });
@@ -1336,9 +1350,9 @@ const writeFactsSection = (doc, facts, imageMap) => {
         ensureSpace(doc, 60);
         drawImage(doc, imageMap.get(fact.imageUrl));
 
-        doc.font(FONT.bold).fontSize(11).fillColor(PDF_COLORS.accent).text(`Fact ${i + 1}`);
+        doc.font(FONT.bold).fontSize(PDF_TEXT.small).fillColor(PDF_COLORS.accent).text(`Fact ${i + 1}`);
         doc.moveDown(0.2);
-        doc.font(FONT.regular).fontSize(11).fillColor(PDF_COLORS.text)
+        doc.font(FONT.regular).fontSize(PDF_TEXT.body).fillColor(PDF_COLORS.text)
             .text(cleanText(fact.fact), { width: contentWidth(doc) });
         doc.moveDown(1);
     });
@@ -1349,19 +1363,20 @@ const writeQuizSection = (doc, title, questions, { showHints = false } = {}) => 
 
     questions.forEach((q, i) => {
         const optionCount = q.options?.length || 0;
-        ensureSpace(doc, 50 + optionCount * 18);
+        // ensureSpace(doc, 60 + optionCount * 22);
+        ensureSpace(doc, 70 + optionCount * 26);
 
-        doc.font(FONT.bold).fontSize(12).fillColor(PDF_COLORS.text)
+        doc.font(FONT.bold).fontSize(PDF_TEXT.question).fillColor(PDF_COLORS.text)
             .text(`Q${i + 1}. ${cleanText(q.question)}`, { width: contentWidth(doc) });
 
         if (q.difficulty) {
-            doc.font(FONT.regular).fontSize(9).fillColor(PDF_COLORS.muted)
+            doc.font(FONT.regular).fontSize(PDF_TEXT.tiny).fillColor(PDF_COLORS.muted)
                 .text(`Difficulty: ${cleanText(q.difficulty).toUpperCase()}`);
         }
         doc.moveDown(0.3);
 
         (q.options || []).forEach((option, optIndex) => {
-            doc.font(FONT.regular).fontSize(11).fillColor(PDF_COLORS.text)
+            doc.font(FONT.regular).fontSize(PDF_TEXT.option).fillColor(PDF_COLORS.text)
                 .text(`${optionLetter(optIndex)}. ${cleanText(option)}`, {
                     indent: 15,
                     width: contentWidth(doc) - 15
@@ -1380,11 +1395,11 @@ const writeQuizSection = (doc, title, questions, { showHints = false } = {}) => 
 
     questions.forEach((q, i) => {
         ensureSpace(doc, 45);
-        doc.font(FONT.bold).fontSize(11).fillColor(PDF_COLORS.correct)
+        doc.font(FONT.bold).fontSize(PDF_TEXT.body).fillColor(PDF_COLORS.correct)
             .text(`Q${i + 1}. ${cleanText(formatCorrectAnswer(q))}`, { width: contentWidth(doc) });
 
         if (q.explanation) {
-            doc.font(FONT.regular).fontSize(10).fillColor(PDF_COLORS.muted)
+            doc.font(FONT.regular).fontSize(PDF_TEXT.small).fillColor(PDF_COLORS.muted)
                 .text(cleanText(q.explanation), { width: contentWidth(doc) });
         }
         doc.moveDown(0.7);
@@ -1486,11 +1501,16 @@ const downloadComicPdf = async (req, res) => {
 
         doc.pipe(res);
 
-        // 1. Comic pages: watermark image ke UPAR (peeche hota to image chhupa deti)
+        // 1. Comic pages: A4 width pe fit (FAQ/quiz pages ke barabar chaudai),
+        //    taaki viewer me sab pages ek jaise size me dikhein.
+        //    Image ki asli resolution PDF me waisi hi rehti hai, quality nahi girti.
+        //    Watermark image ke UPAR (peeche hota to image chhupa deti)
         pageImages.forEach((img) => {
+            const pageHeight = img.height * (PDF_PAGE_WIDTH / img.width);
+
             isComicImagePage = true;
-            doc.addPage({ size: [img.width, img.height], margin: 0 });
-            doc.image(img, 0, 0, { width: img.width, height: img.height });
+            doc.addPage({ size: [PDF_PAGE_WIDTH, pageHeight], margin: 0 });
+            doc.image(img, 0, 0, { width: PDF_PAGE_WIDTH, height: pageHeight });
             drawWatermark(doc, WATERMARK.imagePageOpacity);
             isComicImagePage = false;
         });

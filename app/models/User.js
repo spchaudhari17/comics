@@ -96,6 +96,8 @@ var UserSchema = new mongoose.Schema({
         default: null,
     },
 
+    editCredits: { type: Number, default: 0 },
+
 }, { timestamps: true })
 
 const User = mongoose.model('users', UserSchema);
