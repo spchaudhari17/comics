@@ -1302,18 +1302,34 @@ const writeLabelled = (doc, label, value, color = PDF_COLORS.text) => {
 };
 
 // Image ko max size me fit karo (JPEG/PNG ke alawa skip)
-const drawImage = (doc, buffer, maxWidth = 280, maxHeight = 200) => {
+// FAQ / Did You Know images: poori chaudai (page ki margin ke andar)
+// Height max page ke usable hisse ka 70% -> isse lambi image page se bahar nahi jayegi
+const IMAGE_MAX_HEIGHT_RATIO = 0.7;
+
+const drawImage = (doc, buffer) => {
     if (!buffer) return;
     try {
         const img = doc.openImage(buffer);
-        const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+
+        const usableHeight = doc.page.height - doc.page.margins.top - doc.page.margins.bottom;
+        const maxWidth = contentWidth(doc);
+        const maxHeight = usableHeight * IMAGE_MAX_HEIGHT_RATIO;
+
+        // Choti image bhi badi hogi (poori chaudai tak), lambi image height limit pe rukegi
+        const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
+        const width = img.width * scale;
         const height = img.height * scale;
 
-        ensureSpace(doc, height + 10);
-        doc.image(img, doc.page.margins.left, doc.y, { width: img.width * scale, height });
-        doc.y += height + 8;
+        // Jagah nahi bachi to naya page (phir x calculate karo)
+        ensureSpace(doc, height + 12);
+
+        // Height limit ki wajah se image patli hui to beech me rakho
+        const x = doc.page.margins.left + (contentWidth(doc) - width) / 2;
+
+        doc.image(img, x, doc.y, { width, height });
+        doc.y += height + 12;
     } catch {
-        // unsupported image format
+        // unsupported image format (sirf JPEG/PNG chalte hain)
     }
 };
 
