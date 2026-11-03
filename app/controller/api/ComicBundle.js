@@ -26,16 +26,19 @@ const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
 const { getBundleThumbnail } = require("../../../utils/bundleThumbnail");
 const GeneratedThumbnail = require("../../models/GeneratedThumbnail");
 
-// AI cover check: kuch nahi bheja -> null, galat -> false, sahi -> thumbnail doc
+// Custom cover check (AI ya upload): kuch nahi bheja -> null, galat -> false, sahi -> thumbnail doc
+// AI wali: isi bundle ki kisi comic se bani honi chahiye. Upload wali: sirf teacher ki apni.
 const findOwnGeneratedThumbnail = async (thumbnailId, userId, comicIds) => {
     if (!thumbnailId) return null;
     if (!isValidId(thumbnailId)) return false;
 
     const thumb = await GeneratedThumbnail.findOne({ _id: thumbnailId, userId })
-        .select("_id comicId imageUrl")
+        .select("_id source comicId imageUrl")
         .lean();
 
-    if (!thumb || !comicIds.map(String).includes(String(thumb.comicId))) return false;
+    if (!thumb) return false;
+    if (thumb.source === "upload") return thumb;
+    if (!comicIds.map(String).includes(String(thumb.comicId))) return false;
     return thumb;
 };
 const getConceptName = (c) => c?.conceptId?.name || c?.concept || "N/A";

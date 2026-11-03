@@ -31,9 +31,13 @@ const TITLE_TEXT_MAX = 60;
 const cleanText = (value, max) =>
     typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
 
+const UPLOAD_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const UPLOAD_MIMES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
 const toPublicThumbnail = (t) => ({
     _id: t._id,
-    comicId: t.comicId,
+    source: t.source || "ai",
+    comicId: t.comicId || null,
     imageUrl: t.imageUrl,
     instructions: t.instructions || "",
     createdAt: t.createdAt
@@ -233,7 +237,67 @@ const generateBundleThumbnail = async (req, res) => {
     }
 };
 
+// POST /user/bundle-thumbnail/upload  form-data: image  (FREE, teacher ki apni banai image)
+const uploadBundleThumbnail = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+        const image = req.files?.image;
+
+        if (!image || Array.isArray(image)) {
+            return res.status(400).json({ error: true, message: "Please select one image to upload" });
+        }
+
+        if (!UPLOAD_MIMES.includes(image.mimetype)) {
+            return res.status(400).json({ error: true, message: "Only JPG, PNG or WEBP images are allowed" });
+        }
+
+        if (image.size > UPLOAD_MAX_BYTES) {
+            return res.status(400).json({ error: true, message: "Image size cannot be greater than 5 MB" });
+        }
+
+        // Dobara process: asli image hai ya nahi check, size chhota, EXIF/location hatao
+        let buffer;
+        try {
+            buffer = await sharp(image.data)
+                .rotate() // phone photo ka orientation sahi
+                .resize({ width: 1200, withoutEnlargement: true })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+        } catch {
+            return res.status(400).json({ error: true, message: "This file is not a valid image" });
+        }
+
+        const fileName = `bundle_thumb_upload_${userId}_${Date.now()}.jpg`;
+        const imageUrl = await upload_files("bundle-thumbnails", {
+            name: fileName,
+            data: buffer,
+            mimetype: "image/jpeg"
+        });
+
+        if (!imageUrl || !String(imageUrl).startsWith("http")) {
+            throw new Error(`Thumbnail upload failed: ${imageUrl}`);
+        }
+
+        const thumbnail = await GeneratedThumbnail.create({
+            userId,
+            source: "upload",
+            imageUrl,
+            s3Key: `bundle-thumbnails/${fileName}`
+        });
+
+        return res.json({
+            error: false,
+            message: "Thumbnail uploaded",
+            thumbnail: toPublicThumbnail(thumbnail)
+        });
+    } catch (error) {
+        console.error("uploadBundleThumbnail error:", error);
+        return res.status(500).json({ error: true, message: "Upload failed. Please try again." });
+    }
+};
+
 // GET /user/bundle-thumbnails?comicIds=a,b,c -> teacher ki pehle bani thumbnails
+// (in comics ki AI wali + teacher ki saari upload ki hui)
 const getMyBundleThumbnails = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
@@ -243,7 +307,7 @@ const getMyBundleThumbnails = async (req, res) => {
             .filter(isValidId);
 
         const filter = { userId };
-        if (comicIds.length) filter.comicId = { $in: comicIds };
+        if (comicIds.length) filter.$or = [{ comicId: { $in: comicIds } }, { source: "upload" }];
 
         const thumbnails = await GeneratedThumbnail.find(filter)
             .sort({ createdAt: -1 })
@@ -257,4 +321,4 @@ const getMyBundleThumbnails = async (req, res) => {
     }
 };
 
-module.exports = { generateBundleThumbnail, getMyBundleThumbnails };
+module.exports = { generateBundleThumbnail, uploadBundleThumbnail, getMyBundleThumbnails };

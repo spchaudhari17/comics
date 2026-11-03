@@ -27,7 +27,7 @@ const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, comple
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 const { createFoundingTeacherCheckout, getFoundingTeacher, getFoundingTeacherPayment } = require('../app/controller/api/foundingTeacherController');
 const { getMyCredits, createCreditCheckout } = require('../app/controller/api/creditController');
-const { generateBundleThumbnail, getMyBundleThumbnails } = require('../app/controller/api/bundleThumbnailController');
+const { generateBundleThumbnail, uploadBundleThumbnail, getMyBundleThumbnails } = require('../app/controller/api/bundleThumbnailController');
 
 
 
@@ -240,6 +240,7 @@ router.post("/teacher/stripe-dashboard", authentication, getStripeDashboardLink)
 
 
 router.post("/user/bundle-thumbnail/generate", authentication, generateBundleThumbnail); // 1 credit
+router.post("/user/bundle-thumbnail/upload", authentication, uploadBundleThumbnail); // free
 router.get("/user/bundle-thumbnails", authentication, getMyBundleThumbnails);
 
 router.post("/user/bundle/rate", authentication, rateBundle);
