@@ -12,6 +12,13 @@ const comicBundleSchema = new Schema({
 
     comics: [{ type: ObjectId, ref: "Comic" }], // 🔥 main logic
 
+    // Cover: is comic ka pehla page bundle ka thumbnail. null = pehla comic
+    thumbnailComicId: { type: ObjectId, ref: "Comic", default: null },
+
+    // AI se bana cover (credit wala). Ho to yahi thumbnail, thumbnailComicId se upar
+    customThumbnailId: { type: ObjectId, ref: "GeneratedThumbnail", default: null },
+    customThumbnail: { type: String, default: "" },
+
     price: { type: Number, required: true },
 
     isBundle: { type: Boolean, default: false }, // single vs bundle

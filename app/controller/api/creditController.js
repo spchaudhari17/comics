@@ -11,7 +11,7 @@
 
 const stripe = require("../../../utils/stripe");
 const User = require("../../models/User");
-const { CREDITS_PER_PAGE_EDIT, getPackById, getPublicPacks } = require("../../../utils/creditPacks");
+const { CREDITS_PER_PAGE_EDIT, CREDITS_PER_THUMBNAIL, getPackById, getPublicPacks } = require("../../../utils/creditPacks");
 
 // GET /user/credits -> balance + packs
 const getMyCredits = async (req, res) => {
@@ -29,6 +29,7 @@ const getMyCredits = async (req, res) => {
             credits: user.editCredits || 0,
             isUnlimited: !!user.isUnlimited,
             costPerEdit: CREDITS_PER_PAGE_EDIT,
+            costPerThumbnail: CREDITS_PER_THUMBNAIL,
             packs: getPublicPacks()
         });
     } catch (error) {

@@ -1,5 +1,6 @@
 
 const OpenAI = require("openai");
+const { TEXT_MODEL } = require("../../../helper/aiModels");
 const axios = require("axios");
 const { upload_files, deleteFiles } = require("../../../helper/helper");
 const sharp = require("sharp");
@@ -95,7 +96,7 @@ Format:
 
     // -------- OpenAI Request --------
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: TEXT_MODEL,
       messages: [
         {
           role: "system",
@@ -104,8 +105,7 @@ Format:
         },
         { role: "user", content: prompt },
       ],
-      temperature: 0.5,
-      max_tokens: 800,
+      max_completion_tokens: 4000,
     });
 
     // -------- Parse response --------

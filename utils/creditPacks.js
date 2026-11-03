@@ -10,6 +10,9 @@
 // Ek page dobara banane me kitne credit katenge
 const CREDITS_PER_PAGE_EDIT = 1;
 
+// Bundle ka AI cover (thumbnail) banane me kitne credit katenge
+const CREDITS_PER_THUMBNAIL = 1;
+
 const CREDIT_PACKS = [
     {
         id: "credits_30",
@@ -42,6 +45,7 @@ const getPublicPacks = () =>
 
 module.exports = {
     CREDITS_PER_PAGE_EDIT,
+    CREDITS_PER_THUMBNAIL,
     CREDIT_PACKS,
     getPackById,
     getPackByPriceId,

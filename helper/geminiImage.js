@@ -1,21 +1,33 @@
 const { GoogleGenAI } = require("@google/genai");
+const { IMAGE_MODEL } = require("./aiModels");
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-async function generateGeminiComicImage(prompt) {
+// options (optional, purane callers pe asar nahi):
+//   referenceImages: [{ data: Buffer, mimeType: "image/jpeg" }] -> characters / style copy karne ke liye
+//   aspectRatio: "4:3" jaisa
+async function generateGeminiComicImage(prompt, options = {}) {
+  const { referenceImages = [], aspectRatio } = options;
+
   const response = await ai.models.generateContent({
     // model: "gemini-2.5-flash-image",
-    model: "gemini-3.1-flash-image",
+    // model: "gemini-3.1-flash-image",
+    model: IMAGE_MODEL, // helper/aiModels.js (Nano Banana 2.1)
     contents: [
       {
         role: "user",
         parts: [
+          ...referenceImages.map((img) => ({
+            inlineData: { mimeType: img.mimeType || "image/jpeg", data: img.data.toString("base64") }
+          })),
           { text: prompt }
         ]
       }
     ],
+
+    ...(aspectRatio ? { config: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio } } } : {}),
 
     generationConfig: {
       thinking_level: "high",                 //  THIS IS THE KEY

@@ -1,4 +1,5 @@
 const OpenAI = require("openai");
+const { TEXT_MODEL } = require("../../../helper/aiModels");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const HardcoreQuizQuestion = require("../../models/HardcoreQuizQuestion");
 const Comic = require("../../models/Comic");
@@ -183,13 +184,12 @@ Format:
 
     // 🧩 Step 4: Generate quiz via OpenAI
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: TEXT_MODEL,
       messages: [
         { role: "system", content: "Return only strict valid JSON, no markdown." },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
-      max_tokens: 1500,
+      max_completion_tokens: 6000,
     });
 
     let raw = response.choices[0].message.content.trim();

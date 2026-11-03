@@ -1,5 +1,6 @@
 const Cart = require("../../models/Cart");
 const ComicPage = require("../../models/ComicPage");
+const { getBundleThumbnail } = require("../../../utils/bundleThumbnail");
 const Stripe = require("stripe");
 const Purchase = require("../../models/Purchase");
 const User = require("../../models/User");
@@ -91,7 +92,8 @@ const getCart = async (req, res) => {
 
                 const comicsWithThumb = await Promise.all(
                     bundle.comics.map(async (comic) => {
-                        const page = await ComicPage.findOne({ comicId: comic._id });
+                        const page = await ComicPage.findOne({ comicId: comic._id })
+                            .sort({ pageNumber: 1, createdAt: 1 });
 
                         return {
                             ...comic.toObject(),
@@ -100,10 +102,13 @@ const getCart = async (req, res) => {
                     })
                 );
 
+                const thumbMap = new Map(comicsWithThumb.map((c) => [String(c._id), c.thumbnail]));
+
                 return {
                     ...item.toObject(),
                     bundleId: {
                         ...bundle.toObject(),
+                        thumbnail: getBundleThumbnail(bundle, (id) => thumbMap.get(id)),
                         comics: comicsWithThumb
                     }
                 };

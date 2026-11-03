@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 
 const { refinePrompt, generateComicImage, generateComicPDF, listComics, getComic, updateComicStatus, deleteComic, listUserComics, updateCountryForSeries, listComicsforPublic, addComicView, autoApproveComicAndCountry, regenerateComicPage, } = require('../app/controller/api/comicController');
-const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword } = require('../app/controller/api/userController');
+const { verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys, signupWithEmail, loginWithEmail, updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword, updateBackgroundImage, deleteBackgroundImage, updateBio } = require('../app/controller/api/userController');
 const { authentication } = require('../app/middileware/authentication');
 const { listAllComicsAdmin, approveComicStatusAdmin, getAdminComicDetails, assignModeratorRole, deleteUser, toggleUnlimited } = require('../app/controller/api/admin/adminComicController');
 const { generateQuiz, getQuizByComic, publishQuiz } = require('../app/controller/api/quizController');
@@ -27,6 +27,7 @@ const { addToCart, removeFromCart, getCart, createCheckoutSessionforCart, comple
 const { createCoupon, getCoupons, getCouponDetails, updateCoupon, deleteCoupon, createCouponBanner, getCouponBanners, getCouponBannerDetails, updateCouponBanner, deleteCouponBanner, getActiveCouponBanner } = require('../app/controller/api/admin/CouponController');
 const { createFoundingTeacherCheckout, getFoundingTeacher, getFoundingTeacherPayment } = require('../app/controller/api/foundingTeacherController');
 const { getMyCredits, createCreditCheckout } = require('../app/controller/api/creditController');
+const { generateBundleThumbnail, getMyBundleThumbnails } = require('../app/controller/api/bundleThumbnailController');
 
 
 
@@ -65,6 +66,9 @@ router.post('/user/test', test)
 //******************************** Authentication started from here ***************************** */
 router.post('/user/updatePic', authentication, updatePic)
 router.post('/user/deletePic', authentication, deletePic)
+router.post('/user/updateBackgroundImage', authentication, updateBackgroundImage)
+router.post('/user/deleteBackgroundImage', authentication, deleteBackgroundImage)
+router.post('/user/updateBio', authentication, updateBio)
 router.get('/user/getProfile', authentication, profileDetails)
 router.post('/user/deleteAccount', authentication, deleteAccount)
 router.post('/user/changePassword', authentication, changePassword)
@@ -234,6 +238,9 @@ router.get('/teacher/payouts', authentication, getTeacherPayouts);
 router.get('/teacher/invoice/:transferId', authentication, getTeacherInvoice);
 router.post("/teacher/stripe-dashboard", authentication, getStripeDashboardLink);
 
+
+router.post("/user/bundle-thumbnail/generate", authentication, generateBundleThumbnail); // 1 credit
+router.get("/user/bundle-thumbnails", authentication, getMyBundleThumbnails);
 
 router.post("/user/bundle/rate", authentication, rateBundle);
 router.get("/user/bundle/rating/:bundleId", getBundleRatings);

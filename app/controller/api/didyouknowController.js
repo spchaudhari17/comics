@@ -1,4 +1,6 @@
 const OpenAI = require("openai");
+const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { getStylePrompt, getThemePrompt } = require("../../../utils/customThemeStyle");
 const axios = require("axios");
 const path = require("path");
 const fs = require("fs");
@@ -207,13 +209,12 @@ Return ONLY valid JSON:
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: TEXT_MODEL,
       messages: [
         { role: "system", content: "Return ONLY valid JSON. No markdown." },
         { role: "user", content: factPrompt }
       ],
-      temperature: 0.4,
-      max_tokens: 600
+      max_completion_tokens: 4000
     });
 
     const raw = response.choices[0].message.content.trim();
@@ -221,8 +222,8 @@ Return ONLY valid JSON:
     if (!Array.isArray(facts)) facts = [facts];
 
     // 🎨 IMAGE GENERATION (Gemini – banana 🍌)
-    const stylePrompt = comic.styleId?.prompt || "";
-    const themePrompt = comic.themeId?.prompt || "";
+    const stylePrompt = getStylePrompt(comic);
+    const themePrompt = getThemePrompt(comic);
 
     const savedFacts = [];
 

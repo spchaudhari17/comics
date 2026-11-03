@@ -8,6 +8,8 @@ const comicSeriesSchema = new Schema({
   user_id: { type: ObjectId, ref: "users", required: true },
   themeId: { type: ObjectId, ref: "Theme" },
   styleId: { type: ObjectId, ref: "Style" },
+  customTheme: { type: String, trim: true, default: "" }, // list ke bahar ka theme
+  customStyle: { type: String, trim: true, default: "" }, // list ke bahar ka style
   subjectId: { type: ObjectId, ref: "Subject", required: true },
   conceptId: { type: ObjectId, ref: "Concept" },
 

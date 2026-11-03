@@ -34,6 +34,8 @@ const { generateGeminiComicImage } = require("../../../helper/geminiImage");
 const { checkComicPermission } = require("../../../utils/checkComicPermission");
 const { checkWeeklyComicLimit } = require("../../../utils/checkWeeklyLimit");
 const { getUserAccess } = require("../../../utils/getUserAccess");
+const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { CUSTOM_TEXT_MAX, cleanCustomText, getStylePrompt } = require("../../../utils/customThemeStyle");
 const { CREDITS_PER_PAGE_EDIT } = require("../../../utils/creditPacks");
 
 
@@ -304,6 +306,9 @@ function safeJsonParse(str) {
 
 
 
+// Comic prompt (parts + 8 page script) ka model -> helper/aiModels.js
+const PROMPT_MODEL = TEXT_MODEL;
+
 const refinePrompt = async (req, res) => {
     const {
         title,
@@ -316,13 +321,26 @@ const refinePrompt = async (req, res) => {
         grade,
         subjectId,
         concept,
-        showTextInImage
+        showTextInImage,
+        customTheme: rawCustomTheme,
+        customStyle: rawCustomStyle
     } = req.body;
 
     try {
 
         const userId = req.user.login_data._id;
         const cleanConcept = concept.trim();
+
+        // List wala chuna ho to custom ignore, warna custom text use hoga
+        const customTheme = themeId ? "" : cleanCustomText(rawCustomTheme);
+        const customStyle = styleId ? "" : cleanCustomText(rawCustomStyle);
+
+        if (!themeId && typeof rawCustomTheme === "string" && rawCustomTheme.trim().length > CUSTOM_TEXT_MAX) {
+            return res.status(400).json({ error: `Custom theme cannot be longer than ${CUSTOM_TEXT_MAX} characters` });
+        }
+        if (!styleId && typeof rawCustomStyle === "string" && rawCustomStyle.trim().length > CUSTOM_TEXT_MAX) {
+            return res.status(400).json({ error: `Custom style cannot be longer than ${CUSTOM_TEXT_MAX} characters` });
+        }
 
         /* ===============================
            1️⃣ ACCESS CONTROL
@@ -345,10 +363,10 @@ const refinePrompt = async (req, res) => {
         /* ===============================
            3️⃣ BASIC VALIDATIONS
         =============================== */
-        const theme = await Theme.findById(themeId);
-        const style = await Style.findById(styleId);
+        const theme = themeId ? await Theme.findById(themeId) : null;
+        const style = styleId ? await Style.findById(styleId) : null;
 
-        if (!theme || !style) {
+        if ((!theme && !customTheme) || (!style && !customStyle)) {
             return res.status(400).json({ error: "Invalid theme or style" });
         }
 
@@ -376,8 +394,10 @@ const refinePrompt = async (req, res) => {
         =============================== */
         const series = await ComicSeries.create({
             user_id: userId,
-            themeId,
-            styleId,
+            themeId: theme ? theme._id : null,
+            styleId: style ? style._id : null,
+            customTheme,
+            customStyle,
             subjectId,
             concept: cleanConcept,
             conceptId: conceptDoc._id,
@@ -414,13 +434,12 @@ Format:
 `;
 
         const divisionResponse = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: PROMPT_MODEL,
             messages: [
                 { role: "system", content: "Return ONLY valid JSON." },
                 { role: "user", content: divisionPrompt }
             ],
-            temperature: 0.3,
-            max_tokens: 800
+            max_completion_tokens: 4000
         });
 
         const parts = safeJsonParse(
@@ -481,7 +500,7 @@ Format:
   }
 ]
 
-Concept: "${cleanConcept}"
+Concept: "${cleanConcept}"${customTheme ? `\nStory theme / setting: ${customTheme}` : ""}
 Part ${part.part}: ${part.title}
 Key terms: ${part.keyTerms.join(", ")}
 Start: ${part.start}
@@ -489,13 +508,12 @@ End: ${part.end}
 `;
 
             const scriptResponse = await openai.chat.completions.create({
-                model: "gpt-4o",
+                model: PROMPT_MODEL,
                 messages: [
                     { role: "system", content: "Return ONLY valid JSON." },
                     { role: "user", content: comicPrompt }
                 ],
-                temperature: 0.4,
-                max_tokens: 1800
+                max_completion_tokens: 8000
             });
 
             const pages = safeJsonParse(
@@ -509,8 +527,10 @@ End: ${part.end}
             const comic = await Comic.create({
                 seriesId: series._id,
                 user_id: userId,
-                themeId,
-                styleId,
+                themeId: theme ? theme._id : null,
+                styleId: style ? style._id : null,
+                customTheme,
+                customStyle,
                 subjectId,
                 subject,
                 concept: cleanConcept,
@@ -1113,7 +1133,7 @@ const generateComicImage = async (req, res) => {
             access.comicsPerWeek
         );
 
-        const stylePrompt = comic.styleId?.prompt || "";
+        const stylePrompt = getStylePrompt(comic);
 
         const imageUrls = [];
 
@@ -1695,11 +1715,11 @@ const getComic = async (req, res) => {
         const enhancedComic = {
             ...comic,
             themeId: theme?._id || null,
-            theme: theme?.name || "N/A",
+            theme: theme?.name || comic.customTheme || "N/A",
             subjectId: subject?._id || null,
             subject: subject?.name || "N/A",
             styleId: style?._id || null,
-            style: style?.name || "N/A",
+            style: style?.name || comic.customStyle || "N/A",
             hasFAQ: faqs.length > 0,
             hasDidYouKnow: facts.length > 0,
             hasHardcoreQuiz: !!hardcoreQuiz,
@@ -2634,7 +2654,7 @@ const regenerateComicPage = async (req, res) => {
         /* ---------- Sirf is page ki nayi image ---------- */
         const fullPrompt = buildComicPagePrompt({
             panels,
-            stylePrompt: comic.styleId?.prompt || "",
+            stylePrompt: getStylePrompt(comic),
             showTextInImage
         });
 

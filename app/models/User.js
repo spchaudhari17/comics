@@ -32,6 +32,8 @@ var UserSchema = new mongoose.Schema({
 
 
     profile_pic: { type: String, default: "" },
+    background_image: { type: String, default: "" }, // profile cover image
+    bio: { type: String, default: "", trim: true, maxlength: 500 },
     device_type: { type: String, default: "" },
     device_udid: { type: String, default: "" },
     social_id: { type: String, default: '' },
@@ -50,6 +52,8 @@ var UserSchema = new mongoose.Schema({
     resend_blocked_at: { type: Date, default: 0 },
     otp_resend: { type: Number, default: 0 },
     otp_verify_at: { type: Date, default: "" },
+    otp_attempts: { type: Number, default: 0 }, // current OTP par galat tries
+    otp_window_at: { type: Date, default: null }, // OTP send limit window ka start
     reset_key: { type: String, required: false, default: "" },
 
 

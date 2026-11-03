@@ -6,6 +6,7 @@ var crypto = require("crypto");
 let mailer = require("../../../config/mailer");
 const MOMENT = require('moment');
 const { upload_files, deleteFiles } = require("../../../helper/helper");
+const { generateOtp, isOtpExpired, issueOtp, consumeOtpAttempt, buildOtpEmail, MAX_OTP_ATTEMPTS } = require("../../../helper/otp");
 const mongoose = require("mongoose");
 const QuizSubmission = require("../../models/QuizSubmission");
 const HardcoreQuizSubmission = require("../../models/HardcoreQuizSubmission");
@@ -83,9 +84,7 @@ const signupWithEmail = async (req, res) => {
 
         }
 
-        var min = 1000;
-        var max = 9999;
-        var otp = Math.floor(Math.random() * (max - min + 1)) + min;
+        var otp = generateOtp();
 
         var passwordHash = await bcrypt.hashSync(password, 12);
 
@@ -100,6 +99,9 @@ const signupWithEmail = async (req, res) => {
             reset_key: keys,
             otp: otp,
             otp_generated_at: Date.now(),
+            otp_attempts: 0,
+            otp_resend: 1,
+            otp_window_at: Date.now(),
             countryCode: countryCode,
             mobileNumber: mobileNumber,
             device_type: device_type,
@@ -114,18 +116,16 @@ const signupWithEmail = async (req, res) => {
 
 
         await mailer.sendMail({
-            from: '"kridemy" <notifications@kridemy.com>', // sender address
-            to: email, // list of receivers
-            subject: "kridemy account verification link", // Subject line
-            text: "Verification link", // plain text body
-            html: "Hi! " + firstname + ",<br><br>Your Email verification OTP is:" + otp + "<br><br> Any issues please email notifications@kridemy.com. <br><br> Reminder Team", // html body
+            from: '"Kridemy" <notifications@kridemy.com>',
+            to: email,
+            ...buildOtpEmail({ name: firstname, otp, purpose: "verify" })
         });
 
 
 
         if (isSaved) {
 
-            const login_data = await Users.findOne({ "_id": userId }, { resend_blocked_at: 0, otp_resend: 0, is_verify: 0, otp: 0, otp_generated_at: 0, otp_verify_at: 0, updatedAt: 0 });
+            const login_data = await Users.findOne({ "_id": userId }, { resend_blocked_at: 0, otp_resend: 0, is_verify: 0, otp: 0, otp_generated_at: 0, otp_verify_at: 0, otp_attempts: 0, otp_window_at: 0, updatedAt: 0 });
 
             // const token = jwt.sign({ login_data }, process.env.JWTKEY, {
             //     algorithm: "RS256",
@@ -182,22 +182,26 @@ const verify_otp = async (req, res) => {
             return res.send({ "error": true, 'status': 201, "message": "No OTP found.", "message_desc": "No OTP found." })
         }
 
-        if (data.otp != otp) {
+        if (isOtpExpired(data.otp_generated_at)) {
+
+            return res.send({ "error": true, 'status': 201, "message": "OTP has been expired.", "message_desc": "OTP has expired. Please request a new OTP." })
+
+        }
+
+        // Compare se pehle attempt count karo (parallel requests se bypass na ho)
+        const canTry = await consumeOtpAttempt(Users, data._id);
+
+        if (!canTry) {
+
+            return res.send({ "error": true, 'status': 201, "message": "Too many wrong attempts. Please request a new OTP.", "message_desc": `OTP blocked after ${MAX_OTP_ATTEMPTS} wrong attempts. Please request a new OTP.` })
+        }
+
+        if (String(data.otp) !== String(otp).trim()) {
 
             return res.send({ "error": true, 'status': 201, "message": "Invalid otp.", "message_desc": "OTP verifcation failled due to wrong otp provided." })
         }
 
-
-        startTime = MOMENT(data.otp_generated_at, 'YYYY-MM-DD HH:mm:ss');
-        endTime = MOMENT(new Date(Date.now()), 'YYYY-MM-DD HH:mm:ss');
         var reset_keys = crypto.randomBytes(20).toString('hex');
-        let timeDiff = endTime.diff(startTime, "minute");
-
-        if (timeDiff > 1440) {
-
-            return res.send({ "error": true, 'status': 201, "message": "OTP has been expired.", "message_desc": "You can verify within 30 min." })
-
-        }
 
         login_data = data
 
@@ -208,7 +212,7 @@ const verify_otp = async (req, res) => {
 
 
 
-        const isupdated = await Users.updateMany({ email }, { $set: { otp: 0, reset_key: reset_keys, otp_generated_at: "", "otp_verify_at": Date.now(), "email_verified_at": Date.now(), "is_verify": 1, "otp_resend": 0 } });
+        const isupdated = await Users.updateMany({ email }, { $set: { otp: 0, reset_key: reset_keys, otp_generated_at: "", "otp_verify_at": Date.now(), "email_verified_at": Date.now(), "is_verify": 1, "otp_resend": 0, "otp_attempts": 0 } });
         const keys = await Users.findOne({ email }, { email_verified_at: 1, email: 1, username: 1, firstname: 1, lastname: 1, reset_key: 1 });
 
         keys._doc.is_emailVerified = keys.is_verify ? 1 : 0;
@@ -261,22 +265,16 @@ const loginWithEmail = async (req, res) => {
         // Email verification
         if (isExist.is_verify == 0) {
 
-            var min = 1000;
-            var max = 9999;
-            var newOtp = Math.floor(Math.random() * (max - min + 1)) + min;
+            // Send limit cross ho gayi ho to naya OTP nahi bhejenge (purana valid ho to wahi chalega)
+            const newOtp = await issueOtp(Users, isExist._id);
 
-            // Update OTP in DB
-            await Users.updateOne({ email }, { $set: { otp: newOtp, otp_generated_at: Date.now() } });
-
-
-
-            await mailer.sendMail({
-                from: '"kridemy" <notifications@kridemy.com>',
-                to: email,
-                subject: "kridemy account verification link",
-                text: "Verification link",
-                html: `Hi! ${isExist.firstname},<br><br>Your Email verification OTP is: ${newOtp}<br><br>Any issues please email notifications@kridemy.com.<br><br>Reminder Team`
-            });
+            if (newOtp) {
+                await mailer.sendMail({
+                    from: '"Kridemy" <notifications@kridemy.com>',
+                    to: email,
+                    ...buildOtpEmail({ name: isExist.firstname, otp: newOtp, purpose: "verify" })
+                });
+            }
 
             return res.send({
                 error: true,
@@ -314,6 +312,8 @@ const loginWithEmail = async (req, res) => {
         const login_data = await Users.findOne({ email }, {
             password: 0,
             otp: 0,
+            otp_attempts: 0,
+            otp_window_at: 0,
             login_location: 0
         });
 
@@ -408,19 +408,29 @@ const forgotPassword = async (req, res) => {
             });
         }
 
-        // generate 4 digit OTP
-        const otp = Math.floor(1000 + Math.random() * 9000);
+        // Username wale students ka email aksar khali hota hai
+        if (!user.email) {
+            return res.status(400).json({
+                error: true,
+                message: "No email is linked to this account. Please contact your teacher or support."
+            });
+        }
 
-        user.otp = otp;
-        user.otp_expiry = Date.now() + 10 * 60 * 1000; // 10 min validity
-        await user.save();
+        // generate 4 digit OTP (send limit ke saath)
+        const otp = await issueOtp(Users, user._id);
+
+        if (!otp) {
+            return res.status(429).json({
+                error: true,
+                message: "Too many OTP requests. Please try again later."
+            });
+        }
 
         // Send OTP to user's email
         await mailer.sendMail({
-            from: '"kridemy" <notifications@kridemy.com>',
+            from: '"Kridemy" <notifications@kridemy.com>',
             to: user.email, // Always send to the user's registered email
-            subject: "Password Reset OTP",
-            html: `Hello ${user.firstname}, <br/>Your OTP is <b>${otp}</b>. Valid for 10 minutes.`,
+            ...buildOtpEmail({ name: user.firstname, otp, purpose: "reset" })
         });
 
         return res.json({
@@ -459,36 +469,24 @@ const resendOtp = async (req, res) => {
             return res.send({ "error": true, 'status': 201, "message": "We are unable to send otp.", "message_desc": "Look like you haven't generated any otp" })
         }
 
-        if (data.otp_resend > 6) {
+        // Har resend par naya OTP (purana expire ho chuka ho sakta hai), send limit ke saath
+        const newOtp = await issueOtp(Users, data._id);
 
-            await Users.updateOne({ email }, { $set: { resend_blocked_at: Date.now() } })
+        if (!newOtp) {
+
+            await Users.updateOne({ _id: data._id }, { $set: { resend_blocked_at: Date.now() } })
 
             return res.send({ "error": true, 'status': 201, "message": "Look like you are not able to recieve OTP please try after sometime.", "message_desc": "Please try after sometime" })
         }
 
-
-
-
         await mailer.sendMail({
-            from: '"kidemy" <notifications@kridemy.com>', // sender address
-            to: email, // list of receivers
-            subject: "kridemy Reset Password OTP", // Subject line
-            text: "Reset Password OTP", // plain text body
-            html: "Hello " + data.first_name + ",<br><br>To reset your password please enter the below verification code into comics app when prompted:" + data.otp + "<br><br> If you have any trouble changing your password please feel free to email us at notifications@kridemy.com. <br> <br><br> Best regards, <br><br> Wake wall app team", // html body
-
+            from: '"Kridemy" <notifications@kridemy.com>',
+            to: email,
+            ...buildOtpEmail({ name: data.firstname, otp: newOtp, purpose: data.is_verify == 1 ? "reset" : "verify" })
         });
 
-        const isIncreased = await Users.updateOne({ email }, { $inc: { otp_resend: 1 } })
-
-        if (isIncreased) {
-
-            const response = await Users.findOne({ email }, { email: 1 })
-            return res.send({ "error": false, 'status': 200, "message": "Otp resend successfull..", "message_desc": "Otp resend successfull to your email:" + data.email, "data": response })
-
-        } else {
-
-            return res.send({ "error": true, 'status': 201, "message": "unable to sent otp.", "message_desc": "please try again" })
-        }
+        const response = await Users.findOne({ _id: data._id }, { email: 1 })
+        return res.send({ "error": false, 'status': 200, "message": "Otp resend successfull..", "message_desc": "Otp resend successfull to your email:" + data.email, "data": response })
 
     } catch (e) {
 
@@ -785,6 +783,169 @@ const deletePic = async (req, res) => {
 };
 
 
+const BACKGROUND_FOLDER = "background-images";
+const BACKGROUND_MAX_KB = 5120; // 5 MB (cover image badi hoti hai)
+const BIO_MAX_LENGTH = 500;
+
+const updateBackgroundImage = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        if (!req.files || !req.files.background_image) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "No image selected",
+                message_desc: "No image selected."
+            });
+        }
+
+        const image = req.files.background_image;
+
+        // ✅ Allowed mime types
+        const allowedMimes = ["image/gif", "image/jpeg", "image/jpg", "image/png", "image/webp"];
+        if (!allowedMimes.includes(image.mimetype)) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "Invalid image type.",
+                message_desc: "Allowed only gif, jpeg, png, webp."
+            });
+        }
+
+        // ✅ Size validation (5 MB)
+        if (image.size / 1024 > BACKGROUND_MAX_KB) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "Background image size cannot be greater than 5 MB.",
+                message_desc: "Background image size cannot be greater than 5 MB."
+            });
+        }
+
+        const getImage = await Users.findOne({ _id: userId }, { background_image: 1 });
+
+        const imageUrl = await upload_files(BACKGROUND_FOLDER, image);
+
+        if (!imageUrl || !imageUrl.startsWith("http")) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "Image upload failed. Please try again.",
+                message_desc: String(imageUrl)
+            });
+        }
+
+        // ✅ Delete old image from S3 if exists
+        if (getImage && getImage.background_image) {
+            try {
+                const oldKey = decodeURIComponent(getImage.background_image.split("/").pop());
+                await deleteFiles(BACKGROUND_FOLDER, oldKey);
+            } catch (err) {
+                console.warn("Old background image delete failed:", err.message);
+            }
+        }
+
+        await Users.updateOne({ _id: userId }, { $set: { background_image: imageUrl } });
+
+        return res.send({
+            error: false,
+            status: 200,
+            message: "Background image updated successfully.",
+            background_image: imageUrl
+        });
+    } catch (e) {
+        return res.send({
+            error: true,
+            status: 500,
+            message: "Something went wrong: " + e
+        });
+    }
+};
+
+const deleteBackgroundImage = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+
+        const getUser = await Users.findOne({ _id: userId }, { background_image: 1 });
+
+        if (!getUser || !getUser.background_image) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "No background image found.",
+                message_desc: "Background image not set."
+            });
+        }
+
+        try {
+            const oldKey = decodeURIComponent(getUser.background_image.split("/").pop());
+            await deleteFiles(BACKGROUND_FOLDER, oldKey);
+        } catch (err) {
+            console.warn("S3 delete failed:", err.message);
+        }
+
+        await Users.updateOne({ _id: userId }, { $set: { background_image: "" } });
+
+        return res.send({
+            error: false,
+            status: 200,
+            message: "Background image deleted successfully.",
+            background_image: ""
+        });
+    } catch (e) {
+        return res.send({
+            error: true,
+            status: 500,
+            message: "Something went wrong: " + e
+        });
+    }
+};
+
+const updateBio = async (req, res) => {
+    try {
+        const userId = req.user.login_data._id;
+        const { bio } = req.body;
+
+        if (typeof bio !== "string") {
+            return res.send({
+                error: true,
+                status: 201,
+                message: "Bio is required.",
+                message_desc: "Bio must be a text value."
+            });
+        }
+
+        const cleanBio = bio.trim();
+
+        if (cleanBio.length > BIO_MAX_LENGTH) {
+            return res.send({
+                error: true,
+                status: 201,
+                message: `Bio cannot be longer than ${BIO_MAX_LENGTH} characters.`,
+                message_desc: `Bio cannot be longer than ${BIO_MAX_LENGTH} characters.`
+            });
+        }
+
+        // Empty bio bhejoge to bio clear ho jayega
+        await Users.updateOne({ _id: userId }, { $set: { bio: cleanBio } });
+
+        return res.send({
+            error: false,
+            status: 200,
+            message: cleanBio ? "Bio updated successfully." : "Bio removed successfully.",
+            bio: cleanBio
+        });
+    } catch (e) {
+        return res.send({
+            error: true,
+            status: 500,
+            message: "Something went wrong: " + e
+        });
+    }
+};
+
+
 
 const changePassword = async (req, res) => {
 
@@ -1012,6 +1173,8 @@ const profileDetails = async (req, res) => {
             email: user.email,
             email_verified_at: user.email_verified_at || null,
             profile_pic: user.profile_pic || "",
+            background_image: user.background_image || "",
+            bio: user.bio || "",
             created_at: user.createdAt,
             updated_at: user.updatedAt,
 
@@ -1221,5 +1384,6 @@ const addGems = async (req, res) => {
 
 module.exports = {
     signupWithEmail, loginWithEmail, verify_otp, forgotPassword, resendOtp, resetPassword, submitPassword, test, privacys,
-    updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword
+    updatePic, profileDetails, deletePic, deleteAccount, addCoins, addGems, changePassword,
+    updateBackgroundImage, deleteBackgroundImage, updateBio
 }

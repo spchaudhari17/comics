@@ -9,6 +9,8 @@ const comicSchema = new mongoose.Schema({
   user_id: { type: ObjectId, ref: "users" },
   themeId: { type: ObjectId, ref: "Theme" },
   styleId: { type: ObjectId, ref: "Style" },
+  customTheme: { type: String, trim: true, default: "" }, // list ke bahar ka theme (sirf is comic ke liye)
+  customStyle: { type: String, trim: true, default: "" }, // list ke bahar ka style (sirf is comic ke liye)
   title: { type: String, required: true, trim: true },
   author: { type: String, trim: true },
   subjectId: { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true },

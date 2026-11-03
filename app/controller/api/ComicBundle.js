@@ -23,6 +23,21 @@ const ADMIN_ROLES = ["admin", "moderator"];
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const isValidId = (v) => mongoose.Types.ObjectId.isValid(v);
+const { getBundleThumbnail } = require("../../../utils/bundleThumbnail");
+const GeneratedThumbnail = require("../../models/GeneratedThumbnail");
+
+// AI cover check: kuch nahi bheja -> null, galat -> false, sahi -> thumbnail doc
+const findOwnGeneratedThumbnail = async (thumbnailId, userId, comicIds) => {
+    if (!thumbnailId) return null;
+    if (!isValidId(thumbnailId)) return false;
+
+    const thumb = await GeneratedThumbnail.findOne({ _id: thumbnailId, userId })
+        .select("_id comicId imageUrl")
+        .lean();
+
+    if (!thumb || !comicIds.map(String).includes(String(thumb.comicId))) return false;
+    return thumb;
+};
 const getConceptName = (c) => c?.conceptId?.name || c?.concept || "N/A";
 
 // Har comic ka pehla page (thumbnail) + page count, ek hi query me
@@ -71,7 +86,7 @@ const hasComicAccess = async (user, comic) => {
 const createBundle = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
-        const { title, description, comics, price } = req.body;
+        const { title, description, comics, price, thumbnailComicId } = req.body;
 
         // ✅ validations
         if (!title || !Array.isArray(comics) || comics.length === 0 || !price) {
@@ -123,12 +138,29 @@ const createBundle = async (req, res) => {
             });
         }
 
+        // ✅ Cover comic isi bundle ki honi chahiye
+        if (thumbnailComicId && !uniqueIds.includes(String(thumbnailComicId))) {
+            return res.status(400).json({
+                error: true,
+                message: "Cover must be one of the comics in this bundle"
+            });
+        }
+
+        // ✅ AI cover (credit wala) - isi teacher ka, isi bundle ki comic se bana
+        const customThumb = await findOwnGeneratedThumbnail(req.body.customThumbnailId, userId, uniqueIds);
+        if (customThumb === false) {
+            return res.status(400).json({ error: true, message: "Invalid AI thumbnail for this bundle" });
+        }
+
         // ✅ create bundle
         const bundle = await ComicBundle.create({
             title: String(title).trim(),
             description,
             teacherId: userId,
             comics: uniqueIds,
+            thumbnailComicId: thumbnailComicId || null,
+            customThumbnailId: customThumb ? customThumb._id : null,
+            customThumbnail: customThumb ? customThumb.imageUrl : "",
             price: priceNumber,
             isBundle: uniqueIds.length > 1
         });
@@ -210,14 +242,14 @@ const getBundleDetails = async (req, res) => {
         }
 
         const bundle = await ComicBundle.findById(bundleId)
-            .select("_id title price description teacherId comics createdAt averageRating totalRatings")
+            .select("_id title price description teacherId comics thumbnailComicId customThumbnail createdAt averageRating totalRatings")
             .populate({
                 path: "teacherId",
-                select: "_id firstname lastname email username"
+                select: "_id firstname lastname email username profile_pic background_image bio"
             })
             .populate({
                 path: "comics",
-                select: "_id title subject concept subjectId conceptId seriesId themeId styleId hasQuiz createdAt partNumber",
+                select: "_id title subject concept subjectId conceptId seriesId themeId styleId customTheme customStyle hasQuiz createdAt partNumber",
                 populate: [
                     { path: "subjectId", select: "name" },
                     { path: "conceptId", select: "name" },
@@ -254,8 +286,8 @@ const getBundleDetails = async (req, res) => {
                 thumbnail: pageMap.get(String(comic._id))?.thumbnail || null,
                 subjectName: comic.subjectId?.name || comic.subject || "N/A",
                 conceptName: getConceptName(comic),
-                theme: comic.themeId?.name || "N/A",
-                style: comic.styleId?.name || "N/A",
+                theme: comic.themeId?.name || comic.customTheme || "N/A",
+                style: comic.styleId?.name || comic.customStyle || "N/A",
                 hasQuiz: comic.hasQuiz || false,
                 createdAt: comic.createdAt,
                 series: series
@@ -281,6 +313,8 @@ const getBundleDetails = async (req, res) => {
                 title: bundle.title,
                 price: bundle.price,
                 description: bundle.description,
+                thumbnailComicId: bundle.thumbnailComicId || null,
+                thumbnail: getBundleThumbnail(bundle, (id) => pageMap.get(id)?.thumbnail),
                 createdAt: bundle.createdAt,
                 averageRating: bundle.averageRating || 0,
                 totalRatings: bundle.totalRatings || 0,
@@ -290,7 +324,10 @@ const getBundleDetails = async (req, res) => {
                         firstname: bundle.teacherId.firstname,
                         lastname: bundle.teacherId.lastname,
                         email: bundle.teacherId.email,
-                        username: bundle.teacherId.username
+                        username: bundle.teacherId.username,
+                        profile_pic: bundle.teacherId.profile_pic || "",
+                        background_image: bundle.teacherId.background_image || "",
+                        bio: bundle.teacherId.bio || ""
                     }
                     : null,
                 comics
@@ -409,7 +446,7 @@ const updateBundle = async (req, res) => {
     try {
         const userId = req.user.login_data._id;
         const { bundleId } = req.params;
-        const { title, description, comics, price } = req.body;
+        const { title, description, comics, price, thumbnailComicId } = req.body;
 
         if (!isValidId(bundleId)) {
             return res.status(400).json({ error: true, message: "Invalid bundle id" });
@@ -517,6 +554,41 @@ const updateBundle = async (req, res) => {
 
             bundle.comics = newIds;
             bundle.isBundle = newIds.length > 1;
+        }
+
+        // ---- Cover (thumbnail) ----
+        // null / "" bhejo to default (pehla comic)
+        const finalIds = bundle.comics.map(String);
+
+        if (thumbnailComicId !== undefined) {
+            if (thumbnailComicId && !finalIds.includes(String(thumbnailComicId))) {
+                return res.status(400).json({
+                    error: true,
+                    message: "Cover must be one of the comics in this bundle"
+                });
+            }
+            bundle.thumbnailComicId = thumbnailComicId || null;
+        } else if (bundle.thumbnailComicId && !finalIds.includes(String(bundle.thumbnailComicId))) {
+            // Cover wala comic bundle se hat gaya -> default
+            bundle.thumbnailComicId = null;
+        }
+
+        // ---- AI cover (credit wala) ----
+        // null / "" bhejo to AI cover hata do (comic ka page cover ban jayega)
+        if (req.body.customThumbnailId !== undefined) {
+            const customThumb = await findOwnGeneratedThumbnail(req.body.customThumbnailId, userId, finalIds);
+            if (customThumb === false) {
+                return res.status(400).json({ error: true, message: "Invalid AI thumbnail for this bundle" });
+            }
+            bundle.customThumbnailId = customThumb ? customThumb._id : null;
+            bundle.customThumbnail = customThumb ? customThumb.imageUrl : "";
+        } else if (bundle.customThumbnailId) {
+            // Jis comic se AI cover bana tha wo bundle se hat gaya -> AI cover bhi hatao
+            const stillValid = await findOwnGeneratedThumbnail(bundle.customThumbnailId, userId, finalIds);
+            if (!stillValid) {
+                bundle.customThumbnailId = null;
+                bundle.customThumbnail = "";
+            }
         }
 
         await bundle.save();
@@ -710,6 +782,7 @@ const getMarketplace = async (req, res) => {
 
         const data = bundles.map((bundle) => ({
             ...bundle,
+            thumbnail: getBundleThumbnail(bundle, (id) => pageMap.get(id)?.thumbnail),
             comics: (bundle.comics || []).map((comic) => ({
                 ...comic,
                 thumbnail: pageMap.get(String(comic._id))?.thumbnail || null
@@ -877,6 +950,7 @@ const getMyPurchases = async (req, res) => {
             amount: paidAmount,
             bundleId: {
                 ...bundle,
+                thumbnail: getBundleThumbnail(bundle, (id) => pageMap.get(id)?.thumbnail),
                 comics: (bundle.comics || []).map((comic) => ({
                     ...(comic.toObject ? comic.toObject() : comic),
                     thumbnail: pageMap.get(String(comic._id))?.thumbnail || null
@@ -962,7 +1036,7 @@ const getTransactions = async (req, res) => {
 
 const COMIC_DETAIL_FIELDS = [
     "_id", "title", "subject", "concept", "subjectId", "conceptId",
-    "seriesId", "partNumber", "themeId", "styleId", "grade",
+    "seriesId", "partNumber", "themeId", "styleId", "customTheme", "customStyle", "grade",
     "country", "countries", "hasQuiz", "pdfUrl", "createdAt"
 ].join(" ");
 
@@ -982,7 +1056,7 @@ const getPurchasedBundleDetails = async (req, res) => {
                 .lean(),
 
             ComicBundle.findById(bundleId)
-                .select("_id title description price teacherId comics createdAt averageRating totalRatings status")
+                .select("_id title description price teacherId comics thumbnailComicId customThumbnail createdAt averageRating totalRatings status")
                 .populate({ path: "teacherId", select: "firstname lastname email" })
                 .populate({
                     path: "comics",
@@ -1052,6 +1126,7 @@ const getPurchasedBundleDetails = async (req, res) => {
             error: false,
             data: {
                 ...bundle,
+                thumbnail: getBundleThumbnail(bundle, (id) => pageMap.get(id)?.thumbnail),
                 comics,
                 purchaseDate: purchase.createdAt,
                 purchaseId: purchase._id,
@@ -1197,14 +1272,14 @@ const PDF_COLORS = {
 };
 
 // ---------------------------------------------------------------------
-// Watermark (har page pe): beech me tircha "Kridemy" + niche-right "© Kridemy"
+// Watermark (har page pe): sirf niche-right "© Kridemy"
+// (beech wala bada tircha "Kridemy" hata diya gaya hai)
 // ---------------------------------------------------------------------
 const WATERMARK = {
     text: "Kridemy",
     color: "#6b7280",
-    angle: -35,
-    textPageOpacity: 0.07,  // FAQ / quiz pages (text ke peeche)
-    imagePageOpacity: 0.16  // comic pages (image ke upar, isliye thoda gehra)
+    textPageOpacity: 0.28,  // FAQ / quiz pages
+    imagePageOpacity: 0.6   // comic pages (image ke upar, isliye thoda gehra)
 };
 
 const drawWatermark = (doc, opacity) => {
@@ -1222,21 +1297,11 @@ const drawWatermark = (doc, opacity) => {
     // Neeche footer likhne pe pdfkit apne aap naya page na bana de
     doc.page.margins.bottom = 0;
 
-    // Beech me bada tircha naam
-    const size = Math.min(width, height) * 0.18;
-    doc.save();
-    doc.font(FONT.bold).fontSize(size).fillColor(WATERMARK.color).fillOpacity(opacity);
-    const textWidth = doc.widthOfString(WATERMARK.text);
-    doc.rotate(WATERMARK.angle, { origin: [width / 2, height / 2] });
-    doc.text(WATERMARK.text, width / 2 - textWidth / 2, height / 2 - size / 2, { lineBreak: false });
-    doc.restore();
-
     // Niche-right chhota label
-    const footerText = `\u00A9 ${WATERMARK.text}`;
+    const footerText = `© ${WATERMARK.text}`;
     const footerSize = Math.max(8, Math.min(width, height) * 0.018);
     doc.save();
-    doc.font(FONT.bold).fontSize(footerSize).fillColor(WATERMARK.color)
-        .fillOpacity(Math.min(opacity * 4, 0.6));
+    doc.font(FONT.bold).fontSize(footerSize).fillColor(WATERMARK.color).fillOpacity(opacity);
     const footerWidth = doc.widthOfString(footerText);
     doc.text(footerText, width - footerWidth - footerSize * 1.5, height - footerSize * 2.5, { lineBreak: false });
     doc.restore();
@@ -1497,7 +1562,7 @@ const downloadComicPdf = async (req, res) => {
         }
 
         // 💧 Har naye text page (FAQ / facts / quiz, aur text lamba hone pe
-        // apne aap bane pages) pe watermark, content ke PEECHE
+        // apne aap bane pages) pe "© Kridemy" label
         let isComicImagePage = false;
         doc.on("pageAdded", () => {
             if (!isComicImagePage) drawWatermark(doc, WATERMARK.textPageOpacity);
@@ -1520,7 +1585,7 @@ const downloadComicPdf = async (req, res) => {
         // 1. Comic pages: A4 width pe fit (FAQ/quiz pages ke barabar chaudai),
         //    taaki viewer me sab pages ek jaise size me dikhein.
         //    Image ki asli resolution PDF me waisi hi rehti hai, quality nahi girti.
-        //    Watermark image ke UPAR (peeche hota to image chhupa deti)
+        //    "© Kridemy" image ke UPAR (peeche hota to image chhupa deti)
         pageImages.forEach((img) => {
             const pageHeight = img.height * (PDF_PAGE_WIDTH / img.width);
 
