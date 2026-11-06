@@ -89,7 +89,7 @@ const buildOtpEmail = ({ name, otp, purpose = "verify" }) => {
     const digits = String(otp).split("");
 
     const digitCells = digits
-        .map((d) => `<td style="padding:0 5px;"><div style="width:52px;height:60px;line-height:60px;background:#FFF7ED;border:2px solid #F59E0B;border-radius:12px;font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:700;color:#1F2937;text-align:center;">${d}</div></td>`)
+        .map((d) => `<td style="padding:0 5px;"><div style="width:52px;height:60px;line-height:60px;background:#F5F0FF;border:2px solid #6A11CB;border-radius:12px;font-family:'Courier New',Courier,monospace;font-size:30px;font-weight:700;color:#1F2937;text-align:center;">${d}</div></td>`)
         .join("");
 
     const html = `<!DOCTYPE html>
@@ -107,11 +107,11 @@ const buildOtpEmail = ({ name, otp, purpose = "verify" }) => {
     <td align="center" style="padding:32px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #E5E7EB;">
         <tr>
-          <td style="height:6px;background:#F59E0B;font-size:0;line-height:0;">&nbsp;</td>
+          <td style="height:6px;background:#6A11CB;font-size:0;line-height:0;">&nbsp;</td>
         </tr>
         <tr>
           <td align="center" style="padding:28px 32px 8px;">
-            <img src="cid:${LOGO_CID}" width="96" height="120" alt="Kridemy" style="display:block;border:0;outline:none;width:96px;height:120px;">
+            <img src="cid:${LOGO_CID}" width="143" height="60" alt="Kridemy" style="display:block;border:0;outline:none;width:143px;height:60px;">
           </td>
         </tr>
         <tr>
@@ -146,7 +146,7 @@ const buildOtpEmail = ({ name, otp, purpose = "verify" }) => {
         </tr>
         <tr>
           <td style="padding:20px 32px;border-top:1px solid #E5E7EB;font-family:Arial,Helvetica,sans-serif;text-align:center;">
-            <p style="margin:0 0 4px;font-size:12px;line-height:18px;color:#6B7280;">Need help? Write to us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#B45309;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+            <p style="margin:0 0 4px;font-size:12px;line-height:18px;color:#6B7280;">Need help? Write to us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#6A11CB;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
             <p style="margin:0;font-size:12px;line-height:18px;color:#9CA3AF;">&copy; ${new Date().getFullYear()} Kridemy &middot; Smarter Every Scroll</p>
           </td>
         </tr>
