@@ -13,6 +13,7 @@ const Quiz = require("../../../models/Quiz");
 const FAQ = require("../../../models/FAQ");
 const User = require("../../../models/User");
 const transporter = require("../../../../config/mailer");
+const { buildComicApprovedEmail } = require("../../../../helper/emailTemplate");
 
 
 const openai = new OpenAI({
@@ -297,16 +298,11 @@ const approveComicStatusAdmin = async (req, res) => {
         const mailOptions = {
           from: "ajinkya.kridemy@gmail.com",
           to: userEmail,
-          subject: "Your Comic Has Been Approved! 🎉",
-          html: `
-            <h2>Congratulations!</h2>
-            <p>Your comic <strong>"${comic.title}"</strong> has been approved by the admin.</p>
-
-            <p>You can now see it live in the public comics section.</p>
-
-            <br/>
-            <p>Keep creating great educational comics! 🚀</p>
-          `
+          ...buildComicApprovedEmail({
+            name: comic.user_id?.firstname || comic.user_id?.username,
+            comicTitle: comic.title,
+            comicId: comic._id
+          })
         };
 
         transporter.sendMail(mailOptions, (err, info) => {
