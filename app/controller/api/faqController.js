@@ -1,5 +1,5 @@
 const OpenAI = require("openai");
-const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { TEXT_MODEL, createTextCompletion } = require("../../../helper/aiModels");
 const { getStylePrompt, getThemePrompt } = require("../../../utils/customThemeStyle");
 const axios = require("axios");
 const path = require("path");
@@ -217,17 +217,17 @@ Format:
 ]
 `;
 
-    const textRes = await openai.chat.completions.create({
+    const textRes = await createTextCompletion(openai, {
       model: TEXT_MODEL,
       messages: [
         { role: "system", content: "Return ONLY valid JSON." },
         { role: "user", content: faqPrompt },
       ],
-      max_completion_tokens: 4000,
-    });
+      max_completion_tokens: 16000,
+    }, "faq");
 
     const faqs = safeJsonParse(
-      textRes.choices[0].message.content.trim()
+      (textRes.choices[0].message.content || "").trim()
     );
 
     // ---------------- IMAGE GENERATION (GEMINI) ----------------

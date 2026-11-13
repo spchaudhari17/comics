@@ -34,7 +34,7 @@ const { generateGeminiComicImage } = require("../../../helper/geminiImage");
 const { checkComicPermission } = require("../../../utils/checkComicPermission");
 const { checkWeeklyComicLimit } = require("../../../utils/checkWeeklyLimit");
 const { getUserAccess } = require("../../../utils/getUserAccess");
-const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { TEXT_MODEL, createTextCompletion } = require("../../../helper/aiModels");
 const { CUSTOM_TEXT_MAX, cleanCustomText, getStylePrompt } = require("../../../utils/customThemeStyle");
 const { CREDITS_PER_PAGE_EDIT } = require("../../../utils/creditPacks");
 const { buildComicApprovedEmail } = require("../../../helper/emailTemplate");
@@ -332,7 +332,7 @@ REQUIRED JSON FORMAT:
 ]
 `;
 
-        const divisionResponse = await openai.chat.completions.create({
+        const divisionResponse = await createTextCompletion(openai, {
             model: PROMPT_MODEL,
             messages: [
                 {
@@ -341,11 +341,11 @@ REQUIRED JSON FORMAT:
                 },
                 { role: "user", content: divisionPrompt }
             ],
-            max_completion_tokens: 4000
-        });
+            max_completion_tokens: 16000
+        }, "refinePrompt");
 
         const parts = safeJsonParse(
-            divisionResponse.choices[0].message.content.trim()
+            (divisionResponse.choices[0].message.content || "").trim()
         );
 
         if (
@@ -602,7 +602,7 @@ REQUIRED JSON FORMAT:
 ]
 `;
 
-            const scriptResponse = await openai.chat.completions.create({
+            const scriptResponse = await createTextCompletion(openai, {
                 model: PROMPT_MODEL,
                 messages: [
                     {
@@ -611,11 +611,11 @@ REQUIRED JSON FORMAT:
                     },
                     { role: "user", content: comicPrompt }
                 ],
-                max_completion_tokens: 8000
-            });
+                max_completion_tokens: 24000
+            }, "comicScript");
 
             const rawPages = safeJsonParse(
-                scriptResponse.choices[0].message.content.trim()
+                (scriptResponse.choices[0].message.content || "").trim()
             );
 
             // Page characters hamesha part ke original name + description se

@@ -1,5 +1,5 @@
 const OpenAI = require("openai");
-const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { TEXT_MODEL, createTextCompletion } = require("../../../helper/aiModels");
 const HardcoreQuiz = require("../../models/HardcoreQuiz");
 const HardcoreQuizQuestion = require("../../models/HardcoreQuizQuestion");
 const Comic = require("../../models/Comic");
@@ -183,16 +183,16 @@ Format:
 
 
     // 🧩 Step 4: Generate quiz via OpenAI
-    const response = await openai.chat.completions.create({
+    const response = await createTextCompletion(openai, {
       model: TEXT_MODEL,
       messages: [
         { role: "system", content: "Return only strict valid JSON, no markdown." },
         { role: "user", content: prompt },
       ],
-      max_completion_tokens: 6000,
-    });
+      max_completion_tokens: 16000,
+    }, "hardcoreQuiz");
 
-    let raw = response.choices[0].message.content.trim();
+    let raw = (response.choices[0].message.content || "").trim();
     if (raw.startsWith("```")) raw = raw.replace(/```json|```/g, "").trim();
 
     let questions;

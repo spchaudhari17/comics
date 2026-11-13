@@ -1,5 +1,5 @@
 const OpenAI = require("openai");
-const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { TEXT_MODEL, createTextCompletion } = require("../../../helper/aiModels");
 const { getStylePrompt, getThemePrompt } = require("../../../utils/customThemeStyle");
 const axios = require("axios");
 const path = require("path");
@@ -208,16 +208,16 @@ Return ONLY valid JSON:
 ]
     `;
 
-    const response = await openai.chat.completions.create({
+    const response = await createTextCompletion(openai, {
       model: TEXT_MODEL,
       messages: [
         { role: "system", content: "Return ONLY valid JSON. No markdown." },
         { role: "user", content: factPrompt }
       ],
-      max_completion_tokens: 4000
-    });
+      max_completion_tokens: 16000
+    }, "didYouKnow");
 
-    const raw = response.choices[0].message.content.trim();
+    const raw = (response.choices[0].message.content || "").trim();
     let facts = safeJsonParse(raw);
     if (!Array.isArray(facts)) facts = [facts];
 

@@ -1,6 +1,6 @@
 
 const OpenAI = require("openai");
-const { TEXT_MODEL } = require("../../../helper/aiModels");
+const { TEXT_MODEL, createTextCompletion } = require("../../../helper/aiModels");
 const axios = require("axios");
 const { upload_files, deleteFiles } = require("../../../helper/helper");
 const sharp = require("sharp");
@@ -95,7 +95,7 @@ Format:
 `;
 
     // -------- OpenAI Request --------
-    const response = await openai.chat.completions.create({
+    const response = await createTextCompletion(openai, {
       model: TEXT_MODEL,
       messages: [
         {
@@ -105,11 +105,11 @@ Format:
         },
         { role: "user", content: prompt },
       ],
-      max_completion_tokens: 4000,
-    });
+      max_completion_tokens: 16000,
+    }, "quiz");
 
     // -------- Parse response --------
-    let raw = response.choices[0].message.content.trim();
+    let raw = (response.choices[0].message.content || "").trim();
     if (raw.startsWith("```")) {
       raw = raw.replace(/```json|```/g, "").trim();
     }
